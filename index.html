@@ -177,6 +177,10 @@
   .bulkbar .spacer{flex:1;}
   .bulkbar .btn{font-weight:600;}
 
+  .bulk-actions-wrap{position:relative; display:flex; align-items:center; gap:8px;}
+  .bulk-actions-wrap .btn.primary .chev{width:13px; height:13px; opacity:.85; transition:transform .15s; margin-left:2px;}
+  .bulk-actions-wrap .btn.primary .chev.open{transform:rotate(180deg);}
+
   .btn{
     display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:6px 12px;
     border-radius:7px; border:1px solid var(--border); background:#fff; color:var(--text-dim); cursor:pointer;
@@ -449,6 +453,7 @@ const state = {
   sortDesc: true,
   selected: new Set(),
   expandedId: null,
+  bulkMenuOpen: false,
 
   userMenuOpen: false,
   profileOpen: false,
@@ -686,22 +691,29 @@ function renderSubnav(){
 /* ============================================================
    RENDER: TOOLBAR / BULK BAR
 ============================================================ */
+// toolbar แถวเดียวเสมอ (checkbox/filters/sort/search ทางซ้ายไม่หายไปไหน) พอมีการเลือกรายการ
+// ฝั่งขวาจะสลับจากไอคอน Export เป็นปุ่ม "Bulk archive (N)" + dropdown "Bulk actions (N)" แทน
 function renderToolbar(){
   const items = visibleItems();
   const allSelected = items.length > 0 && items.every(i => state.selected.has(i.id));
+  const n = state.selected.size;
 
-  if (state.selected.size > 0) {
-    return `
-      <div class="bulkbar">
-        ${ICONS.checkCircle}
-        <span>รายการที่เลือก (${state.selected.size})</span>
-        <div class="spacer"></div>
-        ${state.folder !== 'archive' ? `<button class="btn" data-action="bulk-archive">${ICONS.archive} ย้ายไป Archive</button>` : ''}
-        ${state.folder !== 'bin' ? `<button class="btn danger" data-action="bulk-bin">${ICONS.trash} ย้ายไปถังขยะ</button>` : ''}
-        <button class="btn" data-action="clear-selection">ยกเลิก</button>
+  const rightSide = n > 0
+    ? `
+      <div class="bulk-actions-wrap">
+        ${state.folder !== 'archive' ? `<button class="btn" data-action="bulk-archive">${ICONS.archive} Bulk archive (${n})</button>` : ''}
+        <button class="btn primary" data-action="toggle-bulk-menu">Bulk actions (${n})<span class="chev ${state.bulkMenuOpen ? 'open' : ''}">${ICONS.chevronDown}</span></button>
+        ${state.bulkMenuOpen ? `
+          <div class="user-dropdown bulk-menu">
+            ${state.folder !== 'bin' ? `<div class="user-dropdown-item" data-action="bulk-bin">${ICONS.trash} ย้ายไปถังขยะ</div>` : ''}
+            <div class="user-dropdown-sep"></div>
+            <div class="user-dropdown-item" data-action="clear-selection">ยกเลิกการเลือก</div>
+          </div>
+        ` : ''}
       </div>
-    `;
-  }
+      ${state.bulkMenuOpen ? `<div class="menu-backdrop" data-action="close-bulk-menu"></div>` : ''}
+    `
+    : `<div class="icon-btn" data-action="noop-export" title="Export">${ICONS.download}</div>`;
 
   return `
     <div class="toolbar">
@@ -713,7 +725,7 @@ function renderToolbar(){
         : `<div class="icon-btn" data-action="toggle-search" title="Search">${ICONS.search}</div>`
       }
       <div class="spacer"></div>
-      <div class="icon-btn" data-action="noop-export" title="Export">${ICONS.download}</div>
+      ${rightSide}
     </div>
   `;
 }
@@ -1037,17 +1049,26 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'clear-selection':
       state.selected.clear();
+      state.bulkMenuOpen = false;
+      render(); break;
+
+    case 'toggle-bulk-menu':
+      state.bulkMenuOpen = !state.bulkMenuOpen;
+      render(); break;
+
+    case 'close-bulk-menu':
+      state.bulkMenuOpen = false;
       render(); break;
 
     case 'bulk-archive':
       state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'archive'; patchFeedItem(sid, { folder: 'archive' }); });
       showToast(`ย้าย ${state.selected.size} รายการไป Archive แล้ว`, 'success');
-      state.selected.clear(); render(); break;
+      state.selected.clear(); state.bulkMenuOpen = false; render(); break;
 
     case 'bulk-bin':
       state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'bin'; patchFeedItem(sid, { folder: 'bin' }); });
       showToast(`ย้าย ${state.selected.size} รายการไปถังขยะแล้ว`, 'success');
-      state.selected.clear(); render(); break;
+      state.selected.clear(); state.bulkMenuOpen = false; render(); break;
 
     case 'toggle-expand':
       state.expandedId = state.expandedId === id ? null : id;
