@@ -406,7 +406,7 @@ async function sendReply(item, text){
     showToast('ส่งไม่สำเร็จ (เชื่อมต่อเซิร์ฟเวอร์ไม่ได้) ลองใหม่อีกครั้ง', 'error');
   } finally {
     const btnAfter = document.getElementById('sendBtn-' + item.id);
-    if (btnAfter) { btnAfter.disabled = false; btnAfter.textContent = `${ICONS.send} ส่งข้อความ`; }
+    if (btnAfter) { btnAfter.disabled = false; btnAfter.innerHTML = `${ICONS.send} ส่งข้อความ`; }
   }
 }
 
