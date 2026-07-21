@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CommentGG — Unified Moderation Dashboard</title>
+<style>
+  :root{
+    /* ---- ธีมสี "甜桃榛果 Sweet Peach Hazelnut" ---- */
+    --navy:#7C5549;      /* น้ำตาลเข้ม — top bar / anchor */
+    --navy-2:#5E4038;    /* น้ำตาลเข้มกว่า — hover state */
+    --bg:#FFF6E9;        /* ครีมอ่อน — พื้นหลังรอบนอก */
+    --surface:#ffffff;
+    --border:#EFE1CE;    /* เส้นขอบโทนอุ่น */
+    --text:#2b211d;
+    --text-dim:#6b5d55;
+    --text-faint:#a8988c;
+    --green:#DDA4B4;      /* ชมพูพีช — accent หลัก */
+    --green-soft:#FBEEF1;
+    --green-text:#9C5468;
+    --red:#dc2626;
+    --red-soft:#fee2e2;
+    --red-text:#b91c1c;
+    --blue-soft:#E4EEF9;
+    --blue-text:#3B6591;
+    --peach-blue:#78A5CE;
+    --peach-cream:#FFF0D9;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans Thai",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    background-color:var(--bg);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cpath d='M18 17 L19.5 20.5 L23 22 L19.5 23.5 L18 27 L16.5 23.5 L13 22 L16.5 20.5 Z' fill='%2378A5CE' opacity='0.55'/%3E%3Cpath d='M58 12 L59.3 15 L62.5 16.3 L59.3 17.6 L58 20.7 L56.7 17.6 L53.5 16.3 L56.7 15 Z' fill='%23DDA4B4' opacity='0.6'/%3E%3Cpath d='M35 55 L36.5 58.5 L40.2 60 L36.5 61.5 L35 65 L33.5 61.5 L29.8 60 L33.5 58.5 Z' fill='%237C5549' opacity='0.4'/%3E%3Cpath d='M75 62 L76 64.3 L78.4 65.3 L76 66.3 L75 68.6 L74 66.3 L71.6 65.3 L74 64.3 Z' fill='%2378A5CE' opacity='0.45'/%3E%3Cpath d='M8 60 L9 62.3 L11.4 63.3 L9 64.3 L8 66.6 L7 64.3 L4.6 63.3 L7 62.3 Z' fill='%23DDA4B4' opacity='0.45'/%3E%3C/svg%3E");
+    background-size:90px 90px;
+    background-repeat:repeat;
+  }
+  svg{display:block;}
+
+  /* ---------------- Top bar ---------------- */
+  .topbar{
+    height:68px; background:var(--navy); display:flex; align-items:center; justify-content:space-between;
+    padding:0 22px; color:#fff;
+  }
+  .topbar-brand{display:flex; align-items:center; gap:12px; font-weight:800; font-size:23px; letter-spacing:-.01em;}
+  .topbar-brand .mark{
+    width:46px; height:46px; border-radius:13px; background:var(--green); display:flex; align-items:center; justify-content:center;
+    flex:none; cursor:pointer; transform-origin:50% 85%;
+  }
+  .topbar-brand .mark svg{width:34px; height:34px;}
+  .topbar-brand .mark:hover{ animation: catPoke .5s ease-in-out infinite; }
+  @keyframes catPoke{
+    0%,100%{ transform: rotate(0deg) scale(1); }
+    15%{ transform: rotate(-14deg) scale(1.08); }
+    35%{ transform: rotate(12deg) scale(1.08); }
+    55%{ transform: rotate(-9deg) scale(1.05); }
+    75%{ transform: rotate(7deg) scale(1.05); }
+  }
+  .user-menu-wrap{position:relative;}
+  .topbar-user{
+    display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:600; background:var(--navy-2);
+    padding:6px 10px 6px 12px; border-radius:8px; cursor:pointer; border:none; color:#fff; font-family:inherit;
+  }
+  .topbar-user:hover{filter:brightness(1.08);}
+  .topbar-user svg{width:15px; height:15px;}
+  .topbar-user .chev{width:13px; height:13px; opacity:.8; transition:transform .15s;}
+  .topbar-user .chev.open{transform:rotate(180deg);}
+
+  .menu-backdrop{position:fixed; inset:0; z-index:70;}
+  .user-dropdown{
+    position:absolute; top:calc(100% + 8px); right:0; background:#fff; border:1px solid var(--border);
+    border-radius:12px; box-shadow:0 12px 32px rgba(43,33,29,.18); min-width:210px; padding:6px; z-index:80;
+  }
+  .user-dropdown-item{
+    display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:8px; font-size:13.5px;
+    font-weight:500; color:var(--text-dim); cursor:pointer;
+  }
+  .user-dropdown-item:hover{background:#f7f0ea;}
+  .user-dropdown-item svg{width:16px; height:16px; flex:none;}
+  .user-dropdown-item.danger{color:var(--red);}
+  .user-dropdown-item.danger:hover{background:var(--red-soft);}
+  .user-dropdown-sep{height:1px; background:var(--border); margin:6px 4px;}
+
+  /* ---------------- Modal ---------------- */
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(43,33,29,.45); z-index:90; display:flex; align-items:center;
+    justify-content:center; padding:24px;
+  }
+  .modal-card{
+    background:#fff; border-radius:18px; width:100%; max-width:640px; max-height:88vh; overflow-y:auto;
+    box-shadow:0 24px 64px rgba(0,0,0,.28);
+  }
+  .modal-head{display:flex; align-items:center; justify-content:space-between; padding:22px 24px 0;}
+  .modal-head h2{font-size:20px; margin:0;}
+  .modal-close{
+    width:32px; height:32px; border-radius:8px; border:1px solid var(--border); background:#fff;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text-dim); flex:none;
+  }
+  .modal-close:hover{background:#f7f0ea;}
+  .modal-close svg{width:15px; height:15px;}
+  .modal-tabs{display:flex; gap:22px; padding:18px 24px 0; border-bottom:1px solid var(--border); margin-top:12px;}
+  .modal-tab{padding-bottom:10px; font-size:13.5px; font-weight:600; color:var(--text-faint); cursor:pointer; border-bottom:2.5px solid transparent;}
+  .modal-tab.active{color:var(--text); border-color:var(--green);}
+  .modal-body{padding:22px 24px 8px;}
+  .modal-desc{font-size:13px; color:var(--text-dim); margin-bottom:20px; line-height:1.6;}
+  .form-row{margin-bottom:16px;}
+  .form-row label{display:block; font-size:12.5px; font-weight:700; margin-bottom:6px; color:var(--text);}
+  .form-row label .opt{font-weight:500; color:var(--text-faint);}
+  .form-row input{
+    width:100%; border:1.5px solid var(--border); border-radius:9px; padding:9px 12px; font-size:13.5px;
+    font-family:inherit; outline:none;
+  }
+  .form-row input:focus{border-color:#E3B4C0;}
+  .form-hint{font-size:11.5px; color:var(--text-faint); margin-top:6px; line-height:1.55;}
+  .modal-foot{
+    display:flex; justify-content:flex-end; gap:10px; padding:16px 24px 22px; border-top:1px solid var(--border);
+    margin-top:6px;
+  }
+
+  /* ---------------- Main ---------------- */
+  .main{max-width:1240px; margin:0 auto; padding:26px 18px 46px;}
+  .content-card{
+    background:var(--surface); border-radius:22px; padding:26px 26px 10px;
+    box-shadow:0 6px 24px rgba(124,85,73,.10); border:1px solid #fff;
+  }
+  h1{font-size:29px; margin:0 0 16px;}
+
+  .page-chips{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px;}
+  .page-chip{
+    display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:6px 12px;
+    border-radius:99px; border:1.5px solid var(--border); background:#fff; color:var(--text-dim); cursor:pointer;
+  }
+  .page-chip .dot{width:8px; height:8px; border-radius:50%;}
+  .page-chip.active{border-color:transparent; background:var(--navy); color:#fff;}
+  .page-chip.active .dot{outline:2px solid rgba(255,255,255,.5); background:#fff !important;}
+
+  .toprow-tabs{display:flex; gap:26px; border-bottom:1px solid var(--border); margin-bottom:14px;}
+  .toprow-tab{padding:10px 2px 12px; font-size:14.5px; font-weight:600; color:var(--text-faint); cursor:pointer; border-bottom:2.5px solid transparent; display:flex; gap:6px;}
+  .toprow-tab .n{color:var(--text-faint);}
+  .toprow-tab.active{color:var(--text); border-color:var(--navy);}
+  .toprow-tab.active .n{color:var(--navy); font-weight:700;}
+
+  .desc{font-size:13px; color:var(--text-dim); margin-bottom:16px; line-height:1.6;}
+  .desc b{color:var(--text);}
+
+  .subnav{display:flex; gap:22px; margin-bottom:14px;}
+  .subnav-item{font-size:13.5px; font-weight:600; color:var(--text-faint); padding-bottom:8px; border-bottom:2.5px solid transparent; cursor:pointer;}
+  .subnav-item.active{color:var(--text); border-color:var(--green);}
+
+  .toolbar{
+    display:flex; align-items:center; gap:14px; padding:10px 4px; border-top:1px solid var(--border);
+    border-bottom:1px solid var(--border); margin-bottom:4px; font-size:13px; color:var(--text-dim);
+  }
+  .toolbar label{display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;}
+  .toolbar input[type=checkbox]{width:15px; height:15px; cursor:pointer;}
+  .toolbar .spacer{flex:1;}
+  .icon-btn{
+    width:32px; height:32px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border);
+    border-radius:7px; background:#fff; color:var(--text-dim); cursor:pointer;
+  }
+  .icon-btn:hover{background:#f2f3f5;}
+  .icon-btn svg{width:15px; height:15px;}
+  .search-box{
+    display:flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:7px; padding:0 9px;
+    background:#fff; height:32px;
+  }
+  .search-box svg{width:14px; height:14px; color:var(--text-faint); flex:none;}
+  .search-box input{border:none; outline:none; font-size:12.5px; width:170px; font-family:inherit;}
+
+  .bulkbar{
+    display:flex; align-items:center; gap:10px; padding:9px 12px; background:var(--blue-soft); border-radius:9px;
+    margin-bottom:4px; font-size:13px; color:var(--blue-text); font-weight:600;
+  }
+  .bulkbar .spacer{flex:1;}
+  .bulkbar .btn{font-weight:600;}
+
+  .btn{
+    display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:6px 12px;
+    border-radius:7px; border:1px solid var(--border); background:#fff; color:var(--text-dim); cursor:pointer;
+  }
+  .btn:hover{background:#f2f3f5;}
+  .btn.danger{color:var(--red); border-color:#fecaca;}
+  .btn.danger:hover{background:var(--red-soft);}
+  .btn.primary{background:var(--navy); border-color:var(--navy); color:#fff;}
+  .btn.primary:hover{background:var(--navy-2);}
+  .btn.primary:disabled{background:#c6cad3; border-color:#c6cad3; cursor:not-allowed;}
+  .btn.ghost-green{color:var(--green-text); border-color:#EFC3CE;}
+  .btn.ghost-green:hover{background:var(--green-soft);}
+
+  /* ---------------- Rows ---------------- */
+  .row{
+    display:flex; gap:16px; padding:14px 8px; border-bottom:1px solid var(--border); align-items:flex-start;
+  }
+  .row:hover{background:#fafbfc;}
+  .row.dim{opacity:.65;}
+  .row-check{padding-top:3px;}
+  .row-check input{width:15px; height:15px; cursor:pointer;}
+
+  .row-meta{width:190px; flex:none;}
+  .row-meta .name{font-size:13.5px; font-weight:700; color:var(--text);}
+  .row-meta .time{font-size:11.5px; color:var(--text-faint); margin-top:2px;}
+  .row-meta .page{
+    display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--text-dim); margin-top:6px;
+  }
+  .row-meta .page .dot{width:7px; height:7px; border-radius:50%; flex:none;}
+
+  .row-content{flex:1; min-width:0;}
+  .row-text{font-size:13.5px; line-height:1.55; color:var(--text);}
+  .row-text .tag{
+    display:inline-flex; align-items:center; font-size:11px; font-weight:700; padding:2px 9px; border-radius:99px;
+    margin-left:8px; vertical-align:middle;
+  }
+  .tag.needs-reply{background:var(--green-soft); color:var(--green-text);}
+  .tag.hidden-tag{background:var(--red-soft); color:var(--red-text);}
+  .tag.replied-tag{background:var(--blue-soft); color:var(--blue-text);}
+  .tag.blocked-tag{background:#f3f4f6; color:#4b5563;}
+  .copy-link{font-size:11.5px; color:var(--text-faint); margin-top:6px; cursor:pointer; display:inline-flex; align-items:center; gap:4px;}
+  .copy-link:hover{color:var(--text-dim); text-decoration:underline;}
+  .copy-link svg{width:11px; height:11px;}
+
+  .row-actions{display:flex; gap:6px; flex:none; align-items:flex-start; padding-top:1px;}
+  .row-actions .icon-btn.active-like{background:var(--green-soft); border-color:#EFC3CE; color:var(--green-text);}
+
+  /* ---------------- Expand panel ---------------- */
+  .expand-wrap{grid-column:1/-1;}
+  .expand-panel{
+    margin:0 8px 12px 206px; background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:14px 16px;
+  }
+  .expand-post{font-size:12px; color:var(--text-faint); background:#fff; border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin-bottom:12px;}
+
+  .ai-banner{display:flex; gap:10px; background:var(--red-soft); border:1px solid #fecaca; border-radius:9px; padding:11px 13px; margin-bottom:12px;}
+  .ai-banner svg{width:17px; height:17px; color:var(--red); flex:none; margin-top:1px;}
+  .ai-banner .t{font-size:12.5px; font-weight:700; color:var(--red-text); margin-bottom:2px;}
+  .ai-banner .d{font-size:12px; color:var(--red-text); line-height:1.5;}
+  .ai-actions{display:flex; gap:8px; margin-top:9px;}
+
+  .reply-quote{background:var(--blue-soft); border:1px solid #bfdbfe; border-radius:9px; padding:9px 11px; margin-bottom:12px; font-size:12px; color:var(--blue-text);}
+  .reply-quote .lbl{font-weight:700; font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; margin-bottom:3px; display:block;}
+
+  .composer-label{font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:.04em; margin-bottom:7px;}
+  .composer textarea{
+    width:100%; min-height:64px; resize:vertical; border:1.5px solid var(--border); border-radius:9px;
+    padding:10px 12px; font-size:13px; font-family:inherit; line-height:1.5; outline:none;
+  }
+  .composer textarea:focus{border-color:#E3B4C0;}
+  .composer textarea.violate{border-color:var(--red); background:var(--red-soft);}
+  .composer-alert{
+    display:flex; gap:8px; align-items:flex-start; background:var(--red-soft); border:1px solid #fecaca;
+    border-radius:8px; padding:9px 11px; margin-top:8px; font-size:12px; color:var(--red-text); line-height:1.5;
+  }
+  .composer-alert svg{width:15px; height:15px; flex:none; margin-top:1px; color:var(--red);}
+  .composer-hint-ok{display:flex; gap:6px; align-items:center; font-size:11.5px; color:var(--green); margin-top:7px;}
+  .composer-hint-ok svg{width:13px; height:13px;}
+  .composer-foot{display:flex; align-items:center; justify-content:space-between; margin-top:9px;}
+  .composer-rules{font-size:11px; color:var(--text-faint);}
+  .composer-rules b{color:var(--text-dim);}
+  .composer-actions{display:flex; gap:8px;}
+
+  .empty{text-align:center; padding:60px 20px; color:var(--text-faint);}
+  .empty svg{width:36px; height:36px; margin-bottom:10px; opacity:.5;}
+  .empty .t{font-size:13.5px; font-weight:600; color:var(--text-dim);}
+
+  #toastWrap{position:fixed; bottom:20px; right:20px; display:flex; flex-direction:column; gap:8px; z-index:999;}
+  .toast{
+    background:#1a1d23; color:#fff; font-size:13px; font-weight:500; padding:10px 16px; border-radius:9px;
+    box-shadow:0 8px 24px rgba(0,0,0,.18); display:flex; align-items:center; gap:8px; max-width:340px;
+  }
+  .toast.error{background:#7f1d1d;}
+  .toast.success{background:#14532d;}
+  .toast svg{width:15px; height:15px; flex:none;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toastWrap"></div>
+
+<script>
+/* ============================================================
+   ICONS
+============================================================ */
+const ICONS = {
+  shield: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  catAngry: `<svg viewBox="0 0 64 64" fill="none">
+    <path d="M18 26 C10 14 14 6 22 12 C26 15 28 20 30 22 C33 18 30 10 36 6 C42 3 48 10 44 18 C50 20 54 26 54 34 C54 48 44 56 32 56 C20 56 10 48 10 34 C10 30 13 27 18 26 Z"
+      fill="#eef1fb" stroke="#111318" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M13 40 C13 50 21 55 32 55 C43 55 51 50 51 40 C51 47 43 51 32 51 C21 51 13 47 13 40 Z" fill="#cdd6f5" opacity="0.8"/>
+    <line x1="18" y1="29" x2="27" y2="34" stroke="#111318" stroke-width="4" stroke-linecap="round"/>
+    <line x1="46" y1="29" x2="37" y2="34" stroke="#111318" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="24" cy="39" r="2.6" fill="#111318"/>
+    <circle cx="40" cy="39" r="2.6" fill="#111318"/>
+    <path d="M25 45 Q32 51 39 45" stroke="#111318" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+    <g stroke="#e11d48" stroke-width="3" stroke-linecap="round">
+      <line x1="9" y1="22" x2="16" y2="29"/>
+      <line x1="16" y1="22" x2="9" y2="29"/>
+    </g>
+  </svg>`,
+  users: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  filter: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>`,
+  sort: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>`,
+  download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+  eye: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  eyeOff: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
+  send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
+  alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+  checkCircle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+  thumbUp: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>`,
+  reply: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>`,
+  userX: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="22" y2="13"/><line x1="22" y1="8" x2="17" y2="13"/></svg>`,
+  archive: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>`,
+  restore: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`,
+  copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+  inbox: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>`,
+  chevronDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+  userCircle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M6.5 19a5.5 5.5 0 0 1 11 0"/></svg>`,
+  gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  wrench: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.77z"/></svg>`,
+  helpCircle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  logOut: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
+  x: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+};
+
+/* ============================================================
+   MOCK DATA
+============================================================ */
+const PAGES = [
+  { id:'dragon', name:'Cabal: Infinite Combo',    tag:'เพจ A', color:'#2563eb', emoji:'⚔️', pronoun:'พี่บ๊อบ', ending:'ครับ', hashtag:'#CabalInfiniteCombo' },
+  { id:'neon',   name:'Cabal: Ultimate Combo',    tag:'เพจ B', color:'#16a34a', emoji:'🗡️', pronoun:'น้องเจนี่', ending:'ค่ะ', hashtag:'#CabalUltimateCombo' },
+  { id:'forge',  name:'TalesRunner',              tag:'เพจ C', color:'#f97316', emoji:'🏃', pronoun:'พี่ฟอร์จ', ending:'ครับ', hashtag:'#TalesRunner' },
+  { id:'sky',    name:'WARZ TH Limited Edition',  tag:'เพจ D', color:'#dc2626', emoji:'🔫', pronoun:'น้องสกาย', ending:'ค่ะ', hashtag:'#WarZTHLimited' },
+];
+const pageById = id => PAGES.find(p => p.id === id);
+
+let ITEMS = [
+  { id:1, pageId:'dragon', type:'comment', author:'สมชาย ใจดี', text:'อัปเดตใหม่เมื่อไหร่ครับ รอนานมากกก 😭 อยากลองเควสใหม่ไวๆ', time:'6 นาทีที่แล้ว', status:'pending', folder:'inbox',
+    postExcerpt:'โพสต์ต้นทาง: "ประกาศปิดปรับปรุงเซิร์ฟเวอร์ 25 ก.ค. นี้ พบกับคอนเทนต์ใหม่!"' },
+  { id:2, pageId:'dragon', type:'comment', author:'ครูปลาทอง99', text:'รับซื้อไอดีเกมราคาดี การันตีจ่ายจริง ทักไลน์ @scam1234 ด่วน!! bit.ly/idgame-cheap', time:'11 นาทีที่แล้ว', status:'spam_hidden', folder:'inbox',
+    aiReason:'ลิงก์ภายนอกที่น่าสงสัย ร่วมกับคำเชิญชวนซื้อขายไอดีเกม',
+    postExcerpt:'โพสต์ต้นทาง: "ภาพตัวอย่างสกินมังกรทองคำ ชุดใหม่ประจำเดือน"' },
+  { id:3, pageId:'neon', type:'message', author:'น้องมิ้ว', text:'สอบถามค่ะ วิธีเชื่อมบัญชี Facebook กับเกมทำยังไงคะ ลองแล้วขึ้น error ตลอดเลย', time:'15 นาทีที่แล้ว', status:'pending', folder:'inbox' },
+  { id:4, pageId:'neon', type:'comment', author:'Invest_Master_th', text:'สนใจลงทุนคริปโตกำไรวันละ 5% การันตีทุนคืน ทักมาเลยจ้า bit.ly/xxinvestxx', time:'22 นาทีที่แล้ว', status:'spam_hidden', folder:'inbox',
+    aiReason:'ลิงก์ต้องสงสัย + ชักชวนลงทุนทางการเงินที่ไม่เกี่ยวข้องกับเกม',
+    postExcerpt:'โพสต์ต้นทาง: "คลิปโชว์สปีดรถคันใหม่ Neon X1"' },
+  { id:5, pageId:'forge', type:'comment', author:'เอกชัย พลังเหล็ก', text:'ระบบตีเหล็กใหม่โคตรมันส์เลยพี่ฟอร์จ! เล่นยาวได้ทั้งคืนเลยครับ', time:'34 นาทีที่แล้ว', status:'replied', folder:'inbox',
+    adminReply:'ขอบคุณมากครับ พี่ฟอร์จดีใจที่ชอบระบบใหม่นะครับ 🔥 ฝากติดตามอัปเดตหน้าถัดไปด้วยนะครับ #MysticForge',
+    postExcerpt:'โพสต์ต้นทาง: "รีวิวระบบตีเหล็กเวอร์ชั่นใหม่ Forge 2.0"' },
+  { id:6, pageId:'sky', type:'message', author:'จันทร์เพ็ญ', text:'ทำไมล็อกอินไม่เข้าคะ ขึ้น error ตลอดเลยตั้งแต่เมื่อเช้า รบกวนช่วยเช็คด่วนค่ะ', time:'40 นาทีที่แล้ว', status:'pending', folder:'inbox' },
+  { id:7, pageId:'sky', type:'comment', author:'ปั่นไอดีเทพ', text:'ปั่นแรงค์ เพิ่มไอดี ราคาถูกสุดในไทย งานไว 24 ชม. inbox ด่วนน้องสกาย', time:'48 นาทีที่แล้ว', status:'spam_hidden', folder:'inbox',
+    aiReason:'บริการปั่นแรงค์/ซื้อขายบัญชีเข้าข่ายผิดเงื่อนไขการใช้งาน',
+    postExcerpt:'โพสต์ต้นทาง: "ประกาศฤดูกาลแข่งขันใหม่ Season 7"' },
+  { id:8, pageId:'dragon', type:'message', author:'วีระ เกมเมอร์', text:'ขอโค้ดของขวัญวันเกิดเกมหน่อยได้ไหมครับพี่บ๊อบ เล่นมา 2 ปีแล้ว 🎂', time:'1 ชั่วโมงที่แล้ว', status:'pending', folder:'inbox' },
+  { id:9, pageId:'neon', type:'comment', author:'แนน สายซิ่ง', text:'รถคันใหม่สวยมากกก อยากได้เร็วๆ เปิดขายวันไหนคะน้องเจนี่', time:'1 ชั่วโมง 20 นาทีที่แล้ว', status:'pending', folder:'inbox',
+    postExcerpt:'โพสต์ต้นทาง: "คลิปโชว์สปีดรถคันใหม่ Neon X1"' },
+  { id:10, pageId:'forge', type:'message', author:'บอย ตีเหล็ก', text:'ซื้อไอเทมไปแล้วเงินหักแต่ไม่เข้าเกมค่ะ ช่วยเช็คให้หน่อยได้ไหมคะ เลขคำสั่งซื้อ #88214', time:'2 ชั่วโมงที่แล้ว', status:'pending', folder:'inbox' },
+  { id:11, pageId:'sky', type:'comment', author:'กิตติ ท้องฟ้า', text:'ธีมฤดูกาลใหม่สวยมากครับน้องสกาย รอเล่นเลย', time:'2 ชั่วโมง 30 นาทีที่แล้ว', status:'replied', folder:'archive',
+    adminReply:'ขอบคุณครับ ฝากติดตามธีมต่อไปด้วยนะครับ #SkywardLegends', postExcerpt:'โพสต์ต้นทาง: "เปิดตัวธีมฤดูกาลใหม่ Sky Season"' },
+  { id:12, pageId:'neon', type:'comment', author:'สายปั่นเงินด่วน', text:'ปล่อยเงินกู้ด่วน อนุมัติไว ไม่เช็คบูโร ทัก inbox', time:'3 ชั่วโมงที่แล้ว', status:'spam_hidden', folder:'bin',
+    aiReason:'สแปมโฆษณาเงินกู้นอกระบบ ไม่เกี่ยวข้องกับเกม' },
+];
+
+/* ============================================================
+   STATE
+============================================================ */
+const state = {
+  pageFilter: 'all',
+  tab: 'comment',
+  folder: 'inbox',
+  search: '',
+  searchOpen: false,
+  sortDesc: true,
+  selected: new Set(),
+  expandedId: null,
+
+  userMenuOpen: false,
+  profileOpen: false,
+  profileTab: 'profile',
+  profile: {
+    firstName: 'Bow',
+    lastName: 'cs',
+    email: 'bonniexg01@gmail.com',
+    hashtags: { dragon:'', neon:'', forge:'', sky:'' },
+  },
+};
+
+/* ============================================================
+   HELPERS
+============================================================ */
+function itemsByTypeAndPage(type){
+  return ITEMS.filter(it => it.type === type && (state.pageFilter === 'all' || it.pageId === state.pageFilter));
+}
+function folderCount(type, folder){
+  return itemsByTypeAndPage(type).filter(it => it.folder === folder).length;
+}
+function visibleItems(){
+  let list = ITEMS.filter(it => {
+    if (it.type !== state.tab) return false;
+    if (it.folder !== state.folder) return false;
+    if (state.pageFilter !== 'all' && it.pageId !== state.pageFilter) return false;
+    if (state.search.trim()) {
+      const q = state.search.trim().toLowerCase();
+      if (!it.author.toLowerCase().includes(q) && !it.text.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+  if (!state.sortDesc) list = list.slice().reverse();
+  return list;
+}
+function spamHiddenTodayCount(){
+  return ITEMS.filter(it => it.status === 'spam_hidden').length;
+}
+
+/* ============================================================
+   TOAST
+============================================================ */
+function showToast(msg, type){
+  const wrap = document.getElementById('toastWrap');
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  const icon = type === 'error' ? ICONS.alert : type === 'success' ? ICONS.checkCircle : ICONS.check;
+  el.innerHTML = icon + `<span>${msg}</span>`;
+  wrap.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .25s'; setTimeout(() => el.remove(), 250); }, 2600);
+}
+
+/* ============================================================
+   CROSS-PAGE VIOLATION CHECK
+============================================================ */
+function checkCrossPageViolation(text, currentPageId){
+  const others = PAGES.filter(p => p.id !== currentPageId);
+  for (const p of others) {
+    if (text.includes(p.pronoun)) return { term: p.pronoun, type: 'สรรพนาม', page: p };
+    if (text.includes(p.hashtag)) return { term: p.hashtag, type: 'แฮชแท็ก', page: p };
+  }
+  return null;
+}
+
+/* ============================================================
+   ENDING-PARTICLE CHECK (ค่ะ / ครับ ต้องตรงกับ persona ของเพจ)
+============================================================ */
+function checkEndingViolation(text, page){
+  const wrongEnding = page.ending === 'ครับ' ? 'ค่ะ' : 'ครับ';
+  if (text.includes(wrongEnding)) return { term: wrongEnding, expected: page.ending };
+  return null;
+}
+
+function signatureFor(page){
+  return `${page.ending} ${page.hashtag}`;
+}
+
+/* ============================================================
+   RENDER: TOP BAR
+============================================================ */
+function renderTopbar(){
+  const displayName = `${state.profile.firstName} ${state.profile.lastName}`.trim();
+  return `
+    <div class="topbar">
+      <div class="topbar-brand">
+        <div class="mark">${ICONS.catAngry}</div>
+        CommentGG
+      </div>
+      <div class="user-menu-wrap">
+        <button class="topbar-user" data-action="toggle-user-menu">
+          ${ICONS.users} ${displayName}
+          <span class="chev ${state.userMenuOpen ? 'open' : ''}">${ICONS.chevronDown}</span>
+        </button>
+        ${state.userMenuOpen ? renderUserDropdown() : ''}
+      </div>
+    </div>
+    ${state.userMenuOpen ? `<div class="menu-backdrop" data-action="close-user-menu"></div>` : ''}
+    ${state.profileOpen ? renderProfileModal() : ''}
+  `;
+}
+
+/* ============================================================
+   RENDER: USER DROPDOWN
+============================================================ */
+function renderUserDropdown(){
+  return `
+    <div class="user-dropdown">
+      <div class="user-dropdown-item" data-action="menu-placeholder" data-label="Dashboard">${ICONS.inbox} Dashboard</div>
+      <div class="user-dropdown-item" data-action="open-profile" data-tab="profile">${ICONS.userCircle} Profile</div>
+      <div class="user-dropdown-item" data-action="open-profile" data-tab="settings">${ICONS.gear} Settings</div>
+      <div class="user-dropdown-sep"></div>
+      <div class="user-dropdown-item danger" data-action="sign-out">${ICONS.logOut} Sign out</div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   RENDER: PROFILE / ACCOUNT SETTINGS MODAL
+============================================================ */
+function renderProfileModal(){
+  const p = state.profile;
+  const tab = state.profileTab;
+
+  const profileTabHtml = `
+    <div class="modal-desc">จัดการข้อมูลผู้ใช้และชื่อที่ใช้แสดงในระบบของคุณ</div>
+    <div class="form-row">
+      <label>First name</label>
+      <input id="pf-firstName" type="text" value="${p.firstName}" />
+    </div>
+    <div class="form-row">
+      <label>Last name</label>
+      <input id="pf-lastName" type="text" value="${p.lastName}" />
+    </div>
+    <div class="form-row">
+      <label>Email <span class="opt">(login username)</span></label>
+      <input id="pf-email" type="email" value="${p.email}" />
+    </div>
+    <div class="form-row">
+      <label>แฮชแท็กประจำตัว CS <span class="opt">(ใช้ระบุตัวตนตอนตอบลูกค้า แยกตามเพจ เพราะแต่ละเกมใช้ไม่เหมือนกัน)</span></label>
+      ${PAGES.map(page => `
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+          <span style="width:170px; flex:none; font-size:12.5px; color:var(--text-dim); display:flex; align-items:center; gap:6px;">
+            <span class="dot" style="width:7px;height:7px;border-radius:50%;background:${page.color};display:inline-block;"></span>${page.emoji} ${page.name}
+          </span>
+          <input id="pf-hashtag-${page.id}" type="text" placeholder="เช่น ${page.hashtag}" value="${(p.hashtags && p.hashtags[page.id]) || ''}" />
+        </div>
+      `).join('')}
+      <div class="form-hint">ตั้งไว้เพื่ออ้างอิงว่าแอดมินคนนี้เป็นใครเวลาไล่ดูประวัติการตอบของแต่ละเกม — ยังไม่ผูกกับระบบเช็กสรรพนามผิดเพจ (เป็นการตั้งค่าตามเพจอยู่)</div>
+    </div>
+    <div class="form-hint" style="margin-top:2px;">* ระบบตั้งรหัสผ่านเข้าสู่ระบบจะเปิดให้ใช้งานภายหลังเมื่อเว็บพร้อมใช้งานจริง</div>
+  `;
+
+  const settingsTabHtml = `
+    <div class="modal-desc">การตั้งค่าระบบเพิ่มเติม (การแจ้งเตือน, ธีม, สิทธิ์การใช้งาน ฯลฯ) จะเปิดให้ใช้งานเร็วๆ นี้</div>
+  `;
+
+  return `
+    <div class="modal-backdrop" data-action="close-profile">
+      <div class="modal-card" data-action="stop-propagation">
+        <div class="modal-head">
+          <h2>Account settings</h2>
+          <div class="modal-close" data-action="close-profile">${ICONS.x}</div>
+        </div>
+        <div class="modal-tabs">
+          <div class="modal-tab ${tab === 'profile' ? 'active' : ''}" data-action="profile-tab" data-tab="profile">Profile</div>
+          <div class="modal-tab ${tab === 'settings' ? 'active' : ''}" data-action="profile-tab" data-tab="settings">Settings</div>
+        </div>
+        <div class="modal-body">
+          ${tab === 'profile' ? profileTabHtml : settingsTabHtml}
+        </div>
+        <div class="modal-foot">
+          <button class="btn" data-action="close-profile">Cancel</button>
+          ${tab === 'profile' ? `<button class="btn primary" data-action="save-profile">Save</button>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   RENDER: PAGE CHIPS
+============================================================ */
+function renderPageChips(){
+  const allActive = state.pageFilter === 'all';
+  return `
+    <div class="page-chips">
+      <div class="page-chip ${allActive ? 'active' : ''}" data-action="select-page" data-page="all">
+        <span class="dot" style="background:#A89A8D"></span> ทุกเพจ (4)
+      </div>
+      ${PAGES.map(p => {
+        const active = state.pageFilter === p.id;
+        return `
+        <div class="page-chip ${active ? 'active' : ''}" data-action="select-page" data-page="${p.id}" ${active ? `style="background:${p.color}"` : ''}>
+          <span class="dot" style="background:${active ? '#fff' : p.color}"></span> ${p.emoji} ${p.name}
+        </div>
+      `;
+      }).join('')}
+    </div>
+  `;
+}
+
+/* ============================================================
+   RENDER: TOP TABS (Comments / Messages)
+============================================================ */
+function renderTopTabs(){
+  const commentCount = itemsByTypeAndPage('comment').filter(i => i.folder === 'inbox').length;
+  return `
+    <div class="toprow-tabs">
+      <div class="toprow-tab active" data-action="select-tab" data-tab="comment">
+        Comments <span class="n">${commentCount}</span>
+      </div>
+    </div>
+    <div class="desc">
+      ภาพรวมคอมเมนต์จาก <b>4 แฟนเพจเกม</b> สำหรับเด็กๆ แก๊งคอลเซ็นเตอร์
+    </div>
+  `;
+}
+
+/* ============================================================
+   RENDER: SUBNAV (Inbox / Archive / Bin)
+============================================================ */
+function renderSubnav(){
+  const inboxN = folderCount(state.tab, 'inbox');
+  const archiveN = folderCount(state.tab, 'archive');
+  const binN = folderCount(state.tab, 'bin');
+  return `
+    <div class="subnav">
+      <div class="subnav-item ${state.folder === 'inbox' ? 'active' : ''}" data-action="select-folder" data-folder="inbox">Inbox ${inboxN}</div>
+      <div class="subnav-item ${state.folder === 'archive' ? 'active' : ''}" data-action="select-folder" data-folder="archive">Archive ${archiveN}</div>
+      <div class="subnav-item ${state.folder === 'bin' ? 'active' : ''}" data-action="select-folder" data-folder="bin">Bin ${binN}</div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   RENDER: TOOLBAR / BULK BAR
+============================================================ */
+function renderToolbar(){
+  const items = visibleItems();
+  const allSelected = items.length > 0 && items.every(i => state.selected.has(i.id));
+
+  if (state.selected.size > 0) {
+    return `
+      <div class="bulkbar">
+        ${ICONS.checkCircle}
+        <span>${state.selected.size} รายการที่เลือก</span>
+        <div class="spacer"></div>
+        ${state.folder !== 'archive' ? `<button class="btn" data-action="bulk-archive">${ICONS.archive} ย้ายไป Archive</button>` : ''}
+        ${state.folder !== 'bin' ? `<button class="btn danger" data-action="bulk-bin">${ICONS.trash} ย้ายไปถังขยะ</button>` : ''}
+        <button class="btn" data-action="clear-selection">ยกเลิก</button>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="toolbar">
+      <label><input type="checkbox" ${allSelected ? 'checked' : ''} data-action="select-all" /> Select visible</label>
+      <div class="icon-btn" data-action="noop-filter" title="Filters">${ICONS.filter}</div>
+      <div class="icon-btn" data-action="toggle-sort" title="Sort">${ICONS.sort}</div>
+      ${state.searchOpen
+        ? `<div class="search-box">${ICONS.search}<input id="searchInput" type="text" placeholder="ค้นหาชื่อหรือข้อความ..." value="${state.search}" /></div>`
+        : `<div class="icon-btn" data-action="toggle-search" title="Search">${ICONS.search}</div>`
+      }
+      <div class="spacer"></div>
+      <div class="icon-btn" data-action="noop-export" title="Export">${ICONS.download}</div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   RENDER: ROW
+============================================================ */
+function tagFor(item){
+  if (item.status === 'spam_hidden') return `<span class="tag hidden-tag">ซ่อนไว้</span>`;
+  if (item.status === 'replied') return `<span class="tag replied-tag">ตอบแล้ว</span>`;
+  if (item.blocked) return `<span class="tag blocked-tag">ผู้ใช้ถูกบล็อก</span>`;
+  return `<span class="tag needs-reply">ต้องตอบกลับ</span>`;
+}
+
+function rowActions(item){
+  if (item.folder === 'bin') {
+    return `
+      <div class="icon-btn" data-action="restore" data-id="${item.id}" title="กู้คืน">${ICONS.restore}</div>
+      <div class="icon-btn" data-action="delete-forever" data-id="${item.id}" title="ลบถาวร">${ICONS.trash}</div>
+    `;
+  }
+
+  const hideBtn = item.status === 'spam_hidden'
+    ? `<div class="icon-btn" data-action="unhide" data-id="${item.id}" title="เผยแพร่คืน">${ICONS.eye}</div>`
+    : `<div class="icon-btn" data-action="hide" data-id="${item.id}" title="ซ่อนคอมเมนต์">${ICONS.eyeOff}</div>`;
+
+  const archiveBtn = item.folder === 'archive'
+    ? `<div class="icon-btn" data-action="unarchive" data-id="${item.id}" title="ย้ายกลับ Inbox">${ICONS.inbox}</div>`
+    : `<div class="icon-btn" data-action="archive" data-id="${item.id}" title="ย้ายไป Archive">${ICONS.archive}</div>`;
+
+  return `
+    <div class="icon-btn" data-action="toggle-expand" data-id="${item.id}" title="ดูรายละเอียด">${ICONS.search}</div>
+    <div class="icon-btn ${item.liked ? 'active-like' : ''}" data-action="like" data-id="${item.id}" title="ถูกใจ">${ICONS.thumbUp}</div>
+    <div class="icon-btn" data-action="toggle-expand" data-id="${item.id}" data-focus="1" title="ตอบกลับ">${ICONS.reply}</div>
+    ${hideBtn}
+    <div class="icon-btn" data-action="bin" data-id="${item.id}" title="ลบ (ย้ายไปถังขยะ)">${ICONS.trash}</div>
+    <div class="icon-btn" data-action="block" data-id="${item.id}" title="บล็อกผู้ใช้">${ICONS.userX}</div>
+    ${archiveBtn}
+  `;
+}
+
+function renderExpandPanel(item){
+  const page = pageById(item.pageId);
+  let inner = '';
+
+  if (item.status === 'spam_hidden') {
+    inner += `
+      <div class="ai-banner">
+        ${ICONS.eyeOff}
+        <div>
+          <div class="t">รายการนี้ถูกซ่อนไว้</div>
+          <div class="d">เหตุผล: ${item.aiReason || 'เข้าข่ายสแปม/มิจฉาชีพ'}</div>
+          <div class="ai-actions">
+            <button class="btn ghost-green" data-action="unhide" data-id="${item.id}">${ICONS.eye} เผยแพร่คืน</button>
+            <button class="btn danger" data-action="bin" data-id="${item.id}">${ICONS.trash} ย้ายไปถังขยะ</button>
+          </div>
+        </div>
+      </div>
+    `;
+    return `<div class="expand-panel">${inner}</div>`;
+  }
+
+  if (item.postExcerpt) inner += `<div class="expand-post">${item.postExcerpt}</div>`;
+  if (item.status === 'replied' && item.adminReply) {
+    inner += `<div class="reply-quote"><span class="lbl">คุณตอบไปแล้ว</span>${item.adminReply}</div>`;
+  }
+
+  inner += `
+    <div class="composer">
+      <div class="composer-label" style="display:flex; align-items:center; justify-content:space-between;">
+        <span>ตอบกลับในนาม ${page.emoji} ${page.name}</span>
+        <span class="btn" style="padding:4px 9px; font-size:11px;" data-action="insert-signature" data-id="${item.id}">${ICONS.copy} แทรกลายเซ็น</span>
+      </div>
+      <textarea id="replyBox-${item.id}" placeholder="พิมพ์ข้อความตอบกลับ... (ต้องใช้สรรพนาม “${page.pronoun}” สำหรับเพจนี้)">${signatureFor(page)}</textarea>
+      <div id="composerAlertZone-${item.id}"></div>
+      <div class="composer-foot">
+        <div class="composer-rules">สรรพนาม: <b>${page.pronoun}</b> &nbsp;·&nbsp; คำลงท้าย: <b>${page.ending}</b> &nbsp;·&nbsp; แฮชแท็ก: <b>${page.hashtag}</b></div>
+        <div class="composer-actions">
+          <button class="btn" data-action="collapse" data-id="${item.id}">ยกเลิก</button>
+          <button class="btn primary" id="sendBtn-${item.id}" data-action="send" data-id="${item.id}">${ICONS.send} ส่งข้อความ</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return `<div class="expand-panel">${inner}</div>`;
+}
+
+function renderRow(item){
+  const page = pageById(item.pageId);
+  const checked = state.selected.has(item.id);
+  const expanded = state.expandedId === item.id;
+
+  return `
+    <div>
+      <div class="row ${item.status === 'spam_hidden' ? 'dim' : ''}">
+        <div class="row-check"><input type="checkbox" ${checked ? 'checked' : ''} data-action="toggle-select" data-id="${item.id}" /></div>
+        <div class="row-meta">
+          <div class="name">${item.author}</div>
+          <div class="time">${item.time}</div>
+          <div class="page"><span class="dot" style="background:${page.color}"></span>${page.emoji} ${page.name}</div>
+        </div>
+        <div class="row-content">
+          <div class="row-text">${item.text}${tagFor(item)}</div>
+          <div class="copy-link" data-action="copy" data-id="${item.id}">${ICONS.copy} Copy to clipboard</div>
+        </div>
+        <div class="row-actions">${rowActions(item)}</div>
+      </div>
+      ${expanded ? renderExpandPanel(item) : ''}
+    </div>
+  `;
+}
+
+/* ============================================================
+   RENDER: LIST
+============================================================ */
+function renderList(){
+  const items = visibleItems();
+  if (!items.length) {
+    return `
+      <div class="empty">
+        ${ICONS.inbox}
+        <div class="t">ไม่มีรายการในมุมมองนี้</div>
+      </div>
+    `;
+  }
+  return items.map(renderRow).join('');
+}
+
+/* ============================================================
+   ROOT RENDER
+============================================================ */
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    ${renderTopbar()}
+    <div class="main">
+      <div class="content-card">
+        <h1>${state.pageFilter === 'all' ? 'Dashboard' : pageById(state.pageFilter).name}</h1>
+        ${renderPageChips()}
+        ${renderTopTabs()}
+        ${renderSubnav()}
+        ${renderToolbar()}
+        <div id="listWrap">${renderList()}</div>
+      </div>
+    </div>
+  `;
+  bindAllReplyBoxes();
+  bindSearchInput();
+}
+
+function bindAllReplyBoxes(){
+  if (state.expandedId == null) return;
+  const item = ITEMS.find(i => i.id === state.expandedId);
+  if (!item || item.status === 'spam_hidden') return;
+  const box = document.getElementById('replyBox-' + item.id);
+  if (!box) return;
+  const page = pageById(item.pageId);
+  box.addEventListener('input', () => updateComposerState(item, box, page));
+  box.focus();
+  box.setSelectionRange(0, 0); // วางเคอร์เซอร์ไว้หน้าลายเซ็นที่แทรกไว้ล่วงหน้า พิมพ์ข้อความนำหน้าได้เลย
+  updateComposerState(item, box, page);
+}
+
+function bindSearchInput(){
+  const input = document.getElementById('searchInput');
+  if (!input) return;
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  input.addEventListener('input', () => { state.search = input.value; renderListOnly(); });
+}
+
+function renderListOnly(){
+  // re-render only the list + toolbar counts area to avoid losing search input focus
+  document.getElementById('listWrap').innerHTML = renderList();
+  bindAllReplyBoxes();
+}
+
+function updateComposerState(item, box, page){
+  const alertZone = document.getElementById('composerAlertZone-' + item.id);
+  const sendBtn = document.getElementById('sendBtn-' + item.id);
+  const text = box.value;
+  const violation = checkCrossPageViolation(text, page.id);
+  const endingViolation = !violation ? checkEndingViolation(text, page) : null;
+
+  if (violation) {
+    box.classList.add('violate');
+    alertZone.innerHTML = `
+      <div class="composer-alert">
+        ${ICONS.alert}
+        <div>
+          <b>⚠️ ตรวจพบ${violation.type}ของ ${violation.page.emoji} ${violation.page.name}</b> ("${violation.term}")
+          ในข้อความที่กำลังตอบเพจ ${page.emoji} ${page.name} — ระบบบล็อกการส่งเพื่อป้องกันการตอบผิดเพจ
+        </div>
+      </div>
+    `;
+    sendBtn.disabled = true;
+  } else if (endingViolation) {
+    box.classList.add('violate');
+    alertZone.innerHTML = `
+      <div class="composer-alert">
+        ${ICONS.alert}
+        <div>
+          <b>⚠️ คำลงท้ายไม่ตรงกับเพจนี้</b> — เพจ ${page.emoji} ${page.name} ต้องใช้ “${page.ending}” แต่พบคำว่า “${endingViolation.term}” ในข้อความ กรุณาแก้ไขก่อนส่ง
+        </div>
+      </div>
+    `;
+    sendBtn.disabled = true;
+  } else {
+    box.classList.remove('violate');
+    if (text.trim().length > 0 && text.includes(page.pronoun) && text.includes(page.ending)) {
+      alertZone.innerHTML = `<div class="composer-hint-ok">${ICONS.checkCircle} ใช้สรรพนาม “${page.pronoun}” และคำลงท้าย “${page.ending}” ถูกต้องสำหรับเพจนี้</div>`;
+    } else {
+      alertZone.innerHTML = '';
+    }
+    sendBtn.disabled = false;
+  }
+}
+
+/* ============================================================
+   EVENT DELEGATION
+============================================================ */
+document.getElementById('app').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+  const id = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
+  const item = id ? ITEMS.find(i => i.id === id) : null;
+
+  switch (action) {
+    case 'stop-propagation':
+      break;
+
+    case 'toggle-user-menu':
+      state.userMenuOpen = !state.userMenuOpen;
+      render(); break;
+
+    case 'close-user-menu':
+      state.userMenuOpen = false;
+      render(); break;
+
+    case 'menu-placeholder':
+      state.userMenuOpen = false;
+      showToast(`"${el.dataset.label}" จะเปิดใช้งานเร็วๆ นี้`);
+      render(); break;
+
+    case 'sign-out':
+      state.userMenuOpen = false;
+      showToast('ออกจากระบบแล้ว (จำลอง)', 'success');
+      render(); break;
+
+    case 'open-profile':
+      state.userMenuOpen = false;
+      state.profileOpen = true;
+      state.profileTab = el.dataset.tab || 'profile';
+      render(); break;
+
+    case 'close-profile':
+      state.profileOpen = false;
+      render(); break;
+
+    case 'profile-tab':
+      state.profileTab = el.dataset.tab;
+      render(); break;
+
+    case 'save-profile': {
+      const firstName = document.getElementById('pf-firstName').value.trim() || state.profile.firstName;
+      const lastName = document.getElementById('pf-lastName').value.trim();
+      const email = document.getElementById('pf-email').value.trim() || state.profile.email;
+      const hashtags = {};
+      PAGES.forEach(page => {
+        hashtags[page.id] = document.getElementById('pf-hashtag-' + page.id).value.trim();
+      });
+      state.profile = { firstName, lastName, email, hashtags };
+      state.profileOpen = false;
+      showToast('บันทึกโปรไฟล์เรียบร้อยแล้ว', 'success');
+      render(); break;
+    }
+
+    case 'select-page':
+      state.pageFilter = el.dataset.page;
+      state.expandedId = null; state.selected.clear();
+      render(); break;
+
+    case 'select-tab':
+      state.tab = el.dataset.tab;
+      state.folder = 'inbox'; state.expandedId = null; state.selected.clear();
+      render(); break;
+
+    case 'select-folder':
+      state.folder = el.dataset.folder;
+      state.expandedId = null; state.selected.clear();
+      render(); break;
+
+    case 'toggle-sort':
+      state.sortDesc = !state.sortDesc;
+      showToast(state.sortDesc ? 'เรียงล่าสุดก่อน' : 'เรียงเก่าสุดก่อน');
+      render(); break;
+
+    case 'toggle-search':
+      state.searchOpen = true;
+      render(); break;
+
+    case 'noop-filter':
+    case 'noop-export':
+      showToast('ฟีเจอร์นี้จะเปิดใช้งานเร็วๆ นี้');
+      break;
+
+    case 'select-all': {
+      const items = visibleItems();
+      const allSelected = items.length > 0 && items.every(i => state.selected.has(i.id));
+      if (allSelected) items.forEach(i => state.selected.delete(i.id));
+      else items.forEach(i => state.selected.add(i.id));
+      render(); break;
+    }
+
+    case 'toggle-select':
+      if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
+      render(); break;
+
+    case 'clear-selection':
+      state.selected.clear();
+      render(); break;
+
+    case 'bulk-archive':
+      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'archive'; });
+      showToast(`ย้าย ${state.selected.size} รายการไป Archive แล้ว`, 'success');
+      state.selected.clear(); render(); break;
+
+    case 'bulk-bin':
+      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'bin'; });
+      showToast(`ย้าย ${state.selected.size} รายการไปถังขยะแล้ว`, 'success');
+      state.selected.clear(); render(); break;
+
+    case 'toggle-expand':
+      state.expandedId = state.expandedId === id ? null : id;
+      render(); break;
+
+    case 'collapse':
+      state.expandedId = null;
+      render(); break;
+
+    case 'like':
+      item.liked = !item.liked;
+      render(); break;
+
+    case 'hide':
+      item.status = 'spam_hidden';
+      item.aiReason = 'ซ่อนโดยแอดมินด้วยตนเอง';
+      showToast('ซ่อนคอมเมนต์เรียบร้อยแล้ว', 'success');
+      render(); break;
+
+    case 'unhide':
+      item.status = 'pending';
+      showToast('เผยแพร่คืนแล้ว', 'success');
+      render(); break;
+
+    case 'bin':
+      item.folder = 'bin';
+      state.expandedId = null;
+      showToast('ย้ายไปถังขยะแล้ว', 'success');
+      render(); break;
+
+    case 'restore':
+      item.folder = 'inbox';
+      showToast('กู้คืนรายการแล้ว', 'success');
+      render(); break;
+
+    case 'delete-forever':
+      ITEMS = ITEMS.filter(i => i.id !== id);
+      showToast('ลบถาวรแล้ว', 'success');
+      render(); break;
+
+    case 'archive':
+      item.folder = 'archive';
+      showToast('ย้ายไป Archive แล้ว', 'success');
+      render(); break;
+
+    case 'unarchive':
+      item.folder = 'inbox';
+      showToast('ย้ายกลับ Inbox แล้ว', 'success');
+      render(); break;
+
+    case 'block':
+      item.blocked = true;
+      showToast(`บล็อกผู้ใช้ "${item.author}" แล้ว`, 'success');
+      render(); break;
+
+    case 'copy':
+      navigator.clipboard?.writeText(item.text).catch(() => {});
+      showToast('คัดลอกข้อความแล้ว', 'success');
+      break;
+
+    case 'insert-signature': {
+      const page = pageById(item.pageId);
+      const box = document.getElementById('replyBox-' + id);
+      const sig = signatureFor(page);
+      const pos = box.selectionStart ?? box.value.length;
+      box.value = box.value.slice(0, pos) + sig + box.value.slice(pos);
+      box.focus();
+      box.setSelectionRange(pos + sig.length, pos + sig.length);
+      updateComposerState(item, box, page);
+      break;
+    }
+
+    case 'send': {
+      const page = pageById(item.pageId);
+      const box = document.getElementById('replyBox-' + id);
+      const text = box.value.trim();
+      if (!text) { showToast('กรุณาพิมพ์ข้อความก่อนส่ง', 'error'); return; }
+      const violation = checkCrossPageViolation(text, page.id);
+      if (violation) { showToast(`ส่งไม่สำเร็จ: พบคำของเพจอื่น ("${violation.term}") กรุณาแก้ไขก่อนส่ง`, 'error'); return; }
+      const endingViolation = checkEndingViolation(text, page);
+      if (endingViolation) { showToast(`ส่งไม่สำเร็จ: เพจนี้ต้องใช้คำลงท้าย "${page.ending}" ไม่ใช่ "${endingViolation.term}"`, 'error'); return; }
+      item.status = 'replied';
+      item.adminReply = text;
+      state.expandedId = null;
+      showToast('ส่งข้อความตอบกลับสำเร็จ', 'success');
+      render(); break;
+    }
+  }
+});
+
+render();
+</script>
+</body>
+</html>
