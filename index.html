@@ -694,7 +694,7 @@ function renderToolbar(){
     return `
       <div class="bulkbar">
         ${ICONS.checkCircle}
-        <span>${state.selected.size} รายการที่เลือก</span>
+        <span>รายการที่เลือก (${state.selected.size})</span>
         <div class="spacer"></div>
         ${state.folder !== 'archive' ? `<button class="btn" data-action="bulk-archive">${ICONS.archive} ย้ายไป Archive</button>` : ''}
         ${state.folder !== 'bin' ? `<button class="btn danger" data-action="bulk-bin">${ICONS.trash} ย้ายไปถังขยะ</button>` : ''}
