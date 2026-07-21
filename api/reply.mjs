@@ -1,4 +1,4 @@
-// api/reply.js
+// api/reply.mjs
 // รับคำขอจากหน้า dashboard เมื่อแอดมินกด "ส่งข้อความ" แล้วยิงตอบกลับไปที่ Facebook จริง
 // (คอมเมนต์ -> POST /{comment-id}/comments, ข้อความ Inbox -> POST /me/messages)
 // ใช้ SUPABASE_SERVICE_ROLE_KEY ฝั่งเซิร์ฟเวอร์เท่านั้นเพื่ออ่าน page access_token ที่เก็บไว้ใน
@@ -11,6 +11,13 @@
 // สถานะจะถูกตั้งเป็น 'replied' ก็ต่อเมื่อ Facebook ตอบกลับสำเร็จจริงเท่านั้น
 // ถ้า Facebook ปฏิเสธ/error จะตั้งเป็น 'failed' แทน (ไม่ใช่ 'replied') เพื่อไม่ให้ dashboard
 // ขึ้น "ตอบแล้ว" ทั้งที่ไม่มีอะไรถูกส่งออกไปจริง
+//
+// รันบน Vercel Edge Runtime แทน Node serverless ธรรมดา — cold start แทบเป็นศูนย์ และ Vercel
+// จะเลือกจุดที่ใกล้ผู้เรียกที่สุดให้อัตโนมัติ (ไม่ต้อง pin region เอง เผื่อ Facebook/ผู้ใช้งานอยู่คนละฝั่งโลก)
+
+export const config = {
+  runtime: 'edge',
+};
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://acwilhbtdbxhhwlabpes.supabase.co';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -22,34 +29,46 @@ const sbHeaders = {
   'Content-Type': 'application/json',
 };
 
-module.exports = async (req, res) => {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export default async function handler(request) {
+  if (request.method !== 'POST') {
+    return json({ error: 'Method Not Allowed' }, 405);
   }
 
   try {
     if (!SERVICE_KEY) {
       console.error('reply error: missing SUPABASE_SERVICE_ROLE_KEY env var');
-      return res.status(500).json({ error: 'เซิร์ฟเวอร์ตั้งค่าไม่ครบ (ไม่มี service key)' });
+      return json({ error: 'เซิร์ฟเวอร์ตั้งค่าไม่ครบ (ไม่มี service key)' }, 500);
     }
 
-    const body = req.body && typeof req.body === 'object' ? req.body : JSON.parse(req.body || '{}');
-    const { itemId, text } = body;
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: 'JSON ไม่ถูกต้อง' }, 400);
+    }
+    const { itemId, text } = body || {};
     if (!itemId || !text || !String(text).trim()) {
-      return res.status(400).json({ error: 'itemId และ text จำเป็นต้องมี' });
+      return json({ error: 'itemId และ text จำเป็นต้องมี' }, 400);
     }
 
     // ดึงรายการ + access_token ของเพจในคำเดียว (join ผ่าน PostgREST embed)
     // แทนที่จะยิง Supabase 2 รอบแยกกัน — ลดเวลาแฝงของปุ่ม "ส่ง" ลงหนึ่ง round trip
     const item = await fetchFeedItemWithPage(itemId);
-    if (!item) return res.status(404).json({ error: 'ไม่พบรายการนี้ในระบบ' });
+    if (!item) return json({ error: 'ไม่พบรายการนี้ในระบบ' }, 404);
     if (item.status === 'replied') {
-      return res.status(200).json({ ok: true, alreadyReplied: true });
+      return json({ ok: true, alreadyReplied: true });
     }
 
     const page = item.pages;
     if (!page || !page.access_token) {
-      return res.status(400).json({ error: 'ไม่พบ access token ของเพจนี้ ตั้งค่าเพจให้ครบก่อน' });
+      return json({ error: 'ไม่พบ access token ของเพจนี้ ตั้งค่าเพจให้ครบก่อน' }, 400);
     }
 
     let fbResult;
@@ -60,20 +79,21 @@ module.exports = async (req, res) => {
       } else if (item.type === 'message') {
         fbResult = await postMessengerReply(item.author_fb_id, text, page.access_token);
       } else {
-        return res.status(400).json({ error: `ไม่รู้จักประเภทรายการ: ${item.type}` });
+        return json({ error: `ไม่รู้จักประเภทรายการ: ${item.type}` }, 400);
       }
     } catch (fbErr) {
       console.error('reply error: เรียก Facebook Graph API ไม่สำเร็จ', fbErr);
       await markFeedItem(itemId, { status: 'failed' });
-      return res.status(502).json({ error: 'เชื่อมต่อ Facebook ไม่สำเร็จ ลองใหม่อีกครั้ง' });
+      return json({ error: 'เชื่อมต่อ Facebook ไม่สำเร็จ ลองใหม่อีกครั้ง' }, 502);
     }
 
     if (fbResult && fbResult.error) {
       console.error('reply error: Facebook ปฏิเสธการส่ง', fbResult.error);
       await markFeedItem(itemId, { status: 'failed' });
-      return res.status(502).json({
-        error: `Facebook ปฏิเสธการส่ง: ${fbResult.error.message || 'unknown error'}`,
-      });
+      return json(
+        { error: `Facebook ปฏิเสธการส่ง: ${fbResult.error.message || 'unknown error'}` },
+        502
+      );
     }
 
     // สำเร็จจริงแล้ว — ตอบกลับ dashboard ทันที ไม่ต้องรอ Supabase เขียนเสร็จก่อน (fire-and-forget)
@@ -81,12 +101,12 @@ module.exports = async (req, res) => {
     markFeedItem(itemId, { status: 'replied', admin_reply: text }).catch((e) =>
       console.error('reply warning: mark replied failed after successful FB send', e)
     );
-    return res.status(200).json({ ok: true });
+    return json({ ok: true });
   } catch (err) {
     console.error('reply error', err);
-    return res.status(500).json({ error: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' });
+    return json({ error: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' }, 500);
   }
-};
+}
 
 // fb_id ถูกเก็บตอน insert เป็น `${post_id}_${comment_id}` (ดู api/webhook.js)
 // ตัด prefix ของ fb_post_id ออกเพื่อให้ได้ comment_id ดิบสำหรับยิง Graph API
