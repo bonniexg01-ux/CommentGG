@@ -39,13 +39,15 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'itemId และ text จำเป็นต้องมี' });
     }
 
-    const item = await fetchFeedItem(itemId);
+    // ดึงรายการ + access_token ของเพจในคำเดียว (join ผ่าน PostgREST embed)
+    // แทนที่จะยิง Supabase 2 รอบแยกกัน — ลดเวลาแฝงของปุ่ม "ส่ง" ลงหนึ่ง round trip
+    const item = await fetchFeedItemWithPage(itemId);
     if (!item) return res.status(404).json({ error: 'ไม่พบรายการนี้ในระบบ' });
     if (item.status === 'replied') {
       return res.status(200).json({ ok: true, alreadyReplied: true });
     }
 
-    const page = await fetchPage(item.page_id);
+    const page = item.pages;
     if (!page || !page.access_token) {
       return res.status(400).json({ error: 'ไม่พบ access token ของเพจนี้ ตั้งค่าเพจให้ครบก่อน' });
     }
@@ -74,8 +76,11 @@ module.exports = async (req, res) => {
       });
     }
 
-    // สำเร็จจริงเท่านั้นถึงจะ mark ว่าตอบแล้ว
-    await markFeedItem(itemId, { status: 'replied', admin_reply: text });
+    // สำเร็จจริงแล้ว — ตอบกลับ dashboard ทันที ไม่ต้องรอ Supabase เขียนเสร็จก่อน (fire-and-forget)
+    // เพื่อให้ผู้ใช้รู้สึกว่าปุ่ม "ส่ง" เร็วขึ้น การเขียนสถานะยังเกิดขึ้นแน่นอน แค่ไม่บล็อกการตอบกลับ
+    markFeedItem(itemId, { status: 'replied', admin_reply: text }).catch((e) =>
+      console.error('reply warning: mark replied failed after successful FB send', e)
+    );
     return res.status(200).json({ ok: true });
   } catch (err) {
     console.error('reply error', err);
@@ -92,16 +97,10 @@ function deriveCommentId(fbId, fbPostId) {
   return fbId;
 }
 
-async function fetchFeedItem(id) {
-  const url = `${SUPABASE_URL}/rest/v1/feed_items?id=eq.${encodeURIComponent(id)}&select=id,page_id,type,fb_id,fb_post_id,author_fb_id,status`;
-  const r = await fetch(url, { headers: sbHeaders });
-  if (!r.ok) return null;
-  const rows = await r.json();
-  return rows[0] || null;
-}
-
-async function fetchPage(pageUuid) {
-  const url = `${SUPABASE_URL}/rest/v1/pages?id=eq.${encodeURIComponent(pageUuid)}&select=id,access_token`;
+// ดึง feed_items แถวเดียว พร้อม access_token ของเพจเจ้าของในคำสั่งเดียว (PostgREST embed/join
+// ผ่าน foreign key feed_items.page_id -> pages.id) แทนการยิง 2 คำสั่งแยกกัน
+async function fetchFeedItemWithPage(id) {
+  const url = `${SUPABASE_URL}/rest/v1/feed_items?id=eq.${encodeURIComponent(id)}&select=id,page_id,type,fb_id,fb_post_id,author_fb_id,status,pages(access_token)`;
   const r = await fetch(url, { headers: sbHeaders });
   if (!r.ok) return null;
   const rows = await r.json();
