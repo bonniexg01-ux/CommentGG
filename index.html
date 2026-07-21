@@ -390,6 +390,9 @@ async function sendReply(item, text){
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ itemId: item.id, text }),
+      // keepalive: บอกเบราว์เซอร์ให้ส่ง request นี้ให้จบแม้ผู้ใช้จะปิดแท็บ/หน้าเพจไปแล้วทันที
+      // หลังกดส่ง (ปกติปิดแท็บจะตัด request ที่ค้างอยู่ทิ้งเลย) เซิร์ฟเวอร์จะยิงไป Facebook ต่อจนจบ
+      keepalive: true,
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
