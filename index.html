@@ -325,42 +325,106 @@ const ICONS = {
 };
 
 /* ============================================================
-   MOCK DATA
+   LIVE DATA (Supabase) — โหลดคอมเมนต์/ข้อความจริงจากฐานข้อมูล
 ============================================================ */
-const PAGES = [
-  { id:'dragon', name:'Cabal: Infinite Combo',    tag:'เพจ A', color:'#2563eb', emoji:'⚔️', pronoun:'พี่บ๊อบ', ending:'ครับ', hashtag:'#CabalInfiniteCombo' },
-  { id:'neon',   name:'Cabal: Ultimate Combo',    tag:'เพจ B', color:'#16a34a', emoji:'🗡️', pronoun:'น้องเจนี่', ending:'ค่ะ', hashtag:'#CabalUltimateCombo' },
-  { id:'forge',  name:'TalesRunner',              tag:'เพจ C', color:'#f97316', emoji:'🏃', pronoun:'พี่ฟอร์จ', ending:'ครับ', hashtag:'#TalesRunner' },
-  { id:'sky',    name:'WARZ TH Limited Edition',  tag:'เพจ D', color:'#dc2626', emoji:'🔫', pronoun:'น้องสกาย', ending:'ค่ะ', hashtag:'#WarZTHLimited' },
-];
+const SUPABASE_URL = 'https://acwilhbtdbxhhwlabpes.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_i9A_PqJhrOb8kmP47x2OOg_Ma2AhTRn';
+const sbHeaders = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+
+let PAGES = [];
+let ITEMS = [];
 const pageById = id => PAGES.find(p => p.id === id);
 
-let ITEMS = [
-  { id:1, pageId:'dragon', type:'comment', author:'สมชาย ใจดี', text:'อัปเดตใหม่เมื่อไหร่ครับ รอนานมากกก 😭 อยากลองเควสใหม่ไวๆ', time:'6 นาทีที่แล้ว', status:'pending', folder:'inbox',
-    postExcerpt:'โพสต์ต้นทาง: "ประกาศปิดปรับปรุงเซิร์ฟเวอร์ 25 ก.ค. นี้ พบกับคอนเทนต์ใหม่!"' },
-  { id:2, pageId:'dragon', type:'comment', author:'ครูปลาทอง99', text:'รับซื้อไอดีเกมราคาดี การันตีจ่ายจริง ทักไลน์ @scam1234 ด่วน!! bit.ly/idgame-cheap', time:'11 นาทีที่แล้ว', status:'spam_hidden', folder:'inbox',
-    aiReason:'ลิงก์ภายนอกที่น่าสงสัย ร่วมกับคำเชิญชวนซื้อขายไอดีเกม',
-    postExcerpt:'โพสต์ต้นทาง: "ภาพตัวอย่างสกินมังกรทองคำ ชุดใหม่ประจำเดือน"' },
-  { id:3, pageId:'neon', type:'message', author:'น้องมิ้ว', text:'สอบถามค่ะ วิธีเชื่อมบัญชี Facebook กับเกมทำยังไงคะ ลองแล้วขึ้น error ตลอดเลย', time:'15 นาทีที่แล้ว', status:'pending', folder:'inbox' },
-  { id:4, pageId:'neon', type:'comment', author:'Invest_Master_th', text:'สนใจลงทุนคริปโตกำไรวันละ 5% การันตีทุนคืน ทักมาเลยจ้า bit.ly/xxinvestxx', time:'22 นาทีที่แล้ว', status:'spam_hidden', folder:'inbox',
-    aiReason:'ลิงก์ต้องสงสัย + ชักชวนลงทุนทางการเงินที่ไม่เกี่ยวข้องกับเกม',
-    postExcerpt:'โพสต์ต้นทาง: "คลิปโชว์สปีดรถคันใหม่ Neon X1"' },
-  { id:5, pageId:'forge', type:'comment', author:'เอกชัย พลังเหล็ก', text:'ระบบตีเหล็กใหม่โคตรมันส์เลยพี่ฟอร์จ! เล่นยาวได้ทั้งคืนเลยครับ', time:'34 นาทีที่แล้ว', status:'replied', folder:'inbox',
-    adminReply:'ขอบคุณมากครับ พี่ฟอร์จดีใจที่ชอบระบบใหม่นะครับ 🔥 ฝากติดตามอัปเดตหน้าถัดไปด้วยนะครับ #MysticForge',
-    postExcerpt:'โพสต์ต้นทาง: "รีวิวระบบตีเหล็กเวอร์ชั่นใหม่ Forge 2.0"' },
-  { id:6, pageId:'sky', type:'message', author:'จันทร์เพ็ญ', text:'ทำไมล็อกอินไม่เข้าคะ ขึ้น error ตลอดเลยตั้งแต่เมื่อเช้า รบกวนช่วยเช็คด่วนค่ะ', time:'40 นาทีที่แล้ว', status:'pending', folder:'inbox' },
-  { id:7, pageId:'sky', type:'comment', author:'ปั่นไอดีเทพ', text:'ปั่นแรงค์ เพิ่มไอดี ราคาถูกสุดในไทย งานไว 24 ชม. inbox ด่วนน้องสกาย', time:'48 นาทีที่แล้ว', status:'spam_hidden', folder:'inbox',
-    aiReason:'บริการปั่นแรงค์/ซื้อขายบัญชีเข้าข่ายผิดเงื่อนไขการใช้งาน',
-    postExcerpt:'โพสต์ต้นทาง: "ประกาศฤดูกาลแข่งขันใหม่ Season 7"' },
-  { id:8, pageId:'dragon', type:'message', author:'วีระ เกมเมอร์', text:'ขอโค้ดของขวัญวันเกิดเกมหน่อยได้ไหมครับพี่บ๊อบ เล่นมา 2 ปีแล้ว 🎂', time:'1 ชั่วโมงที่แล้ว', status:'pending', folder:'inbox' },
-  { id:9, pageId:'neon', type:'comment', author:'แนน สายซิ่ง', text:'รถคันใหม่สวยมากกก อยากได้เร็วๆ เปิดขายวันไหนคะน้องเจนี่', time:'1 ชั่วโมง 20 นาทีที่แล้ว', status:'pending', folder:'inbox',
-    postExcerpt:'โพสต์ต้นทาง: "คลิปโชว์สปีดรถคันใหม่ Neon X1"' },
-  { id:10, pageId:'forge', type:'message', author:'บอย ตีเหล็ก', text:'ซื้อไอเทมไปแล้วเงินหักแต่ไม่เข้าเกมค่ะ ช่วยเช็คให้หน่อยได้ไหมคะ เลขคำสั่งซื้อ #88214', time:'2 ชั่วโมงที่แล้ว', status:'pending', folder:'inbox' },
-  { id:11, pageId:'sky', type:'comment', author:'กิตติ ท้องฟ้า', text:'ธีมฤดูกาลใหม่สวยมากครับน้องสกาย รอเล่นเลย', time:'2 ชั่วโมง 30 นาทีที่แล้ว', status:'replied', folder:'archive',
-    adminReply:'ขอบคุณครับ ฝากติดตามธีมต่อไปด้วยนะครับ #SkywardLegends', postExcerpt:'โพสต์ต้นทาง: "เปิดตัวธีมฤดูกาลใหม่ Sky Season"' },
-  { id:12, pageId:'neon', type:'comment', author:'สายปั่นเงินด่วน', text:'ปล่อยเงินกู้ด่วน อนุมัติไว ไม่เช็คบูโร ทัก inbox', time:'3 ชั่วโมงที่แล้ว', status:'spam_hidden', folder:'bin',
-    aiReason:'สแปมโฆษณาเงินกู้นอกระบบ ไม่เกี่ยวข้องกับเกม' },
-];
+function timeAgo(iso){
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return 'เมื่อสักครู่';
+  if (min < 60) return `${min} นาทีที่แล้ว`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} ชั่วโมง${min % 60 ? ' ' + (min % 60) + ' นาที' : ''}ที่แล้ว`;
+  return `${Math.floor(hr / 24)} วันที่แล้ว`;
+}
+
+function mapPage(row){
+  return { id: row.id, name: row.page_name, tag: row.tag || '', color: row.color_hex || '#2563eb',
+    emoji: row.emoji || '🙂', pronoun: row.pronoun || '', ending: row.ending || 'ค่ะ', hashtag: row.hashtag || '' };
+}
+function mapItem(row){
+  return {
+    id: row.id, pageId: row.page_id, type: row.type,
+    author: row.author_name || 'ไม่ทราบชื่อ', text: row.message || '', time: timeAgo(row.created_at),
+    status: row.status, folder: row.folder,
+    postExcerpt: row.post_excerpt || null, aiReason: row.ai_reason || null, adminReply: row.admin_reply || null,
+    liked: !!row.liked, blocked: !!row.blocked,
+  };
+}
+
+async function patchFeedItem(id, fields){
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/feed_items?id=eq.${id}`, {
+      method: 'PATCH',
+      headers: { ...sbHeaders, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(fields),
+    });
+  } catch (err) {
+    console.error('บันทึกการเปลี่ยนแปลงไม่สำเร็จ:', err);
+    showToast('บันทึกการเปลี่ยนแปลงไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+  }
+}
+async function deleteFeedItem(id){
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/feed_items?id=eq.${id}`, { method: 'DELETE', headers: sbHeaders });
+  } catch (err) {
+    console.error('ลบไม่สำเร็จ:', err);
+    showToast('ลบไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+  }
+}
+
+// ส่งข้อความตอบกลับจริงไปที่ Facebook ผ่าน /api/reply (server-side, ใช้ page access_token ที่เก็บไว้ใน Supabase)
+// จะ mark ว่า "ตอบแล้ว" ก็ต่อเมื่อ Facebook ยืนยันว่าส่งสำเร็จจริงเท่านั้น ถ้าพังจะไม่เปลี่ยนสถานะและโชว์ error ให้แอดมินเห็น
+async function sendReply(item, text){
+  const sendBtn = document.getElementById('sendBtn-' + item.id);
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'กำลังส่ง...'; }
+  try {
+    const res = await fetch('/api/reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemId: item.id, text }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.error || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+      return;
+    }
+    item.status = 'replied';
+    item.adminReply = text;
+    state.expandedId = null;
+    showToast('ส่งข้อความตอบกลับสำเร็จ', 'success');
+    render();
+  } catch (err) {
+    console.error('ส่งข้อความไม่สำเร็จ:', err);
+    showToast('ส่งไม่สำเร็จ (เชื่อมต่อเซิร์ฟเวอร์ไม่ได้) ลองใหม่อีกครั้ง', 'error');
+  } finally {
+    const btnAfter = document.getElementById('sendBtn-' + item.id);
+    if (btnAfter) { btnAfter.disabled = false; btnAfter.textContent = `${ICONS.send} ส่งข้อความ`; }
+  }
+}
+
+async function loadData(){
+  try {
+    const [pagesRes, itemsRes] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/pages_public?select=*`, { headers: sbHeaders }),
+      fetch(`${SUPABASE_URL}/rest/v1/feed_items?select=*&order=created_at.desc`, { headers: sbHeaders }),
+    ]);
+    if (!pagesRes.ok || !itemsRes.ok) throw new Error('โหลดข้อมูลไม่สำเร็จ');
+    PAGES = (await pagesRes.json()).map(mapPage);
+    ITEMS = (await itemsRes.json()).map(mapItem);
+  } catch (err) {
+    console.error('โหลดข้อมูลจาก Supabase ไม่สำเร็จ:', err);
+    showToast('โหลดข้อมูลคอมเมนต์ไม่สำเร็จ ลองรีเฟรชอีกครั้ง', 'error');
+  }
+  render();
+}
 
 /* ============================================================
    STATE
@@ -561,7 +625,7 @@ function renderPageChips(){
   return `
     <div class="page-chips">
       <div class="page-chip ${allActive ? 'active' : ''}" data-action="select-page" data-page="all">
-        <span class="dot" style="background:#A89A8D"></span> ทุกเพจ (4)
+        <span class="dot" style="background:#A89A8D"></span> ทุกเพจ (${PAGES.length})
       </div>
       ${PAGES.map(p => {
         const active = state.pageFilter === p.id;
@@ -587,7 +651,7 @@ function renderTopTabs(){
       </div>
     </div>
     <div class="desc">
-      ภาพรวมคอมเมนต์จาก <b>4 แฟนเพจเกม</b> สำหรับเด็กๆ แก๊งคอลเซ็นเตอร์
+      ภาพรวมคอมเมนต์จาก <b>${PAGES.length} แฟนเพจ</b> ที่เชื่อมต่อไว้
     </div>
   `;
 }
@@ -865,7 +929,7 @@ document.getElementById('app').addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const action = el.dataset.action;
-  const id = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
+  const id = el.dataset.id || null;
   const item = id ? ITEMS.find(i => i.id === id) : null;
 
   switch (action) {
@@ -964,12 +1028,12 @@ document.getElementById('app').addEventListener('click', (e) => {
       render(); break;
 
     case 'bulk-archive':
-      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'archive'; });
+      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'archive'; patchFeedItem(sid, { folder: 'archive' }); });
       showToast(`ย้าย ${state.selected.size} รายการไป Archive แล้ว`, 'success');
       state.selected.clear(); render(); break;
 
     case 'bulk-bin':
-      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'bin'; });
+      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'bin'; patchFeedItem(sid, { folder: 'bin' }); });
       showToast(`ย้าย ${state.selected.size} รายการไปถังขยะแล้ว`, 'success');
       state.selected.clear(); render(); break;
 
@@ -983,47 +1047,56 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'like':
       item.liked = !item.liked;
+      patchFeedItem(item.id, { liked: item.liked });
       render(); break;
 
     case 'hide':
       item.status = 'spam_hidden';
       item.aiReason = 'ซ่อนโดยแอดมินด้วยตนเอง';
+      patchFeedItem(item.id, { status: 'spam_hidden', ai_reason: item.aiReason });
       showToast('ซ่อนคอมเมนต์เรียบร้อยแล้ว', 'success');
       render(); break;
 
     case 'unhide':
       item.status = 'pending';
+      patchFeedItem(item.id, { status: 'pending' });
       showToast('เผยแพร่คืนแล้ว', 'success');
       render(); break;
 
     case 'bin':
       item.folder = 'bin';
       state.expandedId = null;
+      patchFeedItem(item.id, { folder: 'bin' });
       showToast('ย้ายไปถังขยะแล้ว', 'success');
       render(); break;
 
     case 'restore':
       item.folder = 'inbox';
+      patchFeedItem(item.id, { folder: 'inbox' });
       showToast('กู้คืนรายการแล้ว', 'success');
       render(); break;
 
     case 'delete-forever':
       ITEMS = ITEMS.filter(i => i.id !== id);
+      deleteFeedItem(id);
       showToast('ลบถาวรแล้ว', 'success');
       render(); break;
 
     case 'archive':
       item.folder = 'archive';
+      patchFeedItem(item.id, { folder: 'archive' });
       showToast('ย้ายไป Archive แล้ว', 'success');
       render(); break;
 
     case 'unarchive':
       item.folder = 'inbox';
+      patchFeedItem(item.id, { folder: 'inbox' });
       showToast('ย้ายกลับ Inbox แล้ว', 'success');
       render(); break;
 
     case 'block':
       item.blocked = true;
+      patchFeedItem(item.id, { blocked: true });
       showToast(`บล็อกผู้ใช้ "${item.author}" แล้ว`, 'success');
       render(); break;
 
@@ -1053,16 +1126,15 @@ document.getElementById('app').addEventListener('click', (e) => {
       if (violation) { showToast(`ส่งไม่สำเร็จ: พบคำของเพจอื่น ("${violation.term}") กรุณาแก้ไขก่อนส่ง`, 'error'); return; }
       const endingViolation = checkEndingViolation(text, page);
       if (endingViolation) { showToast(`ส่งไม่สำเร็จ: เพจนี้ต้องใช้คำลงท้าย "${page.ending}" ไม่ใช่ "${endingViolation.term}"`, 'error'); return; }
-      item.status = 'replied';
-      item.adminReply = text;
-      state.expandedId = null;
-      showToast('ส่งข้อความตอบกลับสำเร็จ', 'success');
-      render(); break;
+      sendReply(item, text);
+      break;
     }
   }
 });
 
 render();
+loadData();
+setInterval(() => { if (!state.expandedId) loadData(); }, 20000);
 </script>
 </body>
 </html>
