@@ -381,36 +381,42 @@ async function deleteFeedItem(id){
 }
 
 // ส่งข้อความตอบกลับจริงไปที่ Facebook ผ่าน /api/reply (server-side, ใช้ page access_token ที่เก็บไว้ใน Supabase)
-// จะ mark ว่า "ตอบแล้ว" ก็ต่อเมื่อ Facebook ยืนยันว่าส่งสำเร็จจริงเท่านั้น ถ้าพังจะไม่เปลี่ยนสถานะและโชว์ error ให้แอดมินเห็น
-async function sendReply(item, text){
-  const sendBtn = document.getElementById('sendBtn-' + item.id);
-  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'กำลังส่ง...'; }
-  try {
-    const res = await fetch('/api/reply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ itemId: item.id, text }),
-      // keepalive: บอกเบราว์เซอร์ให้ส่ง request นี้ให้จบแม้ผู้ใช้จะปิดแท็บ/หน้าเพจไปแล้วทันที
-      // หลังกดส่ง (ปกติปิดแท็บจะตัด request ที่ค้างอยู่ทิ้งเลย) เซิร์ฟเวอร์จะยิงไป Facebook ต่อจนจบ
-      keepalive: true,
+//
+// ทำแบบ optimistic: ปิด panel และขึ้น "ตอบแล้ว" ทันทีที่กด ไม่ต้องรอเซิร์ฟเวอร์ตอบกลับก่อน
+// (เดิมรอ await ก่อนถึงจะปิด panel เลยรู้สึกค้าง) ตัว request ยิงต่อเบื้องหลังด้วย keepalive
+// กันปิดแท็บแล้วขาด ถ้าสุดท้าย Facebook ปฏิเสธจริงๆ ค่อยแก้สถานะเป็น 'failed' ทีหลังพร้อม toast แจ้ง
+function sendReply(item, text){
+  item.status = 'replied';
+  item.adminReply = text;
+  state.expandedId = null;
+  showToast('กำลังส่งข้อความ...', 'success');
+  render();
+
+  fetch('/api/reply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ itemId: item.id, text }),
+    // keepalive: บอกเบราว์เซอร์ให้ส่ง request นี้ให้จบแม้ผู้ใช้จะปิดแท็บ/หน้าเพจไปแล้วทันที
+    // หลังกดส่ง (ปกติปิดแท็บจะตัด request ที่ค้างอยู่ทิ้งเลย) เซิร์ฟเวอร์จะยิงไป Facebook ต่อจนจบ
+    keepalive: true,
+  })
+    .then(async (res) => {
+      if (res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      revertFailedReply(item.id, data.error);
+    })
+    .catch((err) => {
+      console.error('ส่งข้อความไม่สำเร็จ:', err);
+      revertFailedReply(item.id, 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      showToast(data.error || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
-      return;
-    }
-    item.status = 'replied';
-    item.adminReply = text;
-    state.expandedId = null;
-    showToast('ส่งข้อความตอบกลับสำเร็จ', 'success');
-    render();
-  } catch (err) {
-    console.error('ส่งข้อความไม่สำเร็จ:', err);
-    showToast('ส่งไม่สำเร็จ (เชื่อมต่อเซิร์ฟเวอร์ไม่ได้) ลองใหม่อีกครั้ง', 'error');
-  } finally {
-    const btnAfter = document.getElementById('sendBtn-' + item.id);
-    if (btnAfter) { btnAfter.disabled = false; btnAfter.innerHTML = `${ICONS.send} ส่งข้อความ`; }
-  }
+}
+
+// เรียกเมื่อรู้ทีหลังว่า Facebook ปฏิเสธ/ส่งไม่สำเร็จ หลังจากที่ UI มาร์ค "ตอบแล้ว" ไปก่อนแล้ว (optimistic)
+function revertFailedReply(itemId, errorMessage){
+  const item = ITEMS.find(i => i.id === itemId);
+  if (item) item.status = 'failed';
+  showToast(errorMessage || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+  render();
 }
 
 async function loadData(){
@@ -716,6 +722,7 @@ function renderToolbar(){
 function tagFor(item){
   if (item.status === 'spam_hidden') return `<span class="tag hidden-tag">ซ่อนไว้</span>`;
   if (item.status === 'replied') return `<span class="tag replied-tag">ตอบแล้ว</span>`;
+  if (item.status === 'failed') return `<span class="tag hidden-tag">ส่งไม่สำเร็จ ลองใหม่</span>`;
   if (item.blocked) return `<span class="tag blocked-tag">ผู้ใช้ถูกบล็อก</span>`;
   return `<span class="tag needs-reply">ต้องตอบกลับ</span>`;
 }
