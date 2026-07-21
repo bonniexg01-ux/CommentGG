@@ -69,6 +69,11 @@ async function handleEvent(req, res) {
       if (entry.changes) {
         for (const change of entry.changes) {
           if (change.field === 'feed' && change.value && change.value.item === 'comment') {
+            // ข้ามคอมเมนต์ที่ "เพจตัวเอง" เป็นคนโพสต์ (เช่น echo ของข้อความที่เราเพิ่งตอบไป)
+            // ไม่งั้นทุกครั้งที่ตอบคอมเมนต์สำเร็จ Facebook จะยิง event คอมเมนต์ใหม่กลับมาเป็นของเพจเอง
+            // แล้วระบบจะเก็บมันเป็นรายการ "ต้องตอบกลับ" ซ้ำไปเรื่อยๆ ไม่รู้จบ
+            const commenterId = change.value.from && String(change.value.from.id);
+            if (commenterId === fbPageId) continue;
             await insertComment(pageUuid, change.value);
           }
         }
