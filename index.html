@@ -692,7 +692,8 @@ function renderSubnav(){
    RENDER: TOOLBAR / BULK BAR
 ============================================================ */
 // toolbar แถวเดียวเสมอ (checkbox/filters/sort/search ทางซ้ายไม่หายไปไหน) พอมีการเลือกรายการ
-// ฝั่งขวาจะสลับจากไอคอน Export เป็นปุ่ม "Bulk archive (N)" + dropdown "Bulk actions (N)" แทน
+// ฝั่งขวาจะสลับจากไอคอน Export เป็นปุ่ม "Bulk archive (N)" (พร้อมไอคอน) และ "Bulk actions (N)"
+// ซึ่งกดแล้วย้ายไปถังขยะเลยตรงๆ (ไม่มี dropdown) พร้อมไอคอนถังขยะ
 function renderToolbar(){
   const items = visibleItems();
   const allSelected = items.length > 0 && items.every(i => state.selected.has(i.id));
@@ -702,16 +703,8 @@ function renderToolbar(){
     ? `
       <div class="bulk-actions-wrap">
         ${state.folder !== 'archive' ? `<button class="btn" data-action="bulk-archive">${ICONS.archive} Bulk archive (${n})</button>` : ''}
-        <button class="btn primary" data-action="toggle-bulk-menu">Bulk actions (${n})<span class="chev ${state.bulkMenuOpen ? 'open' : ''}">${ICONS.chevronDown}</span></button>
-        ${state.bulkMenuOpen ? `
-          <div class="user-dropdown bulk-menu">
-            ${state.folder !== 'bin' ? `<div class="user-dropdown-item" data-action="bulk-bin">${ICONS.trash} ย้ายไปถังขยะ</div>` : ''}
-            <div class="user-dropdown-sep"></div>
-            <div class="user-dropdown-item" data-action="clear-selection">ยกเลิกการเลือก</div>
-          </div>
-        ` : ''}
+        ${state.folder !== 'bin' ? `<button class="btn primary" data-action="bulk-bin">${ICONS.trash} Bulk actions (${n})</button>` : ''}
       </div>
-      ${state.bulkMenuOpen ? `<div class="menu-backdrop" data-action="close-bulk-menu"></div>` : ''}
     `
     : `<div class="icon-btn" data-action="noop-export" title="Export">${ICONS.download}</div>`;
 
