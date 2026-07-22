@@ -115,11 +115,18 @@ export default async function handler(request) {
       );
     }
 
-    // สำเร็จจริงแล้ว — ตอบกลับ dashboard ทันที ไม่ต้องรอ Supabase เขียนเสร็จก่อน (fire-and-forget)
-    // เพื่อให้ผู้ใช้รู้สึกว่าปุ่ม "ส่ง" เร็วขึ้น การเขียนสถานะยังเกิดขึ้นแน่นอน แค่ไม่บล็อกการตอบกลับ
-    markFeedItem(itemId, { status: 'replied', admin_reply: text }).catch((e) =>
-      console.error('reply warning: mark replied failed after successful FB send', e)
-    );
+    // สำเร็จจริงแล้ว — ต้อง await การเขียนสถานะนี้ก่อน return เสมอ (ห้ามทำเป็น fire-and-forget)
+    // เดิมเคยปล่อยแบบไม่ await เพื่อให้ตอบกลับ dashboard เร็วขึ้น แต่บน Vercel Edge Runtime
+    // พอ return response แล้ว instance อาจถูกเก็บกวาดทิ้งทันทีก่อน request ที่ยังไม่ await เสร็จ
+    // ทำให้สถานะ 'replied' ไม่เคยถูกเขียนลง Supabase จริงเลยสักครั้ง (ส่งไป Facebook สำเร็จ แต่
+    // dashboard ไม่รู้ พอรีเฟรชเลยเห็นเป็น pending เหมือนไม่เคยตอบ) — ต้อง await แลกกับหน่วงเวลาส่งนิดหน่อย
+    try {
+      await markFeedItem(itemId, { status: 'replied', admin_reply: text });
+    } catch (writeErr) {
+      // Facebook รับข้อความไปแล้วจริง แค่บันทึกสถานะฝั่งเราไม่สำเร็จ — แจ้งเตือนแต่ไม่ต้อง fail request
+      // (ไม่งั้น dashboard จะ mark เป็น failed ทั้งที่จริงๆ ส่งไป Facebook สำเร็จแล้ว จะกลายเป็นตอบซ้ำ)
+      console.error('reply warning: FB ส่งสำเร็จ แต่บันทึกสถานะ replied ลง Supabase ไม่สำเร็จ', writeErr);
+    }
     return json({ ok: true });
   } catch (err) {
     console.error('reply error', err);
