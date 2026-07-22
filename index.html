@@ -6,9 +6,10 @@
 <title>CommentGG — Unified Moderation Dashboard</title>
 <style>
   :root{
-    /* ---- ธีมสี "หมีเนวี่" (อ้างอิงจากพาเลต 泰兰德夏 — navy/blue/cream/red) ----
-       ระบบธีมรองรับหลายธีมได้ (เลือกได้จาก Account settings > Settings) ตอนนี้มีธีมนี้ธีมเดียวก่อน
-       ส่วนโหมดมืด/สว่าง ดูที่ html[data-mode="dark"] ด้านล่าง ตั้งใจให้โทนสีใกล้เคียงกัน ไม่ต่างกันมาก */
+    /* ---- ธีมสี "หมีเนวี่" (อ้างอิงจากพาเลต 泰兰德夏 — navy/blue/cream/red) — ธีม default ----
+       ระบบธีมรองรับหลายธีม (เลือกได้จาก Account settings > Settings) ธีมอื่นๆ อยู่ด้านล่างเป็น
+       html[data-theme="..."] แต่ละธีมมีทั้งโหมดสว่าง (override ตรงนี้) และมืด (data-mode="dark")
+       ตั้งใจให้โทนสีสว่าง/มืดใกล้เคียงกัน ไม่ต่างกันมาก */
     --navy:#02314B;      /* กรมท่าเข้ม — top bar / anchor */
     --navy-2:#01212F;    /* กรมท่าเข้มกว่า — hover state */
     --bg:#FFF1D6;        /* ครีมอ่อน — พื้นหลังรอบนอก */
@@ -28,7 +29,7 @@
     --peach-blue:#679CBE;
     --peach-cream:#FFF1D6;
   }
-  html[data-mode="dark"]{
+  html[data-theme="bearNavy"][data-mode="dark"]{
     --navy:#0A3A56;
     --navy-2:#052839;
     --bg:#0D1B24;
@@ -48,6 +49,47 @@
     --peach-blue:#7FB3D5;
     --peach-cream:#16303D;
   }
+  /* ---- ธีมสี "พีชเฮเซลนัท" (甜桃榛果 — ธีมเดิมของเว็บก่อนเพิ่มระบบธีม) ---- */
+  html[data-theme="peachHazelnut"]{
+    --navy:#7C5549;
+    --navy-2:#5E4038;
+    --bg:#FFF6E9;
+    --surface:#ffffff;
+    --border:#EFE1CE;
+    --text:#2b211d;
+    --text-dim:#6b5d55;
+    --text-faint:#a8988c;
+    --green:#DDA4B4;
+    --green-soft:#FBEEF1;
+    --green-text:#9C5468;
+    --red:#dc2626;
+    --red-soft:#fee2e2;
+    --red-text:#b91c1c;
+    --blue-soft:#E4EEF9;
+    --blue-text:#3B6591;
+    --peach-blue:#78A5CE;
+    --peach-cream:#FFF0D9;
+  }
+  html[data-theme="peachHazelnut"][data-mode="dark"]{
+    --navy:#8B6559;
+    --navy-2:#6B4A40;
+    --bg:#241C17;
+    --surface:#2F251F;
+    --border:#4A3A30;
+    --text:#F5EDE4;
+    --text-dim:#D3C2B4;
+    --text-faint:#9C8A7C;
+    --green:#E8B9C5;
+    --green-soft:#3A2530;
+    --green-text:#F0C7D2;
+    --red:#EB6B63;
+    --red-soft:#3A1D1B;
+    --red-text:#FFB3AC;
+    --blue-soft:#24313E;
+    --blue-text:#8FC0E8;
+    --peach-blue:#9CC3E3;
+    --peach-cream:#2F251F;
+  }
   *{box-sizing:border-box;}
   html,body{height:100%;}
   body{
@@ -60,8 +102,15 @@
     background-size:90px 90px;
     background-repeat:repeat;
   }
-  html[data-mode="dark"] body{
+  html[data-theme="bearNavy"][data-mode="dark"] body{
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cellipse cx='18' cy='20.0' rx='5.0' ry='4.0' fill='%23679CBE' opacity='0.35'/%3E%3Ccircle cx='13.0' cy='13.0' r='2.0' fill='%23679CBE' opacity='0.35'/%3E%3Ccircle cx='16.2' cy='11.0' r='2.0' fill='%23679CBE' opacity='0.35'/%3E%3Ccircle cx='19.8' cy='11.0' r='2.0' fill='%23679CBE' opacity='0.35'/%3E%3Ccircle cx='23.0' cy='13.0' r='2.0' fill='%23679CBE' opacity='0.35'/%3E%3Cellipse cx='58' cy='15.0' rx='5.0' ry='4.0' fill='%23E3B94A' opacity='0.3'/%3E%3Ccircle cx='53.0' cy='8.0' r='2.0' fill='%23E3B94A' opacity='0.3'/%3E%3Ccircle cx='56.2' cy='6.0' r='2.0' fill='%23E3B94A' opacity='0.3'/%3E%3Ccircle cx='59.8' cy='6.0' r='2.0' fill='%23E3B94A' opacity='0.3'/%3E%3Ccircle cx='63.0' cy='8.0' r='2.0' fill='%23E3B94A' opacity='0.3'/%3E%3Cellipse cx='35' cy='58.0' rx='5.0' ry='4.0' fill='%23C21121' opacity='0.3'/%3E%3Ccircle cx='30.0' cy='51.0' r='2.0' fill='%23C21121' opacity='0.3'/%3E%3Ccircle cx='33.2' cy='49.0' r='2.0' fill='%23C21121' opacity='0.3'/%3E%3Ccircle cx='36.8' cy='49.0' r='2.0' fill='%23C21121' opacity='0.3'/%3E%3Ccircle cx='40.0' cy='51.0' r='2.0' fill='%23C21121' opacity='0.3'/%3E%3Cellipse cx='75' cy='65.0' rx='5.0' ry='4.0' fill='%23679CBE' opacity='0.3'/%3E%3Ccircle cx='70.0' cy='58.0' r='2.0' fill='%23679CBE' opacity='0.3'/%3E%3Ccircle cx='73.2' cy='56.0' r='2.0' fill='%23679CBE' opacity='0.3'/%3E%3Ccircle cx='76.8' cy='56.0' r='2.0' fill='%23679CBE' opacity='0.3'/%3E%3Ccircle cx='80.0' cy='58.0' r='2.0' fill='%23679CBE' opacity='0.3'/%3E%3Cellipse cx='8' cy='63.0' rx='5.0' ry='4.0' fill='%23E3B94A' opacity='0.25'/%3E%3Ccircle cx='3.0' cy='56.0' r='2.0' fill='%23E3B94A' opacity='0.25'/%3E%3Ccircle cx='6.2' cy='54.0' r='2.0' fill='%23E3B94A' opacity='0.25'/%3E%3Ccircle cx='9.8' cy='54.0' r='2.0' fill='%23E3B94A' opacity='0.25'/%3E%3Ccircle cx='13.0' cy='56.0' r='2.0' fill='%23E3B94A' opacity='0.25'/%3E%3C/svg%3E");
+  }
+  /* ธีมเดิม "พีชเฮเซลนัท" ใช้ลายดาวแบบเดิม (ไม่ใช่รอยตีนหมี) ทั้งโหมดสว่างและมืด */
+  html[data-theme="peachHazelnut"] body{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cpath d='M18 17 L19.5 20.5 L23 22 L19.5 23.5 L18 27 L16.5 23.5 L13 22 L16.5 20.5 Z' fill='%2378A5CE' opacity='0.55'/%3E%3Cpath d='M58 12 L59.3 15 L62.5 16.3 L59.3 17.6 L58 20.7 L56.7 17.6 L53.5 16.3 L56.7 15 Z' fill='%23DDA4B4' opacity='0.6'/%3E%3Cpath d='M35 55 L36.5 58.5 L40.2 60 L36.5 61.5 L35 65 L33.5 61.5 L29.8 60 L33.5 58.5 Z' fill='%237C5549' opacity='0.4'/%3E%3Cpath d='M75 62 L76 64.3 L78.4 65.3 L76 66.3 L75 68.6 L74 66.3 L71.6 65.3 L74 64.3 Z' fill='%2378A5CE' opacity='0.45'/%3E%3Cpath d='M8 60 L9 62.3 L11.4 63.3 L9 64.3 L8 66.6 L7 64.3 L4.6 63.3 L7 62.3 Z' fill='%23DDA4B4' opacity='0.45'/%3E%3C/svg%3E");
+  }
+  html[data-theme="peachHazelnut"][data-mode="dark"] body{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cpath d='M18 17 L19.5 20.5 L23 22 L19.5 23.5 L18 27 L16.5 23.5 L13 22 L16.5 20.5 Z' fill='%239CC3E3' opacity='0.4'/%3E%3Cpath d='M58 12 L59.3 15 L62.5 16.3 L59.3 17.6 L58 20.7 L56.7 17.6 L53.5 16.3 L56.7 15 Z' fill='%23E8B9C5' opacity='0.45'/%3E%3Cpath d='M35 55 L36.5 58.5 L40.2 60 L36.5 61.5 L35 65 L33.5 61.5 L29.8 60 L33.5 58.5 Z' fill='%238B6559' opacity='0.3'/%3E%3Cpath d='M75 62 L76 64.3 L78.4 65.3 L76 66.3 L75 68.6 L74 66.3 L71.6 65.3 L74 64.3 Z' fill='%239CC3E3' opacity='0.35'/%3E%3Cpath d='M8 60 L9 62.3 L11.4 63.3 L9 64.3 L8 66.6 L7 64.3 L4.6 63.3 L7 62.3 Z' fill='%23E8B9C5' opacity='0.35'/%3E%3C/svg%3E");
   }
   svg{display:block;}
 
@@ -528,7 +577,8 @@ const ICONS = {
 const THEME_MODE_KEY = 'commentgg_theme_mode';
 const THEME_NAME_KEY = 'commentgg_theme_name';
 const THEMES = {
-  bearNavy: { label: 'หมีเนวี่' },
+  bearNavy: { label: 'หมีเนวี่', swatch: ['#02314B', '#679CBE', '#C21121'] },
+  peachHazelnut: { label: 'พีชเฮเซลนัท (ธีมเดิม)', swatch: ['#7C5549', '#DDA4B4', '#78A5CE'] },
 };
 function getThemeMode(){
   const v = localStorage.getItem(THEME_MODE_KEY);
@@ -546,6 +596,10 @@ function setThemeName(name){
   if (!THEMES[name]) return;
   localStorage.setItem(THEME_NAME_KEY, name);
   document.documentElement.setAttribute('data-theme', name);
+}
+// ไอคอน CommentGG เปลี่ยนไปตามธีมที่เลือก (หมี ↔ แมว ธีมเดิม)
+function iconForTheme(){
+  return getThemeName() === 'peachHazelnut' ? ICONS.catAngry : ICONS.bear;
 }
 // ตั้งค่าตาม localStorage ทันทีตั้งแต่ต้น (ก่อนแม้แต่หน้า login) กันไม่ให้วาบเห็นธีมผิดตอนโหลดหน้า
 document.documentElement.setAttribute('data-mode', getThemeMode());
@@ -1073,7 +1127,7 @@ function renderTopbar(){
   return `
     <div class="topbar">
       <div class="topbar-brand">
-        <div class="mark">${ICONS.bear}</div>
+        <div class="mark">${iconForTheme()}</div>
         CommentGG
       </div>
       <div class="user-menu-wrap">
@@ -1172,7 +1226,7 @@ function renderProfileModal(){
         ${Object.keys(THEMES).map(key => `
           <div class="theme-swatch ${themeVal === key ? 'active' : ''}" data-action="set-theme-name" data-theme="${key}">
             <div class="theme-swatch-dots">
-              <span style="background:#02314B"></span><span style="background:#679CBE"></span><span style="background:#C21121"></span>
+              ${THEMES[key].swatch.map(c => `<span style="background:${c}"></span>`).join('')}
             </div>
             <div class="theme-swatch-label">${THEMES[key].label}</div>
           </div>
@@ -1578,10 +1632,13 @@ function render(){
    RENDER: LOGIN SCREEN
    ทีมมีหลายคน ใช้คนละไอดีกันเข้า — บัญชีสร้างโดยแอดมินเท่านั้น ไม่มีปุ่มสมัครเองในหน้านี้
 ============================================================ */
-// พื้นหลังลายอุ้งเท้าหมี (ธีมหมีเนวี่) ไล่สีตามโหมดสว่าง/มืด เรียงเป็นแพทเทิร์นซ้ำเต็มพื้นหลัง
-// (แทนที่ลายดาวเดิม ให้ตรงกับไอคอนหมีหน้า login และพื้นหลังลายอุ้งเท้าของแดชบอร์ดด้านใน)
+// พื้นหลังหน้า login ตามธีมที่เลือก: "หมีเนวี่" ใช้ลายอุ้งเท้าหมี, "พีชเฮเซลนัท" (ธีมเดิม) ใช้ลายดาว
+// เดิม — ทั้งคู่ไล่สีตามโหมดสว่าง/มืดด้วย เรียงเป็นแพทเทิร์นซ้ำเต็มพื้นหลัง
 const LOGIN_PAW_COLORS = ['#02314B', '#679CBE', '#C21121', '#02314B'];
 const LOGIN_PAW_COLORS_DARK = ['#679CBE', '#E3B94A', '#C21121', '#679CBE'];
+const LOGIN_STAR_PATH = 'M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z';
+const LOGIN_STAR_COLORS = ['#78A5CE', '#FFF0D9', '#DDA4B4', '#7C5549'];
+const LOGIN_STAR_COLORS_DARK = ['#9CC3E3', '#4A3A30', '#E8B9C5', '#8B6559'];
 // วาดอุ้งเท้า 1 ดวง: เบาะฝ่าเท้า (ellipse) + นิ้ว 4 นิ้ว (circle) ล้อมด้านบน
 function pawShape(color){
   return `
@@ -1592,25 +1649,33 @@ function pawShape(color){
     <circle cx="6.5" cy="-4.5" r="2.6" fill="${color}"/>
   `;
 }
+function starShape(color){
+  return `<path d="${LOGIN_STAR_PATH}" transform="translate(-12,-12)" fill="${color}" stroke="rgba(124,85,73,.18)" stroke-width="0.6"/>`;
+}
 function renderLoginStars(){
-  const colors = getThemeMode() === 'dark' ? LOGIN_PAW_COLORS_DARK : LOGIN_PAW_COLORS;
-  // อุ้งเท้า 4 รอย คนละสี ต่อ 1 ช่องลาย (tile) ขนาดเล็กลง ให้ดูเป็นลายพื้นผิวแบบเบาๆ (ไม่แย่งซีนกล่อง login)
+  const dark = getThemeMode() === 'dark';
+  const isPeach = getThemeName() === 'peachHazelnut';
+  const colors = isPeach
+    ? (dark ? LOGIN_STAR_COLORS_DARK : LOGIN_STAR_COLORS)
+    : (dark ? LOGIN_PAW_COLORS_DARK : LOGIN_PAW_COLORS);
+  const shapeFn = isPeach ? starShape : pawShape;
+  // 4 รูปทรง คนละสี ต่อ 1 ช่องลาย (tile) ขนาดเล็กลง ให้ดูเป็นลายพื้นผิวแบบเบาๆ (ไม่แย่งซีนกล่อง login)
   const dots = [
     { x: 22,  y: 22,  scale: .95, rot: -12, color: colors[0] },
     { x: 100, y: 30,  scale: .8,  rot: 18,  color: colors[1] },
     { x: 28,  y: 102, scale: .85, rot: 24,  color: colors[2] },
     { x: 104, y: 106, scale: .75, rot: -20, color: colors[3] },
   ];
-  const paws = dots.map((d) => `
+  const shapes = dots.map((d) => `
     <g transform="translate(${d.x},${d.y}) rotate(${d.rot}) scale(${d.scale})">
-      ${pawShape(d.color)}
+      ${shapeFn(d.color)}
     </g>
   `).join('');
   return `
     <svg class="login-stars" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <pattern id="loginStarTile" width="130" height="130" patternUnits="userSpaceOnUse">
-          ${paws}
+          ${shapes}
         </pattern>
       </defs>
       <rect width="100%" height="100%" fill="url(#loginStarTile)" opacity=".4"/>
@@ -1624,7 +1689,7 @@ function renderLogin(){
     <div class="login-wrap">
       ${renderLoginStars()}
       <form class="login-card" id="loginForm">
-        <div class="login-mark">${ICONS.bear}</div>
+        <div class="login-mark">${iconForTheme()}</div>
         <div class="login-title">CommentGG</div>
         <div class="login-sub">เข้าสู่ระบบด้วยบัญชีที่แอดมินสร้างให้</div>
         <input class="login-input" type="email" id="loginEmail" autocomplete="username" placeholder="อีเมล" value="${a.loginEmail}" required />
