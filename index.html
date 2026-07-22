@@ -1331,9 +1331,12 @@ async function doLogin(){
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (error) {
     state.auth.loginLoading = false;
-    state.auth.loginError = error.message === 'Invalid login credentials'
+    // เผื่อ error.message ว่างเปล่า/ไม่มี (เช่น error 500 จากฝั่งเซิร์ฟเวอร์ที่ไม่ส่งรายละเอียดกลับมา)
+    // ไม่ให้กล่อง error โชว์ว่างเปล่าไม่มีข้อความเลย
+    const msg = (error.message || '').trim();
+    state.auth.loginError = msg === 'Invalid login credentials'
       ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'
-      : (error.message || 'เข้าสู่ระบบไม่สำเร็จ');
+      : (msg || `เข้าสู่ระบบไม่สำเร็จ${error.status ? ` (${error.status})` : ''} ลองใหม่อีกครั้ง`);
     render();
     return;
   }
