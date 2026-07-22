@@ -1559,12 +1559,28 @@ function updateComposerState(item, box, page){
 /* ============================================================
    EVENT DELEGATION
 ============================================================ */
+// เก็บ target ของ mousedown ล่าสุดไว้เทียบกับตอน click — กันบั๊ก: ลาก/เลือกข้อความเริ่มจากข้างใน
+// modal (เช่น select ข้อความในช่อง input) แล้วปล่อยเมาส์ออกไปโดนพื้นหลังนอกกล่อง จะถูกนับเป็น
+// "คลิกที่พื้นหลัง" แล้วปิด modal ทันที ทั้งที่ผู้ใช้แค่ลากเลือกข้อความอยู่ ไม่ได้ตั้งใจปิดกล่องเลย
+let lastMouseDownTarget = null;
+document.getElementById('app').addEventListener('mousedown', (e) => {
+  lastMouseDownTarget = e.target;
+});
+
+const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu']);
+
 document.getElementById('app').addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const action = el.dataset.action;
   const id = el.dataset.id || null;
   const item = id ? ITEMS.find(i => i.id === id) : null;
+
+  // ปิด modal/dropdown จากการคลิกพื้นหลังได้ ก็ต่อเมื่อ mousedown กับ click จบที่จุดเดียวกันจริงๆ
+  // (กันลากเลือกข้อความข้างในกล่องแล้วปล่อยเมาส์นอกกล่อง ไม่ให้นับเป็นการคลิกปิด)
+  if (BACKDROP_CLOSE_ACTIONS.has(action) && lastMouseDownTarget !== el) {
+    return;
+  }
 
   switch (action) {
     case 'stop-propagation':
