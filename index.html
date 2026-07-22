@@ -364,6 +364,11 @@
     outline:none;
     box-shadow: inset 3px 3px 7px rgba(124,85,73,.2), inset -3px -3px 7px rgba(255,255,255,.9), 0 0 0 2px var(--green);
   }
+  .login-remember{
+    display:flex; align-items:center; justify-content:center; gap:8px; width:100%;
+    font-size:13px; color:var(--text-dim); cursor:pointer; margin-bottom:6px; user-select:none;
+  }
+  .login-remember input[type=checkbox]{width:15px; height:15px; cursor:pointer; accent-color:var(--green-text);}
   .login-error{
     display:flex; align-items:center; gap:6px; font-size:13px; color:#b3261e; background:#fdecea;
     border-radius:999px; padding:10px 18px; margin:2px 0 6px; width:100%; box-sizing:border-box;
@@ -446,7 +451,17 @@ const SUPABASE_KEY = 'sb_publishable_i9A_PqJhrOb8kmP47x2OOg_Ma2AhTRn';
 
 // ไคลเอนต์ Supabase Auth — จัดการ session ของผู้ใช้ที่ล็อกอิน (persist ใน localStorage ของเบราว์เซอร์
 // ผู้ใช้เอง ต่ออายุ token อัตโนมัติ) ตั้งชื่อ "sb" กันชนกับ global "supabase" ที่มาจาก CDN script
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// สร้างไว้ 2 ไคลเอนต์ ต่างกันแค่ที่เก็บ session — เอาไว้รองรับติ๊ก "จำฉันไว้" ตอนล็อกอิน:
+// - sbLocal  เก็บใน localStorage → อยู่ข้ามการปิดเบราว์เซอร์ (ติ๊ก "จำฉันไว้")
+// - sbSession เก็บใน sessionStorage → หายทันทีที่ปิดแท็บ/เบราว์เซอร์ (ไม่ติ๊ก)
+// ตัวแปร sb ชี้ไปที่ตัวที่ "กำลังใช้งานอยู่จริง" ในแต่ละช่วงเวลา (สลับได้ตอนล็อกอิน)
+const sbLocal = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, storage: window.localStorage },
+});
+const sbSession = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, storage: window.sessionStorage },
+});
+let sb = sbLocal;
 
 // header สำหรับยิงตรงไปที่ Supabase REST (/rest/v1/...) — ต้องมี apikey เสมอ และใช้ access_token
 // ของผู้ใช้ที่ล็อกอินแล้วแทน anon key ตรงๆ เพื่อให้นับเป็น role "authenticated" (ดูนโยบาย RLS ที่ตั้งไว้
@@ -901,7 +916,13 @@ function renderProfileModal(){
       `).join('')}
       <div class="form-hint">แก้แล้วกด Save จะอัปเดตแฮชแท็กที่ใช้ในข้อความตอบกลับของเพจนั้นทันที</div>
     </div>
-    <div class="form-hint" style="margin-top:2px;">* ระบบตั้งรหัสผ่านเข้าสู่ระบบจะเปิดให้ใช้งานภายหลังเมื่อเว็บพร้อมใช้งานจริง</div>
+    <div class="form-row">
+      <label>เปลี่ยนรหัสผ่าน <span class="opt">(อย่างน้อย 6 ตัวอักษร)</span></label>
+      <input id="pf-newPassword" type="password" placeholder="รหัสผ่านใหม่" autocomplete="new-password" />
+      <input id="pf-newPassword2" type="password" placeholder="ยืนยันรหัสผ่านใหม่" autocomplete="new-password" style="margin-top:8px;" />
+      <button class="btn" type="button" data-action="change-password" style="margin-top:10px;">เปลี่ยนรหัสผ่าน</button>
+      <div class="form-hint">เปลี่ยนรหัสผ่านของบัญชีที่ล็อกอินอยู่ตอนนี้เท่านั้น (ไม่กระทบบัญชีคนอื่นในทีม)</div>
+    </div>
   `;
 
   const settingsTabHtml = `
@@ -1264,6 +1285,10 @@ function renderLogin(){
         <div class="login-sub">เข้าสู่ระบบด้วยบัญชีที่แอดมินสร้างให้</div>
         <input class="login-input" type="email" id="loginEmail" autocomplete="username" placeholder="อีเมล" value="${a.loginEmail}" required />
         <input class="login-input" type="password" id="loginPassword" autocomplete="current-password" placeholder="รหัสผ่าน" required />
+        <label class="login-remember">
+          <input type="checkbox" id="loginRemember" checked />
+          <span>จำฉันไว้ในเครื่องนี้</span>
+        </label>
         ${a.loginError ? `<div class="login-error">${ICONS.alert} ${a.loginError}</div>` : ''}
         <button class="login-btn" type="submit" ${a.loginLoading ? 'disabled' : ''}>
           ${a.loginLoading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
@@ -1285,14 +1310,23 @@ function bindLoginForm(){
 async function doLogin(){
   const emailInput = document.getElementById('loginEmail');
   const passwordInput = document.getElementById('loginPassword');
+  const rememberInput = document.getElementById('loginRemember');
   const email = (emailInput?.value || '').trim();
   const password = passwordInput?.value || '';
+  const remember = rememberInput ? rememberInput.checked : true;
   if (!email || !password) return;
 
   state.auth.loginEmail = email;
   state.auth.loginLoading = true;
   state.auth.loginError = null;
   render();
+
+  // ติ๊ก "จำฉันไว้" → เก็บ session ใน localStorage (อยู่ข้ามการปิดเบราว์เซอร์)
+  // ไม่ติ๊ก → เก็บใน sessionStorage (หายทันทีที่ปิดแท็บ/เบราว์เซอร์)
+  const chosenClient = remember ? sbLocal : sbSession;
+  const otherClient = remember ? sbSession : sbLocal;
+  await otherClient.auth.signOut().catch(() => {}); // กันมี session ค้างซ้อนกันทั้ง 2 ที่เก็บ
+  sb = chosenClient;
 
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (error) {
@@ -1577,6 +1611,35 @@ document.getElementById('app').addEventListener('click', (e) => {
       break;
     }
 
+    // เปลี่ยนรหัสผ่านของบัญชีตัวเองที่ล็อกอินอยู่ตอนนี้ ผ่าน Supabase Auth โดยตรง (ใช้ JWT ของ
+    // ผู้ใช้เอง ไม่ต้องผ่าน service key ฝั่งเซิร์ฟเวอร์ เพราะแก้ได้แค่บัญชีตัวเองเท่านั้นอยู่แล้ว)
+    case 'change-password': {
+      const p1 = document.getElementById('pf-newPassword');
+      const p2 = document.getElementById('pf-newPassword2');
+      const newPassword = p1 ? p1.value : '';
+      const confirmPassword = p2 ? p2.value : '';
+      if (!newPassword || newPassword.length < 6) {
+        showToast('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'error');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        showToast('รหัสผ่านที่ยืนยันไม่ตรงกัน', 'error');
+        return;
+      }
+      el.disabled = true;
+      sb.auth.updateUser({ password: newPassword }).then(({ error }) => {
+        el.disabled = false;
+        if (error) {
+          showToast(error.message || 'เปลี่ยนรหัสผ่านไม่สำเร็จ', 'error');
+          return;
+        }
+        if (p1) p1.value = '';
+        if (p2) p2.value = '';
+        showToast('เปลี่ยนรหัสผ่านแล้ว', 'success');
+      });
+      break;
+    }
+
     case 'select-page':
       state.pageFilter = el.dataset.page;
       state.expandedId = null; state.selected.clear();
@@ -1771,23 +1834,21 @@ document.getElementById('app').addEventListener('click', (e) => {
   }
 });
 
-// เช็ค session ที่อาจค้างอยู่จากครั้งก่อน (Supabase Auth persist ไว้ใน localStorage ของเบราว์เซอร์
-// ผู้ใช้เอง) ก่อนตัดสินใจว่าจะโชว์หน้า login หรือแดชบอร์ดเลย — กัน login ค้างไว้แล้วต้องล็อกอินใหม่
-// ทุกครั้งที่เปิดหน้าเว็บ
-sb.auth.getSession().then(({ data }) => {
-  state.auth.session = data.session || null;
-  state.auth.ready = true;
-  render();
-  if (state.auth.session) loadData();
-});
-
-// ฟังการเปลี่ยนแปลงสถานะล็อกอิน (ล็อกอินสำเร็จ, ออกจากระบบ, token หมดอายุแล้วต่ออายุอัตโนมัติ ฯลฯ)
-// แล้วอัปเดตหน้าจอให้ตรงกับสถานะล่าสุดเสมอ ไม่ต้องรีเฟรชหน้าเอง
-sb.auth.onAuthStateChange((event, session) => {
+// callback กลางที่ใช้ทั้ง 2 ไคลเอนต์ (sbLocal/sbSession) — อันไหนแจ้งมาก่อนว่ามี session จริง
+// ก็ใช้อันนั้น (ตัวแปร sb ชี้ตามไปด้วย) กันกรณีเปิดแท็บใหม่แล้วเช็คทั้งคู่พร้อมกัน
+function handleAuthState(client, event, session){
   const hadSession = !!state.auth.session;
-  state.auth.session = session || null;
+  if (session) {
+    // client นี้มี session จริง — ให้ตัวแปร sb ใช้อันนี้ต่อไป (ใช้ตอนสั่ง sign-out/เรียก auth อื่นๆ)
+    sb = client;
+    state.auth.session = session;
+  } else if (sb === client) {
+    // client ที่ "กำลังใช้งานอยู่" แจ้งว่าไม่มี session แล้ว (sign out จริง) ถึงจะเคลียร์ — ถ้าเป็น
+    // client อีกตัวที่ไม่ได้ใช้งานอยู่ (แค่ไม่เคยมี session ตั้งแต่แรก) ไม่ต้องไปรบกวนสถานะปัจจุบัน
+    state.auth.session = null;
+  }
   state.auth.ready = true;
-  if (!session) {
+  if (!state.auth.session) {
     // ออกจากระบบ (หรือ token ใช้ไม่ได้แล้ว) — เคลียร์ข้อมูลเก่าทิ้ง กันเห็นข้อมูลของบัญชีก่อนหน้า
     PAGES = [];
     ITEMS = [];
@@ -1795,8 +1856,30 @@ sb.auth.onAuthStateChange((event, session) => {
     state.auth.loginError = null;
   }
   render();
-  if (session && !hadSession) loadData();
+  if (state.auth.session && !hadSession) loadData();
+}
+
+// เช็ค session ที่อาจค้างอยู่จากครั้งก่อนทั้ง 2 ที่เก็บ (เผื่อครั้งก่อนติ๊ก "จำฉันไว้" ไว้หรือไม่ก็ตาม)
+// ก่อนตัดสินใจว่าจะโชว์หน้า login หรือแดชบอร์ดเลย — กัน login ค้างไว้แล้วต้องล็อกอินใหม่ทุกครั้งที่เปิดเว็บ
+Promise.all([sbSession.auth.getSession(), sbLocal.auth.getSession()]).then(([sessionRes, localRes]) => {
+  if (sessionRes.data.session) {
+    sb = sbSession;
+    state.auth.session = sessionRes.data.session;
+  } else if (localRes.data.session) {
+    sb = sbLocal;
+    state.auth.session = localRes.data.session;
+  } else {
+    state.auth.session = null;
+  }
+  state.auth.ready = true;
+  render();
+  if (state.auth.session) loadData();
 });
+
+// ฟังการเปลี่ยนแปลงสถานะล็อกอินของทั้ง 2 ไคลเอนต์ (ล็อกอินสำเร็จ, ออกจากระบบ, token หมดอายุแล้ว
+// ต่ออายุอัตโนมัติ ฯลฯ) แล้วอัปเดตหน้าจอให้ตรงกับสถานะล่าสุดเสมอ ไม่ต้องรีเฟรชหน้าเอง
+sbLocal.auth.onAuthStateChange((event, session) => handleAuthState(sbLocal, event, session));
+sbSession.auth.onAuthStateChange((event, session) => handleAuthState(sbSession, event, session));
 
 setInterval(() => { if (!state.expandedId) loadData(); }, 20000);
 </script>
