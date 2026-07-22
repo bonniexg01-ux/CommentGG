@@ -22,6 +22,16 @@ export const config = {
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://acwilhbtdbxhhwlabpes.supabase.co';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const GRAPH_VERSION = 'v23.0';
+// ถ้า Facebook ไม่ตอบภายในเวลานี้ ให้ตัดการเชื่อมต่อเองแล้วมาร์ค 'failed' ทันที
+// กันไม่ให้ Vercel Edge Function ถูก platform ตัดจบกลางคันแบบเงียบๆ (ซึ่งจะทำให้ไม่มีการเขียน
+// สถานะลง Supabase เลยสักครั้ง — รายการค้างเป็น 'pending' ตลอดไปโดยไม่มีใครรู้ว่าส่งไม่สำเร็จ)
+const FB_TIMEOUT_MS = 12000;
+
+function fetchWithTimeout(url, options, timeoutMs = FB_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 
 const sbHeaders = {
   apikey: SERVICE_KEY,
@@ -41,6 +51,10 @@ export default async function handler(request) {
     return json({ error: 'Method Not Allowed' }, 405);
   }
 
+  // เอาไว้ให้ outer catch ด้านล่างใช้มาร์ค 'failed' ได้ ถ้า error เกิดขึ้นตรงไหนก็ตามหลังจากรู้ itemId แล้ว
+  // (เดิม error ที่เกิดนอกช่วงเรียก Facebook โดยตรงจะหลุดไม่เขียนสถานะอะไรเลย รายการค้าง 'pending' เงียบๆ)
+  let itemIdForCleanup;
+
   try {
     if (!SERVICE_KEY) {
       console.error('reply error: missing SUPABASE_SERVICE_ROLE_KEY env var');
@@ -57,6 +71,7 @@ export default async function handler(request) {
     if (!itemId || !text || !String(text).trim()) {
       return json({ error: 'itemId และ text จำเป็นต้องมี' }, 400);
     }
+    itemIdForCleanup = itemId;
 
     // ดึงรายการ + access_token ของเพจในคำเดียว (join ผ่าน PostgREST embed)
     // แทนที่จะยิง Supabase 2 รอบแยกกัน — ลดเวลาแฝงของปุ่ม "ส่ง" ลงหนึ่ง round trip
@@ -82,9 +97,13 @@ export default async function handler(request) {
         return json({ error: `ไม่รู้จักประเภทรายการ: ${item.type}` }, 400);
       }
     } catch (fbErr) {
-      console.error('reply error: เรียก Facebook Graph API ไม่สำเร็จ', fbErr);
+      const isTimeout = fbErr && fbErr.name === 'AbortError';
+      console.error('reply error: เรียก Facebook Graph API ไม่สำเร็จ', isTimeout ? 'timeout' : fbErr);
       await markFeedItem(itemId, { status: 'failed' });
-      return json({ error: 'เชื่อมต่อ Facebook ไม่สำเร็จ ลองใหม่อีกครั้ง' }, 502);
+      return json(
+        { error: isTimeout ? 'Facebook ไม่ตอบสนอง (หมดเวลา) ลองใหม่อีกครั้ง' : 'เชื่อมต่อ Facebook ไม่สำเร็จ ลองใหม่อีกครั้ง' },
+        502
+      );
     }
 
     if (fbResult && fbResult.error) {
@@ -104,6 +123,10 @@ export default async function handler(request) {
     return json({ ok: true });
   } catch (err) {
     console.error('reply error', err);
+    // best-effort: กันรายการค้าง 'pending' เงียบๆ ถ้ามี itemId แล้วแต่ error เกิดขึ้นก่อนจะรู้ผล Facebook
+    if (itemIdForCleanup) {
+      markFeedItem(itemIdForCleanup, { status: 'failed' }).catch(() => {});
+    }
     return json({ error: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' }, 500);
   }
 }
@@ -140,7 +163,7 @@ async function markFeedItem(id, fields) {
 async function postCommentReply(commentId, message, accessToken) {
   const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(commentId)}/comments`;
   const params = new URLSearchParams({ message: String(message), access_token: accessToken });
-  const r = await fetch(url, {
+  const r = await fetchWithTimeout(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: params.toString(),
@@ -157,7 +180,7 @@ async function postMessengerReply(recipientFbId, text, accessToken) {
     message: { text: String(text) },
     access_token: accessToken,
   };
-  const r = await fetch(url, {
+  const r = await fetchWithTimeout(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

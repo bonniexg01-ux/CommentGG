@@ -443,9 +443,14 @@ function sendReply(item, text, archiveAfter){
 }
 
 // เรียกเมื่อรู้ทีหลังว่า Facebook ปฏิเสธ/ส่งไม่สำเร็จ หลังจากที่ UI มาร์ค "ตอบแล้ว" ไปก่อนแล้ว (optimistic)
+//
+// สำคัญ: เขียนสถานะ 'failed' กลับลง Supabase ที่นี่ด้วย (ไม่ใช่แค่แก้ตัวแปรใน browser) — เผื่อ /api/reply
+// ฝั่งเซิร์ฟเวอร์ล่ม/หมดเวลากลางคันจนไม่ทันเขียนสถานะเอง ถ้าไม่เขียนซ้ำที่นี่ รายการจะโชว์ "ส่งไม่สำเร็จ"
+// แค่แป๊บเดียวแล้วเด้งกลับไปเป็น "ต้องตอบกลับ" ทันทีที่ระบบดึงข้อมูลรอบถัดไป (ค่าจริงใน DB ยังเป็น pending)
 function revertFailedReply(itemId, errorMessage){
   const item = ITEMS.find(i => i.id === itemId);
   if (item) item.status = 'failed';
+  patchFeedItem(itemId, { status: 'failed' });
   showToast(errorMessage || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
   render();
 }
