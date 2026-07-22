@@ -120,8 +120,16 @@ export default async function handler(request) {
     // พอ return response แล้ว instance อาจถูกเก็บกวาดทิ้งทันทีก่อน request ที่ยังไม่ await เสร็จ
     // ทำให้สถานะ 'replied' ไม่เคยถูกเขียนลง Supabase จริงเลยสักครั้ง (ส่งไป Facebook สำเร็จ แต่
     // dashboard ไม่รู้ พอรีเฟรชเลยเห็นเป็น pending เหมือนไม่เคยตอบ) — ต้อง await แลกกับหน่วงเวลาส่งนิดหน่อย
+    //
+    // เก็บ comment id ของ "คำตอบที่แอดมินโพสไป" ไว้ด้วย (fbResult.id ที่ Facebook ส่งกลับมาตอนสร้าง
+    // คอมเมนต์สำเร็จ) — ใช้สำหรับปุ่มแก้ไข/ลบคำตอบทีหลัง (api/edit-reply.mjs, api/delete-reply.mjs)
+    // มีให้เฉพาะ type: 'comment' เท่านั้น ข้อความ Messenger ไม่มี concept นี้
+    const updateFields = { status: 'replied', admin_reply: text };
+    if (item.type === 'comment' && fbResult && fbResult.id) {
+      updateFields.admin_reply_fb_id = fbResult.id;
+    }
     try {
-      await markFeedItem(itemId, { status: 'replied', admin_reply: text });
+      await markFeedItem(itemId, updateFields);
     } catch (writeErr) {
       // Facebook รับข้อความไปแล้วจริง แค่บันทึกสถานะฝั่งเราไม่สำเร็จ — แจ้งเตือนแต่ไม่ต้อง fail request
       // (ไม่งั้น dashboard จะ mark เป็น failed ทั้งที่จริงๆ ส่งไป Facebook สำเร็จแล้ว จะกลายเป็นตอบซ้ำ)

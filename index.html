@@ -278,7 +278,19 @@
   .reply-quote{background:var(--blue-soft); border:1px solid #bfdbfe; border-radius:9px; padding:9px 11px; margin-bottom:12px; font-size:12px; color:var(--blue-text);}
   .reply-quote .lbl{font-weight:700; font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; margin-bottom:3px; display:block;}
   .reply-quote.inline{margin-top:7px; margin-bottom:0; padding:6px 9px; font-size:11.5px;}
-  .reply-quote .reply-by{margin-top:4px; font-size:10.5px; color:var(--text-faint);}
+  .reply-quote-foot{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px;}
+  .reply-quote .reply-by{font-size:10.5px; color:var(--text-faint);}
+  .reply-quote-actions{display:flex; align-items:center; gap:9px; flex:none;}
+  .reply-quote-actions span{display:flex; cursor:pointer; color:var(--blue-text); opacity:.65;}
+  .reply-quote-actions span:hover{opacity:1;}
+  .reply-quote-actions svg{width:12.5px; height:12.5px;}
+  .reply-quote.editing{background:#fff; border-color:var(--border);}
+  .reply-edit-box{
+    width:100%; min-height:56px; border:1.5px solid #E3B4C0; border-radius:7px; padding:7px 9px; font-size:12px;
+    font-family:inherit; resize:vertical; outline:none; color:var(--text);
+  }
+  .reply-edit-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:7px;}
+  .reply-edit-actions .btn{padding:5px 11px; font-size:11.5px;}
 
   .composer-label{font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:.04em; margin-bottom:7px;}
   .composer textarea{
@@ -357,6 +369,7 @@ const ICONS = {
   userX: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="22" y2="13"/><line x1="22" y1="8" x2="17" y2="13"/></svg>`,
   archive: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>`,
   restore: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`,
+  pencil: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`,
   copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
   inbox: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>`,
   chevronDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
@@ -399,6 +412,7 @@ function mapItem(row){
     author: row.author_name || 'ไม่ทราบชื่อ', text: row.message || '', time: timeAgo(row.created_at),
     status: row.status, folder: row.folder,
     postExcerpt: row.post_excerpt || null, aiReason: row.ai_reason || null, adminReply: row.admin_reply || null,
+    adminReplyFbId: row.admin_reply_fb_id || null,
     liked: !!row.liked, blocked: !!row.blocked,
   };
 }
@@ -487,6 +501,57 @@ function revertFailedReply(itemId, errorMessage){
   render();
 }
 
+// แก้ไขคำตอบที่ตอบไปแล้ว — แก้ที่ Facebook จริงผ่าน /api/edit-reply แล้วค่อยอัปเดต UI/Supabase
+// เมื่อสำเร็จ (ไม่ใช่ optimistic เหมือน sendReply เพราะเป็น action ที่ทำไม่บ่อย รอผลก่อนได้)
+async function saveEditedReply(item, newText){
+  const saveBtn = document.querySelector(`[data-action="save-edit-reply"][data-id="${item.id}"]`);
+  if (saveBtn) saveBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/edit-reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemId: item.id, text: newText }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'แก้ไขไม่สำเร็จ');
+
+    item.adminReply = newText;
+    state.editingReplyId = null;
+    showToast('แก้ไขคำตอบแล้ว', 'success');
+    render();
+  } catch (err) {
+    console.error('แก้ไขคำตอบไม่สำเร็จ:', err);
+    showToast(err.message || 'แก้ไขไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+// ลบคำตอบที่ตอบไปแล้ว — ลบออกจาก Facebook จริงผ่าน /api/delete-reply แล้วดึงรายการนี้กลับไปเป็น
+// "ต้องตอบกลับ" (เซิร์ฟเวอร์เป็นคนตั้งสถานะ pending ให้ ไม่ใช่ฝั่ง client เดา)
+async function deleteAdminReply(item){
+  if (!window.confirm('ลบคำตอบนี้ออกจาก Facebook เลยใช่ไหม? รายการจะกลับไปเป็น "ต้องตอบกลับ"')) return;
+
+  try {
+    const res = await fetch('/api/delete-reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemId: item.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'ลบไม่สำเร็จ');
+
+    item.status = 'pending';
+    item.adminReply = null;
+    item.adminReplyFbId = null;
+    showToast('ลบคำตอบแล้ว', 'success');
+    render();
+  } catch (err) {
+    console.error('ลบคำตอบไม่สำเร็จ:', err);
+    showToast(err.message || 'ลบไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+  }
+}
+
 async function loadData(){
   try {
     const [pagesRes, itemsRes] = await Promise.all([
@@ -535,6 +600,9 @@ const state = {
     sourceAuthor: '',
     sourceText: '',
   },
+
+  // ไอดีของ item ที่กำลังแก้ไขคำตอบที่ตอบไปแล้วอยู่ (แก้ inline ในกล่อง reply-quote เลย)
+  editingReplyId: null,
 };
 
 /* ============================================================
@@ -820,6 +888,37 @@ function tagFor(item){
   return `<span class="tag needs-reply">ต้องตอบกลับ</span>`;
 }
 
+// กล่องแสดงคำตอบที่ตอบไปแล้ว — ถ้ากำลังแก้ไข item นี้อยู่ (state.editingReplyId) จะสลับเป็นกล่อง
+// แก้ไข inline แทน ปุ่มแก้ไข/ลบจะโชว์ก็ต่อเมื่อมี adminReplyFbId (รายการที่ตอบไปก่อนมีฟีเจอร์นี้
+// จะไม่มี id เก็บไว้ เลยแก้ไข/ลบผ่านระบบไม่ได้ ต้องไปจัดการที่ Facebook เอง)
+function renderReplyQuote(item){
+  if (state.editingReplyId === item.id) {
+    return `
+      <div class="reply-quote inline editing">
+        <textarea class="reply-edit-box" id="replyEditBox-${item.id}">${item.adminReply}</textarea>
+        <div class="reply-edit-actions">
+          <button class="btn" data-action="cancel-edit-reply">ยกเลิก</button>
+          <button class="btn primary" data-action="save-edit-reply" data-id="${item.id}">บันทึก</button>
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="reply-quote inline">
+      <div class="reply-quote-text">${item.adminReply}</div>
+      <div class="reply-quote-foot">
+        <div class="reply-by">ตอบโดย: CS Bow</div>
+        ${item.adminReplyFbId ? `
+          <div class="reply-quote-actions">
+            <span data-action="start-edit-reply" data-id="${item.id}" title="แก้ไขคำตอบ">${ICONS.pencil}</span>
+            <span data-action="delete-reply" data-id="${item.id}" title="ลบคำตอบ">${ICONS.trash}</span>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
 function rowActions(item){
   if (item.folder === 'bin') {
     return `
@@ -869,7 +968,7 @@ function renderExpandPanel(item){
 
   if (item.postExcerpt) inner += `<div class="expand-post">${item.postExcerpt}</div>`;
   if (item.status === 'replied' && item.adminReply) {
-    inner += `<div class="reply-quote"><span class="lbl">คุณตอบไปแล้ว</span>${item.adminReply}</div>`;
+    inner += renderReplyQuote(item);
   }
 
   inner += `
@@ -911,12 +1010,7 @@ function renderRow(item){
         <div class="row-content">
           <div class="row-text">${item.text}${tagFor(item)}</div>
           <div class="copy-link" data-action="copy" data-id="${item.id}">${ICONS.copy} Copy to clipboard</div>
-          ${item.status === 'replied' && item.adminReply ? `
-            <div class="reply-quote inline">
-              ${item.adminReply}
-              <div class="reply-by">ตอบโดย: CS Bow</div>
-            </div>
-          ` : ''}
+          ${item.status === 'replied' && item.adminReply ? renderReplyQuote(item) : ''}
         </div>
         <div class="row-actions">${rowActions(item)}</div>
       </div>
@@ -1310,6 +1404,33 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'copy-comment-id':
       copyCommentId();
+      break;
+
+    case 'start-edit-reply':
+      state.editingReplyId = id;
+      render();
+      // เอาโฟกัสไปที่กล่องแก้ไข + วางเคอร์เซอร์ท้ายข้อความ ให้พิมพ์ต่อได้เลย
+      setTimeout(() => {
+        const box = document.getElementById('replyEditBox-' + id);
+        if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+      }, 0);
+      break;
+
+    case 'cancel-edit-reply':
+      state.editingReplyId = null;
+      render();
+      break;
+
+    case 'save-edit-reply': {
+      const box = document.getElementById('replyEditBox-' + id);
+      const newText = box ? box.value.trim() : '';
+      if (!newText) { showToast('ข้อความต้องไม่ว่างเปล่า', 'error'); return; }
+      saveEditedReply(item, newText);
+      break;
+    }
+
+    case 'delete-reply':
+      if (item) deleteAdminReply(item);
       break;
 
     case 'collapse':
