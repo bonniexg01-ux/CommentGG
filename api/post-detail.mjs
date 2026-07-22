@@ -1,9 +1,12 @@
 // api/post-detail.mjs
-// ให้แอดมินกดแว่นขยายแล้วดู "โพสต์ต้นทาง + คอมเมนต์ทั้งหมดของโพสต์นั้น" จาก Facebook ได้เลย
-// โดยไม่ต้องออกไปเปิด Facebook เอง — ดึงสดจาก Graph API ทุกครั้งที่กด (ไม่ได้แคชไว้ในระบบเรา)
+// ให้แอดมินกดแว่นขยายที่แถวไหน แล้วดู "รายละเอียดคอมเมนต์นั้นเดี่ยวๆ" จาก Facebook ได้เลย
+// (ข้อความเต็ม, รูปที่แนบมากับคอมเมนต์ถ้ามี, ชื่อคนคอมเมนต์, เวลา, ลิงก์เปิดดูบน Facebook)
+// โดยไม่ต้องออกไปเปิด Facebook เอง — ดึงสดทุกครั้งที่กด (ไม่ได้แคชไว้ในระบบเรา)
 //
-// รับ itemId (feed_items.id) แล้วมาหา fb_post_id + page access_token ต่อ (แพทเทิร์นเดียวกับ
-// api/reply.mjs) จากนั้นยิง Graph API 2 คำสั่งขนานกัน: ตัวโพสต์ และ คอมเมนต์ทั้งหมดของโพสต์
+// เอาเฉพาะคอมเมนต์ที่กดดู ไม่ใช่ทั้งโพสต์/คอมเมนต์ทั้งหมด (ตามที่ขอ — ของเดิมดึงมาทั้งโพสต์กว้างไป)
+//
+// รับ itemId (feed_items.id) แล้วมาหา fb_id/fb_post_id + page access_token ต่อ (แพทเทิร์นเดียวกับ
+// api/reply.mjs) แล้วดึง comment_id จริงด้วย deriveCommentId แบบเดียวกับตอนตอบกลับ
 //
 // ใช้ SUPABASE_SERVICE_ROLE_KEY ฝั่งเซิร์ฟเวอร์เท่านั้น (เหตุผลเดียวกับ reply.mjs — ตาราง pages
 // ไม่เปิดให้ frontend อ่าน access_token ตรงๆ)
@@ -54,8 +57,8 @@ export default async function handler(request) {
     const item = await fetchFeedItemWithPage(itemId);
     if (!item) return json({ error: 'ไม่พบรายการนี้ในระบบ' }, 404);
 
-    if (item.type !== 'comment' || !item.fb_post_id) {
-      return json({ error: 'รายการนี้ไม่มีโพสต์ต้นทาง (เป็นข้อความ Inbox ไม่ใช่คอมเมนต์ใต้โพสต์)' }, 400);
+    if (item.type !== 'comment' || !item.fb_id) {
+      return json({ error: 'รายการนี้ไม่ใช่คอมเมนต์ใต้โพสต์ (เป็นข้อความ Inbox)' }, 400);
     }
 
     const page = item.pages;
@@ -63,12 +66,11 @@ export default async function handler(request) {
       return json({ error: 'ไม่พบ access token ของเพจนี้ ตั้งค่าเพจให้ครบก่อน' }, 400);
     }
 
-    let post, comments;
+    const commentId = deriveCommentId(item.fb_id, item.fb_post_id);
+
+    let comment;
     try {
-      [post, comments] = await Promise.all([
-        fetchPost(item.fb_post_id, page.access_token),
-        fetchComments(item.fb_post_id, page.access_token),
-      ]);
+      comment = await fetchComment(commentId, page.access_token);
     } catch (fbErr) {
       const isTimeout = fbErr && fbErr.name === 'AbortError';
       console.error('post-detail error: เรียก Facebook ไม่สำเร็จ', isTimeout ? 'timeout' : fbErr);
@@ -78,29 +80,41 @@ export default async function handler(request) {
       );
     }
 
-    if (post && post.error) {
-      return json({ error: `Facebook ปฏิเสธ: ${post.error.message || 'unknown error'}` }, 502);
+    if (comment && comment.error) {
+      return json({ error: `Facebook ปฏิเสธ: ${comment.error.message || 'unknown error'}` }, 502);
+    }
+
+    // รูปที่แนบมากับคอมเมนต์ (ถ้ามี) — เอาทั้งรูปเดี่ยวและ album หลายรูป
+    const images = [];
+    const att = comment.attachment;
+    if (att && att.media && att.media.image && att.media.image.src) images.push(att.media.image.src);
+    if (att && att.subattachments && Array.isArray(att.subattachments.data)) {
+      for (const sub of att.subattachments.data) {
+        if (sub.media && sub.media.image && sub.media.image.src) images.push(sub.media.image.src);
+      }
     }
 
     return json({
-      post: {
-        message: post.message || null,
-        fullPicture: post.full_picture || null,
-        permalinkUrl: post.permalink_url || null,
-        createdTime: post.created_time || null,
-        from: post.from ? post.from.name : null,
-      },
-      comments: (comments && comments.data ? comments.data : []).map((c) => ({
-        id: c.id,
-        message: c.message || '',
-        from: c.from ? c.from.name : 'ไม่ทราบชื่อ',
-        createdTime: c.created_time || null,
-      })),
+      commentId,
+      message: comment.message || '',
+      from: comment.from ? comment.from.name : null,
+      createdTime: comment.created_time || null,
+      permalinkUrl: comment.permalink_url || null,
+      images,
     });
   } catch (err) {
     console.error('post-detail error', err);
     return json({ error: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' }, 500);
   }
+}
+
+// fb_id ถูกเก็บตอน insert เป็น `${post_id}_${comment_id}` (ดู api/webhook.js) — ตัด prefix ของ
+// fb_post_id ออกเพื่อให้ได้ comment_id ดิบสำหรับยิง Graph API (แพทเทิร์นเดียวกับ api/reply.mjs)
+function deriveCommentId(fbId, fbPostId) {
+  if (fbPostId && fbId.startsWith(`${fbPostId}_`)) {
+    return fbId.slice(fbPostId.length + 1);
+  }
+  return fbId;
 }
 
 async function fetchFeedItemWithPage(id) {
@@ -111,14 +125,9 @@ async function fetchFeedItemWithPage(id) {
   return rows[0] || null;
 }
 
-async function fetchPost(postId, accessToken) {
-  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(postId)}?fields=message,full_picture,permalink_url,created_time,from&access_token=${encodeURIComponent(accessToken)}`;
-  const r = await fetchWithTimeout(url, { method: 'GET' });
-  return r.json();
-}
-
-async function fetchComments(postId, accessToken) {
-  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(postId)}/comments?fields=message,from,created_time&limit=25&access_token=${encodeURIComponent(accessToken)}`;
+async function fetchComment(commentId, accessToken) {
+  const fields = 'message,from,created_time,permalink_url,attachment{media,type,url,subattachments}';
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(commentId)}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(accessToken)}`;
   const r = await fetchWithTimeout(url, { method: 'GET' });
   return r.json();
 }

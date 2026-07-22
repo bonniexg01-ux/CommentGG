@@ -115,35 +115,34 @@
   .form-row input:focus{border-color:#E3B4C0;}
   .form-hint{font-size:11.5px; color:var(--text-faint); margin-top:6px; line-height:1.55;}
 
-  /* ---------------- Post detail panel (right-side drawer) ---------------- */
-  .post-panel-backdrop{position:fixed; inset:0; background:rgba(43,33,29,.35); z-index:95;}
+  /* ---------------- Comment detail popover (compact card, not a full drawer) ---------------- */
+  .post-panel-backdrop{position:fixed; inset:0; background:transparent; z-index:95;}
   .post-panel{
-    position:fixed; top:0; right:0; bottom:0; width:400px; max-width:92vw; background:#fff; z-index:96;
-    box-shadow:-16px 0 48px rgba(0,0,0,.22); display:flex; flex-direction:column;
-    animation:post-panel-in .18s ease-out;
+    position:fixed; top:64px; right:24px; width:300px; max-width:88vw; max-height:80vh; background:#fff; z-index:96;
+    border-radius:14px; box-shadow:0 16px 40px rgba(0,0,0,.20); border:1px solid var(--border);
+    display:flex; flex-direction:column; overflow:hidden;
+    animation:post-panel-in .14s ease-out;
   }
-  @keyframes post-panel-in{ from{transform:translateX(100%);} to{transform:translateX(0);} }
-  .post-panel-head{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:18px 18px 14px; border-bottom:1px solid var(--border);}
-  .pph-title{font-size:15px; font-weight:700;}
-  .pph-sub{font-size:11.5px; color:var(--text-faint); margin-top:4px; line-height:1.5;}
-  .post-panel-body{padding:16px 18px; overflow-y:auto; flex:1;}
-  .post-panel-msg{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-faint); padding:12px 0;}
+  @keyframes post-panel-in{ from{opacity:0; transform:translateY(-6px);} to{opacity:1; transform:translateY(0);} }
+  .post-panel-head{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:9px 10px; border-bottom:1px solid var(--border);}
+  .pph-copy{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-faint); cursor:pointer;}
+  .pph-copy:hover{color:var(--text-dim);}
+  .pph-copy svg{width:12px; height:12px;}
+  .post-panel .modal-close{width:24px; height:24px;}
+  .post-panel .modal-close svg{width:12px; height:12px;}
+  .post-panel-body{padding:0; overflow-y:auto; flex:1;}
+  .post-panel-msg{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-faint); padding:16px 12px;}
   .post-panel-msg svg{width:15px; height:15px; flex:none;}
   .post-panel-msg.error{color:var(--red-text);}
-  .post-panel-post{background:#f7f0ea; border-radius:11px; padding:12px 14px; margin-bottom:16px;}
-  .ppp-from{font-size:12.5px; font-weight:700; margin-bottom:5px;}
-  .ppp-message{font-size:13px; line-height:1.6; white-space:pre-wrap;}
-  .ppp-message.dim{color:var(--text-faint); font-style:italic;}
-  .ppp-image{width:100%; border-radius:9px; margin-top:10px; display:block;}
-  .ppp-link{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--blue-text); margin-top:10px; text-decoration:none;}
+  .ppc-image{width:100%; display:block;}
+  .ppc-body{padding:10px 12px;}
+  .ppc-message{font-size:12.5px; line-height:1.55; white-space:pre-wrap; margin-bottom:8px;}
+  .ppc-message.dim{color:var(--text-faint); font-style:italic;}
+  .ppc-from{font-size:12px; font-weight:700;}
+  .ppc-time{font-size:11px; color:var(--text-faint); margin-top:2px;}
+  .ppp-link{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--blue-text); text-decoration:none; padding:9px 12px; border-top:1px solid var(--border);}
   .ppp-link svg{width:13px; height:13px; transform:rotate(180deg);}
   .ppp-link:hover{text-decoration:underline;}
-  .post-panel-comments-head{font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-faint); margin-bottom:10px;}
-  .post-panel-comments{display:flex; flex-direction:column; gap:12px;}
-  .ppc-item{border-bottom:1px solid var(--border); padding-bottom:10px;}
-  .ppc-item:last-child{border-bottom:none;}
-  .ppc-from{font-size:12px; font-weight:700; margin-bottom:3px;}
-  .ppc-message{font-size:12.5px; line-height:1.55; color:var(--text-dim); white-space:pre-wrap;}
   .modal-foot{
     display:flex; justify-content:flex-end; gap:10px; padding:16px 24px 22px; border-top:1px solid var(--border);
     margin-top:6px;
@@ -963,10 +962,11 @@ function render(){
 }
 
 /* ============================================================
-   RIGHT-SIDE PANEL: โพสต์ต้นทาง + คอมเมนต์ทั้งหมดจาก Facebook
+   POPOVER: ดูคอมเมนต์เดี่ยวๆ จาก Facebook (เฉพาะคอมเมนต์ที่กดแว่นขยาย)
    ============================================================
-   กดแว่นขยายที่แถวไหน ก็ดึงข้อมูลสดจาก Facebook Graph API ผ่าน /api/post-detail มาโชว์
-   ทางขวาได้เลย ไม่ต้องออกไปเปิด Facebook เพื่อดูว่าโพสต์นั้นพูดเรื่องอะไร
+   กดแว่นขยายที่แถวไหน ก็ดึงเฉพาะคอมเมนต์นั้นสดจาก Facebook Graph API ผ่าน /api/post-detail
+   มาโชว์เป็นการ์ดเล็กๆ ได้เลย (รูปแนบถ้ามี + ข้อความเต็ม + ชื่อ + เวลา + ลิงก์เปิดบน Facebook +
+   ปุ่มคัดลอก comment ID) ไม่ต้องออกไปเปิด Facebook เอง และไม่ต้องโหลดทั้งโพสต์/คอมเมนต์อื่นๆ
 ============================================================ */
 function openPostPanel(item){
   state.postPanel = {
@@ -974,22 +974,20 @@ function openPostPanel(item){
     loading: true,
     error: null,
     data: null,
-    sourceAuthor: item.author,
-    sourceText: item.text,
   };
   render();
 
   fetch(`/api/post-detail?itemId=${encodeURIComponent(item.id)}`)
     .then(async (res) => {
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'โหลดโพสต์ไม่สำเร็จ');
+      if (!res.ok) throw new Error(data.error || 'โหลดคอมเมนต์ไม่สำเร็จ');
       state.postPanel.loading = false;
       state.postPanel.data = data;
       render();
     })
     .catch((err) => {
       state.postPanel.loading = false;
-      state.postPanel.error = err.message || 'โหลดโพสต์ไม่สำเร็จ';
+      state.postPanel.error = err.message || 'โหลดคอมเมนต์ไม่สำเร็จ';
       render();
     });
 }
@@ -999,33 +997,31 @@ function closePostPanel(){
   render();
 }
 
+function copyCommentId(){
+  const id = state.postPanel.data && state.postPanel.data.commentId;
+  if (!id) return;
+  navigator.clipboard?.writeText(id).catch(() => {});
+  showToast('คัดลอก comment ID แล้ว', 'success');
+}
+
 function renderPostPanel(){
   const p = state.postPanel;
   let body = '';
 
   if (p.loading) {
-    body = `<div class="post-panel-msg">${ICONS.inbox} กำลังโหลดโพสต์จาก Facebook...</div>`;
+    body = `<div class="post-panel-msg">${ICONS.inbox} กำลังโหลด...</div>`;
   } else if (p.error) {
     body = `<div class="post-panel-msg error">${ICONS.alert} ${p.error}</div>`;
   } else if (p.data) {
-    const post = p.data.post || {};
-    const comments = p.data.comments || [];
+    const d = p.data;
     body = `
-      <div class="post-panel-post">
-        ${post.from ? `<div class="ppp-from">${post.from}</div>` : ''}
-        ${post.message ? `<div class="ppp-message">${post.message}</div>` : `<div class="ppp-message dim">(โพสต์นี้ไม่มีข้อความ)</div>`}
-        ${post.fullPicture ? `<img class="ppp-image" src="${post.fullPicture}" alt="" />` : ''}
-        ${post.permalinkUrl ? `<a class="ppp-link" href="${post.permalinkUrl}" target="_blank" rel="noopener">${ICONS.reply} เปิดโพสต์นี้บน Facebook</a>` : ''}
+      ${d.images && d.images.length ? d.images.map((src) => `<img class="ppc-image" src="${src}" alt="" />`).join('') : ''}
+      <div class="ppc-body">
+        ${d.message ? `<div class="ppc-message">${d.message}</div>` : `<div class="ppc-message dim">(ไม่มีข้อความ)</div>`}
+        <div class="ppc-from">${d.from || 'ไม่ทราบชื่อ'}</div>
+        ${d.createdTime ? `<div class="ppc-time">${timeAgo(d.createdTime)}</div>` : ''}
       </div>
-      <div class="post-panel-comments-head">คอมเมนต์ทั้งหมด (${comments.length})</div>
-      <div class="post-panel-comments">
-        ${comments.length ? comments.map((c) => `
-          <div class="ppc-item">
-            <div class="ppc-from">${c.from}</div>
-            <div class="ppc-message">${c.message}</div>
-          </div>
-        `).join('') : `<div class="post-panel-msg">ยังไม่มีคอมเมนต์</div>`}
-      </div>
+      ${d.permalinkUrl ? `<a class="ppp-link" href="${d.permalinkUrl}" target="_blank" rel="noopener">${ICONS.reply} View on Facebook</a>` : ''}
     `;
   }
 
@@ -1033,10 +1029,7 @@ function renderPostPanel(){
     <div class="post-panel-backdrop" data-action="close-post-panel"></div>
     <div class="post-panel" data-action="stop-propagation">
       <div class="post-panel-head">
-        <div>
-          <div class="pph-title">โพสต์ต้นทาง</div>
-          <div class="pph-sub">จากคอมเมนต์ของ ${state.postPanel.sourceAuthor}: “${state.postPanel.sourceText}”</div>
-        </div>
+        <div class="pph-copy" data-action="copy-comment-id">${ICONS.copy} Copy comment ID</div>
         <div class="modal-close" data-action="close-post-panel">${ICONS.x}</div>
       </div>
       <div class="post-panel-body">${body}</div>
@@ -1278,6 +1271,10 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'close-post-panel':
       closePostPanel();
+      break;
+
+    case 'copy-comment-id':
+      copyCommentId();
       break;
 
     case 'collapse':
