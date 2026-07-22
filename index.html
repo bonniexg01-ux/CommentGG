@@ -333,9 +333,7 @@
     background: radial-gradient(circle at 30% 20%, #fffaf2 0%, var(--bg) 55%, #FBEEDD 100%);
     overflow:hidden;
   }
-  .login-stars{position:absolute; inset:0; pointer-events:none; z-index:0;}
-  .login-star{position:absolute; color:var(--green-text);}
-  .login-star svg{width:100%; height:100%; display:block;}
+  .login-stars{position:absolute; inset:0; pointer-events:none; z-index:0; width:100%; height:100%;}
 
   .login-card{
     position:relative; z-index:1;
@@ -1225,33 +1223,41 @@ function render(){
    RENDER: LOGIN SCREEN
    ทีมมีหลายคน ใช้คนละไอดีกันเข้า — บัญชีสร้างโดยแอดมินเท่านั้น ไม่มีปุ่มสมัครเองในหน้านี้
 ============================================================ */
-// ดาวกระจายเป็นพื้นหลัง (ตำแหน่ง/ขนาด/ความจาง fix ไว้ล่วงหน้า ไม่ได้สุ่มใหม่ทุก render กันดาว
-// "กระโดด" ตำแหน่งเวลาพิมพ์ในฟอร์มแล้วหน้าจอ re-render บ่อยๆ)
-const LOGIN_STAR_LAYOUT = [
-  { top: '8%',  left: '12%', size: 16, op: .35, rot: 0 },
-  { top: '18%', left: '82%', size: 22, op: .3,  rot: 15 },
-  { top: '30%', left: '6%',  size: 12, op: .28, rot: -10 },
-  { top: '12%', left: '48%', size: 10, op: .4,  rot: 20 },
-  { top: '46%', left: '90%', size: 14, op: .3,  rot: 5 },
-  { top: '62%', left: '10%', size: 20, op: .25, rot: -20 },
-  { top: '72%', left: '85%', size: 12, op: .35, rot: 10 },
-  { top: '85%', left: '22%', size: 16, op: .3,  rot: -15 },
-  { top: '90%', left: '65%', size: 10, op: .4,  rot: 0 },
-  { top: '52%', left: '40%', size: 8,  op: .3,  rot: 25 },
-];
+// พื้นหลังลายดาวแบบ "polka dot" (ไล่สีตามธีม 甜桃榛果 Sweet Peach Hazelnut: ฟ้า/ครีม/ชมพู/น้ำตาล)
+// เรียงเป็นแพทเทิร์นซ้ำเต็มพื้นหลัง ใหญ่กว่าเวอร์ชันดาวกระจายเดิม
+const LOGIN_STAR_PATH = 'M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z';
+const LOGIN_STAR_COLORS = ['#78A5CE', '#FFF0D9', '#DDA4B4', '#7C5549'];
 function renderLoginStars(){
-  return LOGIN_STAR_LAYOUT.map((s) => `
-    <div class="login-star" style="top:${s.top}; left:${s.left}; width:${s.size}px; height:${s.size}px; opacity:${s.op}; transform:rotate(${s.rot}deg);">
-      ${ICONS.sparkle}
-    </div>
+  // ดาว 4 ดวง คนละสี ต่อ 1 ช่องลาย (tile) ขนาด 200x200 แล้วให้เบราว์เซอร์ปูซ้ำเต็มพื้นหลังเอง
+  const dots = [
+    { x: 34,  y: 34,  scale: 2.3, rot: -8,  color: LOGIN_STAR_COLORS[0] },
+    { x: 150, y: 46,  scale: 1.9, rot: 14,  color: LOGIN_STAR_COLORS[1] },
+    { x: 44,  y: 154, scale: 2.0, rot: 20,  color: LOGIN_STAR_COLORS[2] },
+    { x: 156, y: 160, scale: 1.7, rot: -16, color: LOGIN_STAR_COLORS[3] },
+  ];
+  const stars = dots.map((d) => `
+    <g transform="translate(${d.x},${d.y}) rotate(${d.rot}) scale(${d.scale})">
+      <path d="${LOGIN_STAR_PATH}" transform="translate(-12,-12)" fill="${d.color}"
+        stroke="rgba(124,85,73,.18)" stroke-width="0.6"/>
+    </g>
   `).join('');
+  return `
+    <svg class="login-stars" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="loginStarTile" width="200" height="200" patternUnits="userSpaceOnUse">
+          ${stars}
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#loginStarTile)" opacity=".6"/>
+    </svg>
+  `;
 }
 
 function renderLogin(){
   const a = state.auth;
   return `
     <div class="login-wrap">
-      <div class="login-stars">${renderLoginStars()}</div>
+      ${renderLoginStars()}
       <form class="login-card" id="loginForm">
         <div class="login-mark">${ICONS.catAngry}</div>
         <div class="login-title">CommentGG</div>
