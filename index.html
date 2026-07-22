@@ -708,7 +708,7 @@ function renderToolbar(){
         ${state.folder !== 'bin' ? `<button class="btn primary" data-action="bulk-bin">${ICONS.trash} Bulk actions (${n})</button>` : ''}
       </div>
     `
-    : `<div class="icon-btn" data-action="refresh" title="รีเฟรชข้อมูล">${ICONS.refresh}</div>`;
+    : '';
 
   return `
     <div class="toolbar">
@@ -1027,10 +1027,6 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'noop-filter':
       showToast('ฟีเจอร์นี้จะเปิดใช้งานเร็วๆ นี้');
-      break;
-
-    case 'refresh':
-      location.reload();
       break;
 
     case 'select-all': {
