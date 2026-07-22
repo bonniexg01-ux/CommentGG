@@ -6,25 +6,47 @@
 <title>CommentGG — Unified Moderation Dashboard</title>
 <style>
   :root{
-    /* ---- ธีมสี "甜桃榛果 Sweet Peach Hazelnut" ---- */
-    --navy:#7C5549;      /* น้ำตาลเข้ม — top bar / anchor */
-    --navy-2:#5E4038;    /* น้ำตาลเข้มกว่า — hover state */
-    --bg:#FFF6E9;        /* ครีมอ่อน — พื้นหลังรอบนอก */
+    /* ---- ธีมสี "หมีเนวี่" (อ้างอิงจากพาเลต 泰兰德夏 — navy/blue/cream/red) ----
+       ระบบธีมรองรับหลายธีมได้ (เลือกได้จาก Account settings > Settings) ตอนนี้มีธีมนี้ธีมเดียวก่อน
+       ส่วนโหมดมืด/สว่าง ดูที่ html[data-mode="dark"] ด้านล่าง ตั้งใจให้โทนสีใกล้เคียงกัน ไม่ต่างกันมาก */
+    --navy:#02314B;      /* กรมท่าเข้ม — top bar / anchor */
+    --navy-2:#01212F;    /* กรมท่าเข้มกว่า — hover state */
+    --bg:#FFF1D6;        /* ครีมอ่อน — พื้นหลังรอบนอก */
     --surface:#ffffff;
-    --border:#EFE1CE;    /* เส้นขอบโทนอุ่น */
-    --text:#2b211d;
-    --text-dim:#6b5d55;
-    --text-faint:#a8988c;
-    --green:#DDA4B4;      /* ชมพูพีช — accent หลัก */
-    --green-soft:#FBEEF1;
-    --green-text:#9C5468;
-    --red:#dc2626;
-    --red-soft:#fee2e2;
-    --red-text:#b91c1c;
-    --blue-soft:#E4EEF9;
-    --blue-text:#3B6591;
-    --peach-blue:#78A5CE;
-    --peach-cream:#FFF0D9;
+    --border:#EAD9B8;    /* เส้นขอบโทนครีม */
+    --text:#1B2A33;
+    --text-dim:#516571;
+    --text-faint:#93A5AE;
+    --green:#679CBE;      /* ฟ้าเทา — accent หลัก (ชื่อตัวแปรเดิม "green" แต่ตอนนี้ค่าเป็นฟ้า) */
+    --green-soft:#E8F1F6;
+    --green-text:#2C5C78;
+    --red:#C21121;
+    --red-soft:#FBE4E6;
+    --red-text:#A10E1B;
+    --blue-soft:#E8F1F6;
+    --blue-text:#2C5C78;
+    --peach-blue:#679CBE;
+    --peach-cream:#FFF1D6;
+  }
+  html[data-mode="dark"]{
+    --navy:#0A3A56;
+    --navy-2:#052839;
+    --bg:#0D1B24;
+    --surface:#16303D;
+    --border:#264756;
+    --text:#EDF4F7;
+    --text-dim:#A9C3CF;
+    --text-faint:#6E8B97;
+    --green:#7FB3D5;
+    --green-soft:#1E3A4A;
+    --green-text:#9CD1EE;
+    --red:#E15A67;
+    --red-soft:#3A1B1F;
+    --red-text:#FFA8AF;
+    --blue-soft:#1E3A4A;
+    --blue-text:#9CD1EE;
+    --peach-blue:#7FB3D5;
+    --peach-cream:#16303D;
   }
   *{box-sizing:border-box;}
   html,body{height:100%;}
@@ -33,9 +55,13 @@
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans Thai",sans-serif;
     -webkit-font-smoothing:antialiased;
     background-color:var(--bg);
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cpath d='M18 17 L19.5 20.5 L23 22 L19.5 23.5 L18 27 L16.5 23.5 L13 22 L16.5 20.5 Z' fill='%2378A5CE' opacity='0.55'/%3E%3Cpath d='M58 12 L59.3 15 L62.5 16.3 L59.3 17.6 L58 20.7 L56.7 17.6 L53.5 16.3 L56.7 15 Z' fill='%23DDA4B4' opacity='0.6'/%3E%3Cpath d='M35 55 L36.5 58.5 L40.2 60 L36.5 61.5 L35 65 L33.5 61.5 L29.8 60 L33.5 58.5 Z' fill='%237C5549' opacity='0.4'/%3E%3Cpath d='M75 62 L76 64.3 L78.4 65.3 L76 66.3 L75 68.6 L74 66.3 L71.6 65.3 L74 64.3 Z' fill='%2378A5CE' opacity='0.45'/%3E%3Cpath d='M8 60 L9 62.3 L11.4 63.3 L9 64.3 L8 66.6 L7 64.3 L4.6 63.3 L7 62.3 Z' fill='%23DDA4B4' opacity='0.45'/%3E%3C/svg%3E");
+    /* ลายพื้นหลัง "รอยตีนหมี" เข้าธีมมาสคอตหมี (เดิมเป็นดาว) — คนละชุดสีกับโหมดมืด ดูด้านล่าง */
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cellipse cx='18' cy='20.0' rx='5.0' ry='4.0' fill='%2302314B' opacity='0.5'/%3E%3Ccircle cx='13.0' cy='13.0' r='2.0' fill='%2302314B' opacity='0.5'/%3E%3Ccircle cx='16.2' cy='11.0' r='2.0' fill='%2302314B' opacity='0.5'/%3E%3Ccircle cx='19.8' cy='11.0' r='2.0' fill='%2302314B' opacity='0.5'/%3E%3Ccircle cx='23.0' cy='13.0' r='2.0' fill='%2302314B' opacity='0.5'/%3E%3Cellipse cx='58' cy='15.0' rx='5.0' ry='4.0' fill='%23679CBE' opacity='0.6'/%3E%3Ccircle cx='53.0' cy='8.0' r='2.0' fill='%23679CBE' opacity='0.6'/%3E%3Ccircle cx='56.2' cy='6.0' r='2.0' fill='%23679CBE' opacity='0.6'/%3E%3Ccircle cx='59.8' cy='6.0' r='2.0' fill='%23679CBE' opacity='0.6'/%3E%3Ccircle cx='63.0' cy='8.0' r='2.0' fill='%23679CBE' opacity='0.6'/%3E%3Cellipse cx='35' cy='58.0' rx='5.0' ry='4.0' fill='%23C21121' opacity='0.35'/%3E%3Ccircle cx='30.0' cy='51.0' r='2.0' fill='%23C21121' opacity='0.35'/%3E%3Ccircle cx='33.2' cy='49.0' r='2.0' fill='%23C21121' opacity='0.35'/%3E%3Ccircle cx='36.8' cy='49.0' r='2.0' fill='%23C21121' opacity='0.35'/%3E%3Ccircle cx='40.0' cy='51.0' r='2.0' fill='%23C21121' opacity='0.35'/%3E%3Cellipse cx='75' cy='65.0' rx='5.0' ry='4.0' fill='%23679CBE' opacity='0.45'/%3E%3Ccircle cx='70.0' cy='58.0' r='2.0' fill='%23679CBE' opacity='0.45'/%3E%3Ccircle cx='73.2' cy='56.0' r='2.0' fill='%23679CBE' opacity='0.45'/%3E%3Ccircle cx='76.8' cy='56.0' r='2.0' fill='%23679CBE' opacity='0.45'/%3E%3Ccircle cx='80.0' cy='58.0' r='2.0' fill='%23679CBE' opacity='0.45'/%3E%3Cellipse cx='8' cy='63.0' rx='5.0' ry='4.0' fill='%2302314B' opacity='0.4'/%3E%3Ccircle cx='3.0' cy='56.0' r='2.0' fill='%2302314B' opacity='0.4'/%3E%3Ccircle cx='6.2' cy='54.0' r='2.0' fill='%2302314B' opacity='0.4'/%3E%3Ccircle cx='9.8' cy='54.0' r='2.0' fill='%2302314B' opacity='0.4'/%3E%3Ccircle cx='13.0' cy='56.0' r='2.0' fill='%2302314B' opacity='0.4'/%3E%3C/svg%3E");
     background-size:90px 90px;
     background-repeat:repeat;
+  }
+  html[data-mode="dark"] body{
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cellipse cx='18' cy='20.0' rx='5.0' ry='4.0' fill='%23679CBE' opacity='0.35'/%3E%3Ccircle cx='13.0' cy='13.0' r='2.0' fill='%23679CBE' opacity='0.35'/%3E%3Ccircle cx='16.2' cy='11.0' r='2.0' fill='%23679CBE' opacity='0.35'/%3E%3Ccircle cx='19.8' cy='11.0' r='2.0' fill='%23679CBE' opacity='0.35'/%3E%3Ccircle cx='23.0' cy='13.0' r='2.0' fill='%23679CBE' opacity='0.35'/%3E%3Cellipse cx='58' cy='15.0' rx='5.0' ry='4.0' fill='%23E3B94A' opacity='0.3'/%3E%3Ccircle cx='53.0' cy='8.0' r='2.0' fill='%23E3B94A' opacity='0.3'/%3E%3Ccircle cx='56.2' cy='6.0' r='2.0' fill='%23E3B94A' opacity='0.3'/%3E%3Ccircle cx='59.8' cy='6.0' r='2.0' fill='%23E3B94A' opacity='0.3'/%3E%3Ccircle cx='63.0' cy='8.0' r='2.0' fill='%23E3B94A' opacity='0.3'/%3E%3Cellipse cx='35' cy='58.0' rx='5.0' ry='4.0' fill='%23C21121' opacity='0.3'/%3E%3Ccircle cx='30.0' cy='51.0' r='2.0' fill='%23C21121' opacity='0.3'/%3E%3Ccircle cx='33.2' cy='49.0' r='2.0' fill='%23C21121' opacity='0.3'/%3E%3Ccircle cx='36.8' cy='49.0' r='2.0' fill='%23C21121' opacity='0.3'/%3E%3Ccircle cx='40.0' cy='51.0' r='2.0' fill='%23C21121' opacity='0.3'/%3E%3Cellipse cx='75' cy='65.0' rx='5.0' ry='4.0' fill='%23679CBE' opacity='0.3'/%3E%3Ccircle cx='70.0' cy='58.0' r='2.0' fill='%23679CBE' opacity='0.3'/%3E%3Ccircle cx='73.2' cy='56.0' r='2.0' fill='%23679CBE' opacity='0.3'/%3E%3Ccircle cx='76.8' cy='56.0' r='2.0' fill='%23679CBE' opacity='0.3'/%3E%3Ccircle cx='80.0' cy='58.0' r='2.0' fill='%23679CBE' opacity='0.3'/%3E%3Cellipse cx='8' cy='63.0' rx='5.0' ry='4.0' fill='%23E3B94A' opacity='0.25'/%3E%3Ccircle cx='3.0' cy='56.0' r='2.0' fill='%23E3B94A' opacity='0.25'/%3E%3Ccircle cx='6.2' cy='54.0' r='2.0' fill='%23E3B94A' opacity='0.25'/%3E%3Ccircle cx='9.8' cy='54.0' r='2.0' fill='%23E3B94A' opacity='0.25'/%3E%3Ccircle cx='13.0' cy='56.0' r='2.0' fill='%23E3B94A' opacity='0.25'/%3E%3C/svg%3E");
   }
   svg{display:block;}
 
@@ -115,6 +141,25 @@
   .form-row input:focus{border-color:#E3B4C0;}
   .form-row input:disabled{background:#F4EDE4; color:var(--text-faint); cursor:not-allowed;}
   .form-hint{font-size:11.5px; color:var(--text-faint); margin-top:6px; line-height:1.55;}
+
+  /* ---------------- Settings tab: mode toggle + theme swatches ---------------- */
+  .mode-toggle{display:flex; gap:10px;}
+  .mode-btn{
+    flex:1; display:flex; align-items:center; justify-content:center; gap:8px; padding:12px;
+    border:1.5px solid var(--border); border-radius:10px; cursor:pointer; font-size:13px; font-weight:600;
+    color:var(--text-dim); background:#fff;
+  }
+  .mode-btn svg{width:16px; height:16px;}
+  .mode-btn.active{border-color:var(--green); color:var(--green-text); background:var(--green-soft);}
+  .theme-swatch-list{display:flex; flex-wrap:wrap; gap:10px;}
+  .theme-swatch{
+    width:76px; display:flex; flex-direction:column; align-items:center; gap:6px; padding:8px 6px;
+    border:1.5px solid var(--border); border-radius:10px; cursor:pointer; background:#fff;
+  }
+  .theme-swatch.active{border-color:var(--green); box-shadow:0 0 0 2px var(--green-soft) inset;}
+  .theme-swatch-dots{display:flex; gap:3px;}
+  .theme-swatch-dots span{width:11px; height:11px; border-radius:50%; display:inline-block;}
+  .theme-swatch-label{font-size:11px; font-weight:600; color:var(--text-dim); text-align:center;}
 
   /* ---------------- Comment detail popover (compact card, anchored near the clicked row) ---------------- */
   .post-panel-backdrop{position:fixed; inset:0; background:transparent; z-index:95;}
@@ -428,6 +473,21 @@ const ICONS = {
       <line x1="16" y1="22" x2="9" y2="29"/>
     </g>
   </svg>`,
+  // มาสคอตหมี (แทนแมวโกรธเดิม) หน้ากลม หูสองข้าง แก้มปัดชมพู ตามธีมใหม่
+  bear: `<svg viewBox="0 0 64 64" fill="none">
+    <circle cx="16" cy="15" r="9" fill="#fff" stroke="#111318" stroke-width="3.5"/>
+    <circle cx="48" cy="15" r="9" fill="#fff" stroke="#111318" stroke-width="3.5"/>
+    <circle cx="16" cy="16" r="4" fill="#F3C9CE"/>
+    <circle cx="48" cy="16" r="4" fill="#F3C9CE"/>
+    <circle cx="32" cy="35" r="23" fill="#fff" stroke="#111318" stroke-width="3.5"/>
+    <circle cx="17" cy="39" r="4.2" fill="#F3C9CE" opacity="0.9"/>
+    <circle cx="47" cy="39" r="4.2" fill="#F3C9CE" opacity="0.9"/>
+    <circle cx="23" cy="31" r="2.8" fill="#111318"/>
+    <circle cx="41" cy="31" r="2.8" fill="#111318"/>
+    <ellipse cx="32" cy="42" rx="7.5" ry="5.5" fill="#fff" stroke="#111318" stroke-width="3"/>
+    <circle cx="32" cy="39.5" r="2.2" fill="#111318"/>
+    <path d="M27.5 45 Q32 48.5 36.5 45" stroke="#111318" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  </svg>`,
   users: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
   search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
   filter: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>`,
@@ -459,6 +519,37 @@ const ICONS = {
   // ดาว/สปาร์คสี่แฉก ใช้ตกแต่งพื้นหลังหน้า login
   sparkle: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 L14.2 9.8 L22 12 L14.2 14.2 L12 22 L9.8 14.2 L2 12 L9.8 9.8 Z"/></svg>`,
 };
+
+/* ============================================================
+   ธีม (สว่าง/มืด + เลือกธีมสี) — เก็บไว้ใน localStorage ของเบราว์เซอร์ (แยกคนละเครื่อง ไม่ผูกกับ
+   บัญชี Supabase Auth) ใช้ได้ตั้งแต่ก่อนล็อกอิน (หน้า login) เพราะอ่านจาก localStorage ตรงๆ ไม่ต้อง
+   รอ session ระบบรองรับหลายธีมได้ (THEMES) แต่ตอนนี้มีธีมเดียวก่อนตามที่ขอ เผื่อเพิ่มทีหลัง
+============================================================ */
+const THEME_MODE_KEY = 'commentgg_theme_mode';
+const THEME_NAME_KEY = 'commentgg_theme_name';
+const THEMES = {
+  bearNavy: { label: 'หมีเนวี่' },
+};
+function getThemeMode(){
+  const v = localStorage.getItem(THEME_MODE_KEY);
+  return v === 'dark' ? 'dark' : 'light';
+}
+function setThemeMode(mode){
+  localStorage.setItem(THEME_MODE_KEY, mode);
+  document.documentElement.setAttribute('data-mode', mode);
+}
+function getThemeName(){
+  const v = localStorage.getItem(THEME_NAME_KEY);
+  return THEMES[v] ? v : 'bearNavy';
+}
+function setThemeName(name){
+  if (!THEMES[name]) return;
+  localStorage.setItem(THEME_NAME_KEY, name);
+  document.documentElement.setAttribute('data-theme', name);
+}
+// ตั้งค่าตาม localStorage ทันทีตั้งแต่ต้น (ก่อนแม้แต่หน้า login) กันไม่ให้วาบเห็นธีมผิดตอนโหลดหน้า
+document.documentElement.setAttribute('data-mode', getThemeMode());
+document.documentElement.setAttribute('data-theme', getThemeName());
 
 /* ============================================================
    LIVE DATA (Supabase) — โหลดคอมเมนต์/ข้อความจริงจากฐานข้อมูล
@@ -982,7 +1073,7 @@ function renderTopbar(){
   return `
     <div class="topbar">
       <div class="topbar-brand">
-        <div class="mark">${ICONS.catAngry}</div>
+        <div class="mark">${ICONS.bear}</div>
         CommentGG
       </div>
       <div class="user-menu-wrap">
@@ -1062,8 +1153,33 @@ function renderProfileModal(){
     </div>
   `;
 
+  const modeVal = getThemeMode();
+  const themeVal = getThemeName();
+  const sunSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12h2.6M18.9 12h2.6M4.2 19.8l1.8-1.8M18 6l1.8-1.8"/></svg>`;
+  const moonSvg = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 14.5A8.5 8.5 0 019.5 3.5a.6.6 0 00-.75-.72A9.5 9.5 0 1021.2 15.25a.6.6 0 00-.7-.75z"/></svg>`;
   const settingsTabHtml = `
-    <div class="modal-desc">การตั้งค่าระบบเพิ่มเติม (การแจ้งเตือน, ธีม, สิทธิ์การใช้งาน ฯลฯ) จะเปิดให้ใช้งานเร็วๆ นี้</div>
+    <div class="modal-desc">เลือกโหมดสว่าง/มืด และธีมสีของระบบ (บันทึกไว้ในเครื่องนี้)</div>
+    <div class="form-row">
+      <label>โหมดการแสดงผล</label>
+      <div class="mode-toggle">
+        <div class="mode-btn ${modeVal === 'light' ? 'active' : ''}" data-action="set-theme-mode" data-mode="light">${sunSvg} สว่าง</div>
+        <div class="mode-btn ${modeVal === 'dark' ? 'active' : ''}" data-action="set-theme-mode" data-mode="dark">${moonSvg} มืด</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>ธีมสี</label>
+      <div class="theme-swatch-list">
+        ${Object.keys(THEMES).map(key => `
+          <div class="theme-swatch ${themeVal === key ? 'active' : ''}" data-action="set-theme-name" data-theme="${key}">
+            <div class="theme-swatch-dots">
+              <span style="background:#02314B"></span><span style="background:#679CBE"></span><span style="background:#C21121"></span>
+            </div>
+            <div class="theme-swatch-label">${THEMES[key].label}</div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="form-hint">ธีมเพิ่มเติมจะเปิดให้เลือกเร็วๆ นี้</div>
+    </div>
   `;
 
   return `
@@ -1462,32 +1578,42 @@ function render(){
    RENDER: LOGIN SCREEN
    ทีมมีหลายคน ใช้คนละไอดีกันเข้า — บัญชีสร้างโดยแอดมินเท่านั้น ไม่มีปุ่มสมัครเองในหน้านี้
 ============================================================ */
-// พื้นหลังลายดาวแบบ "polka dot" (ไล่สีตามธีม 甜桃榛果 Sweet Peach Hazelnut: ฟ้า/ครีม/ชมพู/น้ำตาล)
-// เรียงเป็นแพทเทิร์นซ้ำเต็มพื้นหลัง ใหญ่กว่าเวอร์ชันดาวกระจายเดิม
-const LOGIN_STAR_PATH = 'M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z';
-const LOGIN_STAR_COLORS = ['#78A5CE', '#FFF0D9', '#DDA4B4', '#7C5549'];
+// พื้นหลังลายอุ้งเท้าหมี (ธีมหมีเนวี่) ไล่สีตามโหมดสว่าง/มืด เรียงเป็นแพทเทิร์นซ้ำเต็มพื้นหลัง
+// (แทนที่ลายดาวเดิม ให้ตรงกับไอคอนหมีหน้า login และพื้นหลังลายอุ้งเท้าของแดชบอร์ดด้านใน)
+const LOGIN_PAW_COLORS = ['#02314B', '#679CBE', '#C21121', '#02314B'];
+const LOGIN_PAW_COLORS_DARK = ['#679CBE', '#E3B94A', '#C21121', '#679CBE'];
+// วาดอุ้งเท้า 1 ดวง: เบาะฝ่าเท้า (ellipse) + นิ้ว 4 นิ้ว (circle) ล้อมด้านบน
+function pawShape(color){
+  return `
+    <ellipse cx="0" cy="4" rx="6.5" ry="5.2" fill="${color}"/>
+    <circle cx="-6.5" cy="-4.5" r="2.6" fill="${color}"/>
+    <circle cx="-2.4" cy="-7" r="2.6" fill="${color}"/>
+    <circle cx="2.4" cy="-7" r="2.6" fill="${color}"/>
+    <circle cx="6.5" cy="-4.5" r="2.6" fill="${color}"/>
+  `;
+}
 function renderLoginStars(){
-  // ดาว 4 ดวง คนละสี ต่อ 1 ช่องลาย (tile) ขนาดเล็กลง ให้ดูเป็นลายพื้นผิวแบบเบาๆ (ไม่แย่งซีนกล่อง login)
+  const colors = getThemeMode() === 'dark' ? LOGIN_PAW_COLORS_DARK : LOGIN_PAW_COLORS;
+  // อุ้งเท้า 4 รอย คนละสี ต่อ 1 ช่องลาย (tile) ขนาดเล็กลง ให้ดูเป็นลายพื้นผิวแบบเบาๆ (ไม่แย่งซีนกล่อง login)
   const dots = [
-    { x: 22,  y: 22,  scale: .85, rot: -8,  color: LOGIN_STAR_COLORS[0] },
-    { x: 100, y: 30,  scale: .7,  rot: 14,  color: LOGIN_STAR_COLORS[1] },
-    { x: 28,  y: 102, scale: .75, rot: 20,  color: LOGIN_STAR_COLORS[2] },
-    { x: 104, y: 106, scale: .65, rot: -16, color: LOGIN_STAR_COLORS[3] },
+    { x: 22,  y: 22,  scale: .95, rot: -12, color: colors[0] },
+    { x: 100, y: 30,  scale: .8,  rot: 18,  color: colors[1] },
+    { x: 28,  y: 102, scale: .85, rot: 24,  color: colors[2] },
+    { x: 104, y: 106, scale: .75, rot: -20, color: colors[3] },
   ];
-  const stars = dots.map((d) => `
+  const paws = dots.map((d) => `
     <g transform="translate(${d.x},${d.y}) rotate(${d.rot}) scale(${d.scale})">
-      <path d="${LOGIN_STAR_PATH}" transform="translate(-12,-12)" fill="${d.color}"
-        stroke="rgba(124,85,73,.18)" stroke-width="0.6"/>
+      ${pawShape(d.color)}
     </g>
   `).join('');
   return `
     <svg class="login-stars" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <pattern id="loginStarTile" width="130" height="130" patternUnits="userSpaceOnUse">
-          ${stars}
+          ${paws}
         </pattern>
       </defs>
-      <rect width="100%" height="100%" fill="url(#loginStarTile)" opacity=".45"/>
+      <rect width="100%" height="100%" fill="url(#loginStarTile)" opacity=".4"/>
     </svg>
   `;
 }
@@ -1498,7 +1624,7 @@ function renderLogin(){
     <div class="login-wrap">
       ${renderLoginStars()}
       <form class="login-card" id="loginForm">
-        <div class="login-mark">${ICONS.catAngry}</div>
+        <div class="login-mark">${ICONS.bear}</div>
         <div class="login-title">CommentGG</div>
         <div class="login-sub">เข้าสู่ระบบด้วยบัญชีที่แอดมินสร้างให้</div>
         <input class="login-input" type="email" id="loginEmail" autocomplete="username" placeholder="อีเมล" value="${a.loginEmail}" required />
@@ -1922,6 +2048,14 @@ document.getElementById('app').addEventListener('click', (e) => {
     case 'clear-filters':
       state.filters = { status: 'all', blocked: 'all', dateRange: 'all', dateFrom: '', dateTo: '' };
       state.page = 1;
+      render(); break;
+
+    case 'set-theme-mode':
+      setThemeMode(el.dataset.mode);
+      render(); break;
+
+    case 'set-theme-name':
+      setThemeName(el.dataset.theme);
       render(); break;
 
     case 'select-all': {
