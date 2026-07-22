@@ -194,6 +194,7 @@
   }
   .icon-btn:hover{background:#f2f3f5;}
   .icon-btn svg{width:15px; height:15px;}
+  .icon-btn.disabled{opacity:.4; pointer-events:none; cursor:default;}
   .search-box{
     display:flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:7px; padding:0 9px;
     background:#fff; height:32px;
@@ -556,6 +557,11 @@ async function deleteAdminReply(item){
 // แก้สถานะใน Supabase ฝั่งเราเท่านั้น คอมเมนต์เลยยังโชว์อยู่บน Facebook ตามปกติ ไม่ได้ถูกซ่อนจริง)
 // อัปเดต UI แบบ optimistic แล้วค่อย revert ถ้า Facebook ปฏิเสธ
 async function setCommentHidden(item, hidden){
+  // กันกดซ้ำระหว่างที่คำขอเดิมของรายการนี้ยังไม่เสร็จ (ก่อนหน้านี้ไม่มีการกันเลย ถ้าผู้ใช้กดรัว
+  // เพราะดูเหมือนไม่มีอะไรเกิดขึ้น จะยิงคำขอซ้อนกันหลายรอบไปพร้อมกันจริง)
+  if (state.pendingActionIds.has(item.id)) return;
+  state.pendingActionIds.add(item.id);
+
   const prevStatus = item.status;
   const prevReason = item.aiReason;
   item.status = hidden ? 'spam_hidden' : 'pending';
@@ -576,6 +582,11 @@ async function setCommentHidden(item, hidden){
     item.status = prevStatus;
     item.aiReason = prevReason;
     showToast(err.message || 'ทำรายการไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+  } finally {
+    // เอาออกจากรายการ "ค้างอยู่" เสมอไม่ว่าจะสำเร็จหรือพลาด แล้ว render() ใหม่อีกครั้ง เพื่อให้ปุ่ม
+    // กลับมากดได้ และ UI ตรงกับผลลัพธ์จริงเสมอ (เผื่อระหว่างรอ loadData() แบบ poll เคยถูกกันไว้ไม่ให้
+    // ทับสถานะ optimistic นี้ — ดู loadData())
+    state.pendingActionIds.delete(item.id);
     render();
   }
 }
@@ -588,7 +599,18 @@ async function loadData(){
     ]);
     if (!pagesRes.ok || !itemsRes.ok) throw new Error('โหลดข้อมูลไม่สำเร็จ');
     PAGES = (await pagesRes.json()).map(mapPage);
-    ITEMS = (await itemsRes.json()).map(mapItem);
+    const freshItems = (await itemsRes.json()).map(mapItem);
+    if (state.pendingActionIds.size > 0) {
+      // มีบางรายการที่กำลังมีคำขอค้างอยู่กับ Facebook (เช่น กดซ่อน/เผยแพร่คืนแล้วยังรอผลอยู่) —
+      // ห้ามเอาข้อมูลจาก Supabase รอบนี้ (ที่ยังไม่ทันอัปเดตเพราะคำขอยังไม่เสร็จ) มาทับสถานะ
+      // optimistic ที่ตั้งไว้แล้วบนหน้าจอ ไม่งั้นจะดูเหมือนกดไปแล้วไม่มีอะไรเกิดขึ้น (บั๊กที่เจอ)
+      const oldById = new Map(ITEMS.map((it) => [it.id, it]));
+      ITEMS = freshItems.map((it) =>
+        state.pendingActionIds.has(it.id) && oldById.has(it.id) ? oldById.get(it.id) : it
+      );
+    } else {
+      ITEMS = freshItems;
+    }
   } catch (err) {
     console.error('โหลดข้อมูลจาก Supabase ไม่สำเร็จ:', err);
     showToast('โหลดข้อมูลคอมเมนต์ไม่สำเร็จ ลองรีเฟรชอีกครั้ง', 'error');
@@ -631,6 +653,12 @@ const state = {
 
   // ไอดีของ item ที่กำลังแก้ไขคำตอบที่ตอบไปแล้วอยู่ (แก้ inline ในกล่อง reply-quote เลย)
   editingReplyId: null,
+
+  // ไอดีของ item ที่มีคำขอค้างอยู่กับ Facebook (เช่น กดซ่อน/เผยแพร่คืน) — ใช้กัน 2 เรื่อง:
+  // 1) กันกดปุ่มซ้ำระหว่างที่คำขอเดิมยังไม่เสร็จ (ป้องกันยิงคำขอซ้อนกันหลายรอบ)
+  // 2) กัน loadData() (poll ทุก 20 วิ) เอาข้อมูลเก่าจาก Supabase มาทับสถานะที่เพิ่ง optimistic ไว้
+  //    ก่อนที่คำขอจริงจะเขียนลง Supabase เสร็จ — ไม่งั้นจะดูเหมือนกดแล้วไม่มีอะไรเกิดขึ้น
+  pendingActionIds: new Set(),
 };
 
 /* ============================================================
@@ -955,9 +983,12 @@ function rowActions(item){
     `;
   }
 
+  // ระหว่างที่คำขอซ่อน/เผยแพร่คืนของรายการนี้ยังไม่เสร็จ ให้ปุ่มดูจาง+กดไม่ได้ไปก่อน แทนที่จะดู
+  // เหมือนกดได้ปกติแต่ไม่มีอะไรเกิดขึ้น (สาเหตุเดิมของบั๊ก "กดครั้งแรกไม่ซ่อนให้")
+  const hidePending = state.pendingActionIds.has(item.id);
   const hideBtn = item.status === 'spam_hidden'
-    ? `<div class="icon-btn" data-action="unhide" data-id="${item.id}" title="เผยแพร่คืน">${ICONS.eye}</div>`
-    : `<div class="icon-btn" data-action="hide" data-id="${item.id}" title="ซ่อนคอมเมนต์">${ICONS.eyeOff}</div>`;
+    ? `<div class="icon-btn${hidePending ? ' disabled' : ''}" data-action="unhide" data-id="${item.id}" title="เผยแพร่คืน">${ICONS.eye}</div>`
+    : `<div class="icon-btn${hidePending ? ' disabled' : ''}" data-action="hide" data-id="${item.id}" title="ซ่อนคอมเมนต์">${ICONS.eyeOff}</div>`;
 
   const archiveBtn = item.folder === 'archive'
     ? `<div class="icon-btn" data-action="unarchive" data-id="${item.id}" title="ย้ายกลับ Inbox">${ICONS.inbox}</div>`
