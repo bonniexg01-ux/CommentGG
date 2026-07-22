@@ -1894,7 +1894,13 @@ sb.auth.onAuthStateChange((event, session) => {
   if (session && !hadSession) loadData();
 });
 
-setInterval(() => { if (!state.expandedId) loadData(); }, 20000);
+// ระหว่างที่ผู้ใช้กำลังพิมพ์/แก้ไขอะไรอยู่ (กล่องตอบกลับ, แก้ไขคำตอบเดิม, หรือเปิด Account settings
+// อยู่) ห้ามให้ poll ทุก 20 วิ ดึงข้อมูลมา render() ทับกลางคัน — ไม่งั้น input จะถูกสร้างใหม่จาก
+// ค่าเดิม (ที่ยังไม่ได้บันทึก) ทำให้สิ่งที่พิมพ์ค้างอยู่หายไป/เคอร์เซอร์กระโดด เหมือนพิมพ์ไม่ติด
+function isUserEditingSomething(){
+  return !!state.expandedId || !!state.editingReplyId || state.profileOpen || state.postPanel.open;
+}
+setInterval(() => { if (!isUserEditingSomething()) loadData(); }, 20000);
 </script>
 </body>
 </html>
