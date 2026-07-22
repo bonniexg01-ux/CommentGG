@@ -260,6 +260,8 @@
   .composer-alert svg{width:15px; height:15px; flex:none; margin-top:1px; color:var(--red);}
   .composer-hint-ok{display:flex; gap:6px; align-items:center; font-size:11.5px; color:var(--green); margin-top:7px;}
   .composer-hint-ok svg{width:13px; height:13px;}
+  .composer-hint-neutral{display:flex; gap:6px; align-items:center; font-size:11.5px; color:var(--text-faint); margin-top:7px;}
+  .composer-hint-neutral svg{width:13px; height:13px; flex:none;}
   .composer-foot{display:flex; align-items:center; justify-content:space-between; margin-top:9px;}
   .composer-rules{font-size:11px; color:var(--text-faint);}
   .composer-rules b{color:var(--text-dim);}
@@ -968,21 +970,14 @@ function updateComposerState(item, box, page){
       </div>
     `;
     setDisabled(true);
-  } else if (ownMissing) {
-    box.classList.add('violate');
-    const list = ownMissing.map(m => `${m.type} “${m.term}”`).join(', ');
-    alertZone.innerHTML = `
-      <div class="composer-alert">
-        ${ICONS.alert}
-        <div>
-          <b>⚠️ ข้อความยังไม่ครบ identity ของเพจนี้</b> — ขาด: ${list} กรุณาใส่ให้ครบก่อนส่ง (กันตอบผิดเพจตอนสลับหลายเพจ)
-        </div>
-      </div>
-    `;
-    setDisabled(true);
   } else {
+    // ไม่บล็อกการส่งแม้ identity เพจตัวเองจะยังไม่ครบ (บางทีตอบแบบไม่มีสรรพนามก็ได้) —
+    // แค่เตือนไว้เฉยๆ ให้รู้ว่าเพจนี้ปกติควรมีอะไรบ้าง กันหลงเวลาสลับตอบหลายเพจ
     box.classList.remove('violate');
-    if (text.trim().length > 0) {
+    if (ownMissing) {
+      const list = ownMissing.map(m => `${m.type} “${m.term}”`).join(', ');
+      alertZone.innerHTML = `<div class="composer-hint-neutral">${ICONS.alert} เพจนี้ปกติใช้: สรรพนาม “${page.pronoun}”, คำลงท้าย “${page.ending}”, แฮชแท็ก “${page.hashtag}” — ยังไม่มี: ${list}</div>`;
+    } else if (text.trim().length > 0) {
       alertZone.innerHTML = `<div class="composer-hint-ok">${ICONS.checkCircle} ใช้สรรพนาม “${page.pronoun}”, คำลงท้าย “${page.ending}” และแฮชแท็ก “${page.hashtag}” ถูกต้องสำหรับเพจนี้ครบแล้ว</div>`;
     } else {
       alertZone.innerHTML = '';
@@ -1227,8 +1222,6 @@ document.getElementById('app').addEventListener('click', (e) => {
       if (violation) { showToast(`ส่งไม่สำเร็จ: พบคำของเพจอื่น ("${violation.term}") กรุณาแก้ไขก่อนส่ง`, 'error'); return; }
       const endingViolation = checkEndingViolation(text, page);
       if (endingViolation) { showToast(`ส่งไม่สำเร็จ: เพจนี้ต้องใช้คำลงท้าย "${page.ending}" ไม่ใช่ "${endingViolation.term}"`, 'error'); return; }
-      const ownMissing = checkOwnIdentityMissing(text, page);
-      if (ownMissing) { showToast(`ส่งไม่สำเร็จ: ข้อความยังไม่มี ${ownMissing.map(m => `${m.type} "${m.term}"`).join(', ')} ของเพจนี้`, 'error'); return; }
       sendReply(item, text);
       break;
     }
@@ -1242,8 +1235,6 @@ document.getElementById('app').addEventListener('click', (e) => {
       if (violation) { showToast(`ส่งไม่สำเร็จ: พบคำของเพจอื่น ("${violation.term}") กรุณาแก้ไขก่อนส่ง`, 'error'); return; }
       const endingViolation = checkEndingViolation(text, page);
       if (endingViolation) { showToast(`ส่งไม่สำเร็จ: เพจนี้ต้องใช้คำลงท้าย "${page.ending}" ไม่ใช่ "${endingViolation.term}"`, 'error'); return; }
-      const ownMissing = checkOwnIdentityMissing(text, page);
-      if (ownMissing) { showToast(`ส่งไม่สำเร็จ: ข้อความยังไม่มี ${ownMissing.map(m => `${m.type} "${m.term}"`).join(', ')} ของเพจนี้`, 'error'); return; }
       sendReply(item, text, true);
       break;
     }
