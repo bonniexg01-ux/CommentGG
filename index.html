@@ -547,8 +547,10 @@ function checkEndingViolation(text, page){
   return null;
 }
 
+// ไม่ใส่คำลงท้าย (ค่ะ/ครับ) อัตโนมัติแล้ว — ให้แอดมินพิมพ์เองตามที่เห็นในบรรทัด
+// "คำลงท้าย: ..." ด้านล่างกล่องพิมพ์ ใส่แค่แฮชแท็กประจำเพจให้อัตโนมัติเหมือนเดิม
 function signatureFor(page){
-  return `${page.ending} ${page.hashtag}`;
+  return page.hashtag || '';
 }
 
 /* ============================================================
@@ -810,7 +812,7 @@ function renderExpandPanel(item){
   inner += `
     <div class="composer">
       <div class="composer-label" style="display:flex; align-items:center; justify-content:space-between;">
-        <span>ตอบกลับในนาม ${page.emoji} ${page.name}</span>
+        <span>ตอบกลับในนามเพจ ${page.emoji} ${page.name}</span>
         <span class="btn" style="padding:4px 9px; font-size:11px;" data-action="insert-signature" data-id="${item.id}">${ICONS.copy} แทรกลายเซ็น</span>
       </div>
       <textarea id="replyBox-${item.id}" placeholder="พิมพ์ข้อความตอบกลับ... (ต้องใช้สรรพนาม “${page.pronoun}” สำหรับเพจนี้)">${signatureFor(page)}</textarea>
