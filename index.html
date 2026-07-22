@@ -215,6 +215,22 @@
   .bulk-actions-wrap .btn.primary .chev{width:13px; height:13px; opacity:.85; transition:transform .15s; margin-left:2px;}
   .bulk-actions-wrap .btn.primary .chev.open{transform:rotate(180deg);}
 
+  .filters-wrap{position:relative;}
+  .filters-panel{
+    position:absolute; top:calc(100% + 8px); left:0; background:#fff; border:1px solid var(--border);
+    border-radius:12px; box-shadow:0 12px 32px rgba(43,33,29,.18); width:260px; padding:16px; z-index:80;
+  }
+  .filters-panel .f-row{margin-bottom:14px;}
+  .filters-panel .f-row:last-child{margin-bottom:0;}
+  .filters-panel label{display:block; font-size:12px; font-weight:700; margin-bottom:6px; color:var(--text-dim);}
+  .filters-panel select, .filters-panel input[type=date]{
+    width:100%; border:1.5px solid var(--border); border-radius:8px; padding:7px 9px; font-size:12.5px;
+    font-family:inherit; outline:none; color:var(--text); background:#fff;
+  }
+  .filters-panel select:focus, .filters-panel input[type=date]:focus{border-color:#E3B4C0;}
+  .filters-panel .f-foot{display:flex; align-items:center; justify-content:space-between; margin-top:4px; padding-top:12px; border-top:1px solid var(--border);}
+  .filters-panel .f-foot .btn{font-size:12px; padding:6px 11px;}
+
   .btn{
     display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:6px 12px;
     border-radius:7px; border:1px solid var(--border); background:#fff; color:var(--text-dim); cursor:pointer;
@@ -525,6 +541,7 @@ function mapItem(row){
   return {
     id: row.id, pageId: row.page_id, type: row.type,
     author: row.author_name || 'ไม่ทราบชื่อ', text: row.message || '', time: timeAgo(row.created_at),
+    createdAt: row.created_at, // เก็บค่าดิบไว้ด้วย (นอกจาก time ที่แปลงเป็น "kนาทีที่แล้ว" แล้ว) ใช้กรองตามช่วงเวลาใน Filters
     status: row.status, folder: row.folder,
     postExcerpt: row.post_excerpt || null, aiReason: row.ai_reason || null, adminReply: row.admin_reply || null,
     adminReplyFbId: row.admin_reply_fb_id || null, adminReplyBy: row.admin_reply_by || null,
@@ -568,6 +585,24 @@ async function deleteFeedItem(id){
     console.error('ลบไม่สำเร็จ:', err);
     showToast('ลบไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
   }
+}
+
+// ทุกปุ่มที่ทำ "แก้ค่าใน state ทันที (optimistic) แล้วค่อยยิง PATCH/DELETE ไป Supabase เบื้องหลัง"
+// (ย้ายถัง/กู้คืน/ลบถาวร/archive/unarchive และเวอร์ชัน bulk) มีบั๊กแบบเดียวกับที่เจอตอนซ่อน/เผยแพร่คืน
+// คอมเมนต์และตอบกลับมาก่อนหน้านี้: ถ้า poll (ทุก 20 วิ) ดันดึงข้อมูลมาพอดีก่อนที่ PATCH/DELETE
+// จะเขียนเสร็จจริงที่ Supabase รายการจะกระพริบกลับไปเป็นค่าเก่า เพราะไม่มีอะไรกันไว้เลย ใช้
+// state.pendingActionIds ตัวเดียวกับที่ใช้กันซ่อน/เผยแพร่คืนไว้ ครอบคลุมทุกปุ่มเหล่านี้ให้หมด
+function protectedPatch(id, fields){
+  state.pendingActionIds.add(id);
+  patchFeedItem(id, fields).finally(() => {
+    state.pendingActionIds.delete(id);
+  });
+}
+function protectedDelete(id){
+  state.pendingActionIds.add(id);
+  deleteFeedItem(id).finally(() => {
+    state.pendingActionIds.delete(id);
+  });
 }
 
 // ส่งข้อความตอบกลับจริงไปที่ Facebook ผ่าน /api/reply (server-side, ใช้ page access_token ที่เก็บไว้ใน Supabase)
@@ -627,8 +662,9 @@ function sendReply(item, text, archiveAfter){
 function revertFailedReply(itemId, errorMessage){
   const item = ITEMS.find(i => i.id === itemId);
   if (item) item.status = 'failed';
-  state.pendingActionIds.delete(itemId);
-  patchFeedItem(itemId, { status: 'failed' });
+  // ใช้ protectedPatch (ไม่ใช่ลบออกจาก pendingActionIds ก่อนแล้วค่อยยิง patch แยก) กันไม่ให้ poll
+  // แทรกเข้ามาระหว่างช่วงที่สถานะ 'failed' นี้ยังเขียนลง Supabase ไม่เสร็จ
+  protectedPatch(itemId, { status: 'failed' });
   showToast(errorMessage || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
   render();
 }
@@ -741,13 +777,15 @@ async function loadData(){
       rows.forEach(r => { MY_HASHTAGS[r.page_id] = r.hashtag || ''; });
     }
     if (state.pendingActionIds.size > 0) {
-      // มีบางรายการที่กำลังมีคำขอค้างอยู่กับ Facebook (เช่น กดซ่อน/เผยแพร่คืนแล้วยังรอผลอยู่) —
+      // มีบางรายการที่กำลังมีคำขอค้างอยู่ (ตอบ/ซ่อน/ย้ายถัง/ลบถาวร ฯลฯ ที่ยังรอ Supabase เขียนเสร็จ) —
       // ห้ามเอาข้อมูลจาก Supabase รอบนี้ (ที่ยังไม่ทันอัปเดตเพราะคำขอยังไม่เสร็จ) มาทับสถานะ
       // optimistic ที่ตั้งไว้แล้วบนหน้าจอ ไม่งั้นจะดูเหมือนกดไปแล้วไม่มีอะไรเกิดขึ้น (บั๊กที่เจอ)
       const oldById = new Map(ITEMS.map((it) => [it.id, it]));
-      ITEMS = freshItems.map((it) =>
-        state.pendingActionIds.has(it.id) && oldById.has(it.id) ? oldById.get(it.id) : it
-      );
+      ITEMS = freshItems
+        // กรณี "ลบถาวร" — เอารายการออกจาก ITEMS ไปแล้วทันที (ไม่อยู่ใน oldById) แต่ Supabase ยังลบ
+        // ไม่เสร็จจริง รอบนี้เลยยังเจอแถวเดิมอยู่ — ต้องกรองทิ้งไปเลย ไม่ใช่ปล่อยให้โผล่กลับมา
+        .filter((it) => !(state.pendingActionIds.has(it.id) && !oldById.has(it.id)))
+        .map((it) => (state.pendingActionIds.has(it.id) && oldById.has(it.id) ? oldById.get(it.id) : it));
     } else {
       ITEMS = freshItems;
     }
@@ -775,6 +813,15 @@ const state = {
   expandedId: null,
   bulkMenuOpen: false,
   page: 1, // หน้าปัจจุบันของรายการ (แบ่งหน้าละ PAGE_SIZE รายการ) รีเซ็ตเป็น 1 ทุกครั้งที่เปลี่ยนตัวกรอง
+
+  filtersOpen: false,
+  filters: {
+    status: 'all',     // all | pending | replied | failed | spam_hidden
+    blocked: 'all',    // all | yes | no
+    dateRange: 'all',  // all | today | 7d | custom
+    dateFrom: '',       // ใช้เมื่อ dateRange === 'custom' (YYYY-MM-DD)
+    dateTo: '',
+  },
 
   userMenuOpen: false,
   profileOpen: false,
@@ -823,13 +870,52 @@ function itemsByTypeAndPage(type){
   return ITEMS.filter(it => it.type === type && (state.pageFilter === 'all' || it.pageId === state.pageFilter));
 }
 function folderCount(type, folder){
-  return itemsByTypeAndPage(type).filter(it => it.folder === folder).length;
+  // นับตาม Filters ที่ตั้งไว้ด้วย (สถานะ/บล็อก/ช่วงเวลา) ให้ตัวเลข Inbox/Archive/Bin ตรงกับรายการ
+  // ที่เห็นจริงในหน้าจอเสมอ — ไม่งั้นจะดูเหมือนบั๊ก (เช่น ขึ้น "Inbox 12" แต่กรองแล้วเหลือโชว์แค่ 3)
+  return itemsByTypeAndPage(type).filter(it => it.folder === folder && matchesFilters(it)).length;
 }
+// เช็คว่ารายการนี้ผ่านเงื่อนไขที่ตั้งไว้ในแผง Filters หรือไม่ (สถานะ/ผู้ใช้ถูกบล็อก/ช่วงเวลา)
+// แยกจากตัวกรองอื่น (เพจ/แท็บ/โฟลเดอร์/ค้นหา) ที่มีอยู่แล้วเพื่อไม่ต้องยุ่งกับของเดิม
+function matchesFilters(it){
+  const f = state.filters;
+  if (f.status !== 'all' && it.status !== f.status) return false;
+  if (f.blocked !== 'all') {
+    const wantBlocked = f.blocked === 'yes';
+    if (!!it.blocked !== wantBlocked) return false;
+  }
+  if (f.dateRange !== 'all') {
+    const created = it.createdAt ? new Date(it.createdAt).getTime() : NaN;
+    if (Number.isNaN(created)) return false;
+    if (f.dateRange === 'today') {
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      if (created < start.getTime()) return false;
+    } else if (f.dateRange === '7d') {
+      if (created < Date.now() - 7 * 24 * 60 * 60 * 1000) return false;
+    } else if (f.dateRange === 'custom') {
+      if (f.dateFrom) {
+        const from = new Date(f.dateFrom + 'T00:00:00').getTime();
+        if (!Number.isNaN(from) && created < from) return false;
+      }
+      if (f.dateTo) {
+        const to = new Date(f.dateTo + 'T23:59:59').getTime();
+        if (!Number.isNaN(to) && created > to) return false;
+      }
+    }
+  }
+  return true;
+}
+// มีตัวกรองอะไรตั้งไว้อยู่ไหม (ใช้โชว์จุดเตือนบนไอคอน Filters ให้รู้ว่ากำลังกรองอยู่)
+function hasActiveFilters(){
+  const f = state.filters;
+  return f.status !== 'all' || f.blocked !== 'all' || f.dateRange !== 'all';
+}
+
 function visibleItems(){
   let list = ITEMS.filter(it => {
     if (it.type !== state.tab) return false;
     if (it.folder !== state.folder) return false;
     if (state.pageFilter !== 'all' && it.pageId !== state.pageFilter) return false;
+    if (!matchesFilters(it)) return false;
     if (state.search.trim()) {
       const q = state.search.trim().toLowerCase();
       if (!it.author.toLowerCase().includes(q) && !it.text.toLowerCase().includes(q)) return false;
@@ -1082,6 +1168,57 @@ function renderSubnav(){
 // toolbar แถวเดียวเสมอ (checkbox/filters/sort/search ทางซ้ายไม่หายไปไหน) พอมีการเลือกรายการ
 // ฝั่งขวาจะสลับจากไอคอน Export เป็นปุ่ม "Bulk archive (N)" (พร้อมไอคอน) และ "Bulk actions (N)"
 // ซึ่งกดแล้วย้ายไปถังขยะเลยตรงๆ (ไม่มี dropdown) พร้อมไอคอนถังขยะ
+function renderFiltersPanel(){
+  const f = state.filters;
+  return `
+    <div class="filters-panel" data-action="stop-propagation">
+      <div class="f-row">
+        <label>สถานะ</label>
+        <select data-action="set-filter" data-key="status">
+          <option value="all" ${f.status === 'all' ? 'selected' : ''}>ทั้งหมด</option>
+          <option value="pending" ${f.status === 'pending' ? 'selected' : ''}>ต้องตอบกลับ</option>
+          <option value="replied" ${f.status === 'replied' ? 'selected' : ''}>ตอบแล้ว</option>
+          <option value="failed" ${f.status === 'failed' ? 'selected' : ''}>ส่งไม่สำเร็จ</option>
+          <option value="spam_hidden" ${f.status === 'spam_hidden' ? 'selected' : ''}>ซ่อนไว้</option>
+        </select>
+      </div>
+      <div class="f-row">
+        <label>ผู้ใช้ถูกบล็อก</label>
+        <select data-action="set-filter" data-key="blocked">
+          <option value="all" ${f.blocked === 'all' ? 'selected' : ''}>ทั้งหมด</option>
+          <option value="yes" ${f.blocked === 'yes' ? 'selected' : ''}>ถูกบล็อก</option>
+          <option value="no" ${f.blocked === 'no' ? 'selected' : ''}>ไม่ถูกบล็อก</option>
+        </select>
+      </div>
+      <div class="f-row">
+        <label>ช่วงเวลา</label>
+        <select data-action="set-filter" data-key="dateRange">
+          <option value="all" ${f.dateRange === 'all' ? 'selected' : ''}>ทั้งหมด</option>
+          <option value="today" ${f.dateRange === 'today' ? 'selected' : ''}>วันนี้</option>
+          <option value="7d" ${f.dateRange === '7d' ? 'selected' : ''}>7 วันล่าสุด</option>
+          <option value="custom" ${f.dateRange === 'custom' ? 'selected' : ''}>กำหนดเอง</option>
+        </select>
+      </div>
+      ${f.dateRange === 'custom' ? `
+        <div class="f-row" style="display:flex; gap:8px;">
+          <div style="flex:1;">
+            <label>จากวันที่</label>
+            <input type="date" data-action="set-filter" data-key="dateFrom" value="${f.dateFrom}" />
+          </div>
+          <div style="flex:1;">
+            <label>ถึงวันที่</label>
+            <input type="date" data-action="set-filter" data-key="dateTo" value="${f.dateTo}" />
+          </div>
+        </div>
+      ` : ''}
+      <div class="f-foot">
+        <span class="btn" data-action="clear-filters">ล้างตัวกรอง</span>
+        <span class="btn primary" data-action="close-filters">เสร็จสิ้น</span>
+      </div>
+    </div>
+  `;
+}
+
 function renderToolbar(){
   const items = visibleItems();
   const allSelected = items.length > 0 && items.every(i => state.selected.has(i.id));
@@ -1096,10 +1233,16 @@ function renderToolbar(){
     `
     : '';
 
+  const filtersActive = hasActiveFilters();
+
   return `
     <div class="toolbar">
       <label><input type="checkbox" ${allSelected ? 'checked' : ''} data-action="select-all" /> Select visible</label>
-      <div class="icon-btn" data-action="noop-filter" title="Filters">${ICONS.filter}</div>
+      <div class="filters-wrap">
+        <div class="icon-btn" data-action="toggle-filters" title="Filters" style="${filtersActive ? 'background:var(--green-soft); border-color:#EFC3CE; color:var(--green-text);' : ''}">${ICONS.filter}</div>
+        ${state.filtersOpen ? renderFiltersPanel() : ''}
+      </div>
+      ${state.filtersOpen ? `<div class="menu-backdrop" data-action="close-filters"></div>` : ''}
       <div class="icon-btn" data-action="toggle-sort" title="Sort">${ICONS.sort}</div>
       ${state.searchOpen
         ? `<div class="search-box">${ICONS.search}<input id="searchInput" type="text" placeholder="ค้นหาชื่อหรือข้อความ..." value="${state.search}" /></div>`
@@ -1632,7 +1775,18 @@ document.getElementById('app').addEventListener('mousedown', (e) => {
   lastMouseDownTarget = e.target;
 });
 
-const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu']);
+// select/input[type=date] ในแผง Filters ใช้ event "change" (ไม่ใช่ "click" เหมือน data-action อื่นๆ
+// ทั้งหมด) เลยแยก listener ต่างหาก แต่ยังใช้ data-action="set-filter" + data-key ตัวเดียวกันเพื่อให้
+// อ่านง่ายสอดคล้องกับแพทเทิร์นเดิม
+document.getElementById('app').addEventListener('change', (e) => {
+  const el = e.target.closest('[data-action="set-filter"]');
+  if (!el) return;
+  state.filters[el.dataset.key] = el.value;
+  state.page = 1;
+  render();
+});
+
+const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu', 'close-filters']);
 
 document.getElementById('app').addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
@@ -1785,9 +1939,18 @@ document.getElementById('app').addEventListener('click', (e) => {
       state.searchOpen = true;
       render(); break;
 
-    case 'noop-filter':
-      showToast('ฟีเจอร์นี้จะเปิดใช้งานเร็วๆ นี้');
-      break;
+    case 'toggle-filters':
+      state.filtersOpen = !state.filtersOpen;
+      render(); break;
+
+    case 'close-filters':
+      state.filtersOpen = false;
+      render(); break;
+
+    case 'clear-filters':
+      state.filters = { status: 'all', blocked: 'all', dateRange: 'all', dateFrom: '', dateTo: '' };
+      state.page = 1;
+      render(); break;
 
     case 'select-all': {
       const items = visibleItems();
@@ -1815,12 +1978,12 @@ document.getElementById('app').addEventListener('click', (e) => {
       render(); break;
 
     case 'bulk-archive':
-      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'archive'; patchFeedItem(sid, { folder: 'archive' }); });
+      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'archive'; protectedPatch(sid, { folder: 'archive' }); });
       showToast(`ย้าย ${state.selected.size} รายการไป Archive แล้ว`, 'success');
       state.selected.clear(); state.bulkMenuOpen = false; render(); break;
 
     case 'bulk-bin':
-      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'bin'; patchFeedItem(sid, { folder: 'bin' }); });
+      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'bin'; protectedPatch(sid, { folder: 'bin' }); });
       showToast(`ย้าย ${state.selected.size} รายการไปถังขยะแล้ว`, 'success');
       state.selected.clear(); state.bulkMenuOpen = false; render(); break;
 
@@ -1882,31 +2045,31 @@ document.getElementById('app').addEventListener('click', (e) => {
     case 'bin':
       item.folder = 'bin';
       state.expandedId = null;
-      patchFeedItem(item.id, { folder: 'bin' });
+      protectedPatch(item.id, { folder: 'bin' });
       showToast('ย้ายไปถังขยะแล้ว', 'success');
       render(); break;
 
     case 'restore':
       item.folder = 'inbox';
-      patchFeedItem(item.id, { folder: 'inbox' });
+      protectedPatch(item.id, { folder: 'inbox' });
       showToast('กู้คืนรายการแล้ว', 'success');
       render(); break;
 
     case 'delete-forever':
       ITEMS = ITEMS.filter(i => i.id !== id);
-      deleteFeedItem(id);
+      protectedDelete(id);
       showToast('ลบถาวรแล้ว', 'success');
       render(); break;
 
     case 'archive':
       item.folder = 'archive';
-      patchFeedItem(item.id, { folder: 'archive' });
+      protectedPatch(item.id, { folder: 'archive' });
       showToast('ย้ายไป Archive แล้ว', 'success');
       render(); break;
 
     case 'unarchive':
       item.folder = 'inbox';
-      patchFeedItem(item.id, { folder: 'inbox' });
+      protectedPatch(item.id, { folder: 'inbox' });
       showToast('ย้ายกลับ Inbox แล้ว', 'success');
       render(); break;
 
@@ -1985,7 +2148,13 @@ sb.auth.onAuthStateChange((event, session) => {
 // อยู่) ห้ามให้ poll ทุก 20 วิ ดึงข้อมูลมา render() ทับกลางคัน — ไม่งั้น input จะถูกสร้างใหม่จาก
 // ค่าเดิม (ที่ยังไม่ได้บันทึก) ทำให้สิ่งที่พิมพ์ค้างอยู่หายไป/เคอร์เซอร์กระโดด เหมือนพิมพ์ไม่ติด
 function isUserEditingSomething(){
-  return !!state.expandedId || !!state.editingReplyId || state.profileOpen || state.postPanel.open;
+  // เช็คโฟกัสจริงของช่องค้นหาด้วย (ไม่ใช่แค่ state.searchOpen เพราะกล่องค้นหาไม่มีปุ่มปิดเลย เปิดแล้ว
+  // จะเป็น true ค้างตลอดทั้ง session — ถ้าใช้ค่านั้นตรงๆ จะกลายเป็นหยุด poll ถาวรทันทีที่เคยกดค้นหา
+  // สักครั้ง) เดิม poll เต็มรูปแบบ (render() สร้าง DOM ใหม่ทั้งหน้า) จะตัดโฟกัส/ตำแหน่งเคอร์เซอร์ในช่อง
+  // ค้นหาทิ้งทุก 20 วิ ถ้าดันพิมพ์อยู่พอดี (ค่าที่พิมพ์ไม่หายเพราะเก็บใน state.search แต่โฟกัสจะหลุด
+  // เหมือนพิมพ์ไม่ติด คล้ายบั๊กที่เจอใน Account settings ก่อนหน้านี้)
+  const searchFocused = state.searchOpen && document.activeElement && document.activeElement.id === 'searchInput';
+  return !!state.expandedId || !!state.editingReplyId || state.profileOpen || state.postPanel.open || searchFocused;
 }
 setInterval(() => { if (!isUserEditingSomething()) loadData(); }, 20000);
 </script>
