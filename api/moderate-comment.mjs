@@ -85,11 +85,17 @@ export default async function handler(request) {
     }
 
     if (fbResult && fbResult.error) {
-      console.error('moderate-comment error: Facebook ปฏิเสธ', fbResult.error);
       const e = fbResult.error;
-      const detail = [e.message, e.type, e.code != null ? `code ${e.code}` : null, e.error_subcode != null ? `subcode ${e.error_subcode}` : null]
-        .filter(Boolean).join(' | ');
-      return json({ error: `Facebook ปฏิเสธ: ${detail || 'unknown error'}` }, 502);
+      // subcode 1446036 = "Duplicate Mark Spam Request" — คอมเมนต์นี้ถูกซ่อนไปแล้วจริงๆ ตั้งแต่
+      // ครั้งก่อน (Facebook ทำสำเร็จแล้ว แค่ตอนนั้นเราไม่ได้เขียนสถานะฝั่งเราให้ตรงกัน) ไม่ใช่ error
+      // จริง ให้ถือว่าสำเร็จแล้วต่อ (idempotent) แทนที่จะโชว์ error ซ้ำไปเรื่อยๆ
+      const alreadyDone = hidden && e.error_subcode === 1446036;
+      if (!alreadyDone) {
+        console.error('moderate-comment error: Facebook ปฏิเสธ', e);
+        const detail = [e.message, e.type, e.code != null ? `code ${e.code}` : null, e.error_subcode != null ? `subcode ${e.error_subcode}` : null]
+          .filter(Boolean).join(' | ');
+        return json({ error: `Facebook ปฏิเสธ: ${detail || 'unknown error'}` }, 502);
+      }
     }
 
     if (hidden) {
