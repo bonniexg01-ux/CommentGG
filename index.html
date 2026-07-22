@@ -757,6 +757,9 @@ async function loadData(){
 /* ============================================================
    STATE
 ============================================================ */
+// จำนวนคอมเมนต์ต่อหน้า — เกินนี้ปัดไปหน้าถัดไปแทนที่จะโชว์รวดยาวหน้าเดียว
+const PAGE_SIZE = 25;
+
 const state = {
   pageFilter: 'all',
   tab: 'comment',
@@ -767,6 +770,7 @@ const state = {
   selected: new Set(),
   expandedId: null,
   bulkMenuOpen: false,
+  page: 1, // หน้าปัจจุบันของรายการ (แบ่งหน้าละ PAGE_SIZE รายการ) รีเซ็ตเป็น 1 ทุกครั้งที่เปลี่ยนตัวกรอง
 
   userMenuOpen: false,
   profileOpen: false,
@@ -1262,7 +1266,29 @@ function renderList(){
       </div>
     `;
   }
-  return items.map(renderRow).join('');
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  // เผื่อรายการลดลงจนหน้าปัจจุบันเกินขอบเขต (เช่น ลบ/ย้ายรายการจนหน้าสุดท้ายว่างไปแล้ว)
+  if (state.page > totalPages) state.page = totalPages;
+  const start = (state.page - 1) * PAGE_SIZE;
+  const pageItems = items.slice(start, start + PAGE_SIZE);
+  return pageItems.map(renderRow).join('') + renderPagination(totalPages);
+}
+
+function renderPagination(totalPages){
+  if (totalPages <= 1) return '';
+  const prevDisabled = state.page <= 1;
+  const nextDisabled = state.page >= totalPages;
+  let numbers = '';
+  for (let p = 1; p <= totalPages; p++) {
+    numbers += `<span class="btn ${p === state.page ? 'primary' : ''}" data-action="goto-page" data-page="${p}">${p}</span>`;
+  }
+  return `
+    <div class="pagination" style="display:flex; align-items:center; justify-content:center; gap:6px; padding:18px 0 6px;">
+      <span class="btn${prevDisabled ? ' disabled' : ''}" data-action="goto-page" data-page="${state.page - 1}" style="${prevDisabled ? 'opacity:.4; pointer-events:none;' : ''}">‹</span>
+      ${numbers}
+      <span class="btn${nextDisabled ? ' disabled' : ''}" data-action="goto-page" data-page="${state.page + 1}" style="${nextDisabled ? 'opacity:.4; pointer-events:none;' : ''}">›</span>
+    </div>
+  `;
 }
 
 /* ============================================================
@@ -1532,7 +1558,7 @@ function bindSearchInput(){
   if (!input) return;
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
-  input.addEventListener('input', () => { state.search = input.value; renderListOnly(); });
+  input.addEventListener('input', () => { state.search = input.value; state.page = 1; renderListOnly(); });
 }
 
 function renderListOnly(){
@@ -1727,18 +1753,24 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'select-page':
       state.pageFilter = el.dataset.page;
-      state.expandedId = null; state.selected.clear();
+      state.expandedId = null; state.selected.clear(); state.page = 1;
       render(); break;
 
     case 'select-tab':
       state.tab = el.dataset.tab;
-      state.folder = 'inbox'; state.expandedId = null; state.selected.clear();
+      state.folder = 'inbox'; state.expandedId = null; state.selected.clear(); state.page = 1;
       render(); break;
 
     case 'select-folder':
       state.folder = el.dataset.folder;
-      state.expandedId = null; state.selected.clear();
+      state.expandedId = null; state.selected.clear(); state.page = 1;
       render(); break;
+
+    case 'goto-page': {
+      const p = parseInt(el.dataset.page, 10);
+      if (!Number.isNaN(p)) { state.page = p; state.expandedId = null; render(); }
+      break;
+    }
 
     case 'toggle-sort':
       state.sortDesc = !state.sortDesc;
