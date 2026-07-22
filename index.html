@@ -1030,8 +1030,7 @@ document.getElementById('app').addEventListener('click', (e) => {
       break;
 
     case 'refresh':
-      loadData();
-      showToast('รีเฟรชข้อมูลแล้ว', 'success');
+      location.reload();
       break;
 
     case 'select-all': {
