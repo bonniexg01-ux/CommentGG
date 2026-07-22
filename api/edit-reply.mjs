@@ -52,6 +52,14 @@ async function requireAuth(request) {
   }
 }
 
+// ใช้ชื่อจริงจากบัญชี Supabase Auth (first_name/last_name ที่ตั้งไว้ในหน้า Profile) ถ้ามี
+// ไม่งั้น fallback เป็นอีเมลของบัญชีนั้น
+function displayNameFromUser(user) {
+  const meta = (user && user.user_metadata) || {};
+  const name = `${meta.first_name || ''} ${meta.last_name || ''}`.trim();
+  return name || (user && user.email) || 'ไม่ทราบผู้ใช้';
+}
+
 export default async function handler(request) {
   if (request.method !== 'POST') {
     return json({ error: 'Method Not Allowed' }, 405);
@@ -105,7 +113,8 @@ export default async function handler(request) {
       return json({ error: `Facebook ปฏิเสธการแก้ไข: ${fbResult.error.message || 'unknown error'}` }, 502);
     }
 
-    await markFeedItem(itemId, { admin_reply: text });
+    // อัปเดตด้วยว่าใครเป็นคน "แก้ไข" ล่าสุด (ทีมมีหลายคน ใช้คนละไอดี — สะท้อนคนที่แก้จริง)
+    await markFeedItem(itemId, { admin_reply: text, admin_reply_by: displayNameFromUser(user) });
     return json({ ok: true });
   } catch (err) {
     console.error('edit-reply error', err);

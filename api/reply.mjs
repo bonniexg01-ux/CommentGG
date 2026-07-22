@@ -67,6 +67,14 @@ async function requireAuth(request) {
   }
 }
 
+// ใช้ชื่อจริงจากบัญชี Supabase Auth (first_name/last_name ที่ตั้งไว้ในหน้า Profile) ถ้ามี
+// ไม่งั้น fallback เป็นอีเมลของบัญชีนั้น — ใช้แสดงในแดชบอร์ดว่าใครเป็นคนตอบจริงๆ
+function displayNameFromUser(user) {
+  const meta = (user && user.user_metadata) || {};
+  const name = `${meta.first_name || ''} ${meta.last_name || ''}`.trim();
+  return name || (user && user.email) || 'ไม่ทราบผู้ใช้';
+}
+
 export default async function handler(request) {
   if (request.method !== 'POST') {
     return json({ error: 'Method Not Allowed' }, 405);
@@ -148,7 +156,12 @@ export default async function handler(request) {
     // เก็บ comment id ของ "คำตอบที่แอดมินโพสไป" ไว้ด้วย (fbResult.id ที่ Facebook ส่งกลับมาตอนสร้าง
     // คอมเมนต์สำเร็จ) — ใช้สำหรับปุ่มแก้ไข/ลบคำตอบทีหลัง (api/edit-reply.mjs, api/delete-reply.mjs)
     // มีให้เฉพาะ type: 'comment' เท่านั้น ข้อความ Messenger ไม่มี concept นี้
-    const updateFields = { status: 'replied', admin_reply: text };
+    //
+    // เก็บด้วยว่า "ใคร" เป็นคนตอบจริงๆ (จากบัญชีที่ล็อกอินอยู่ตอนนี้ ไม่ใช่ชื่อ hardcode แบบเดิม)
+    // เพราะตอนนี้ทีมมีหลายคนใช้คนละไอดีกันแล้ว ใช้ชื่อจาก user_metadata ถ้าตั้งไว้ ไม่งั้น fallback
+    // เป็นอีเมลของบัญชีนั้น
+    const replierName = displayNameFromUser(user);
+    const updateFields = { status: 'replied', admin_reply: text, admin_reply_by: replierName };
     if (item.type === 'comment' && fbResult && fbResult.id) {
       updateFields.admin_reply_fb_id = fbResult.id;
     }

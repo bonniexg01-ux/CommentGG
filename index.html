@@ -518,7 +518,7 @@ function mapItem(row){
     author: row.author_name || 'ไม่ทราบชื่อ', text: row.message || '', time: timeAgo(row.created_at),
     status: row.status, folder: row.folder,
     postExcerpt: row.post_excerpt || null, aiReason: row.ai_reason || null, adminReply: row.admin_reply || null,
-    adminReplyFbId: row.admin_reply_fb_id || null,
+    adminReplyFbId: row.admin_reply_fb_id || null, adminReplyBy: row.admin_reply_by || null,
     liked: !!row.liked, blocked: !!row.blocked,
   };
 }
@@ -1100,7 +1100,7 @@ function renderReplyQuote(item){
     <div class="reply-quote inline">
       <div class="reply-quote-text">${item.adminReply}</div>
       <div class="reply-quote-foot">
-        <div class="reply-by">ตอบโดย: CS Bow</div>
+        ${item.adminReplyBy ? `<div class="reply-by">ตอบโดย: ${item.adminReplyBy}</div>` : ''}
         ${item.adminReplyFbId ? `
           <div class="reply-quote-actions">
             <span data-action="start-edit-reply" data-id="${item.id}" title="แก้ไขคำตอบ">${ICONS.pencil}</span>
