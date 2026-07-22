@@ -449,19 +449,34 @@ const ICONS = {
 const SUPABASE_URL = 'https://acwilhbtdbxhhwlabpes.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_i9A_PqJhrOb8kmP47x2OOg_Ma2AhTRn';
 
-// ไคลเอนต์ Supabase Auth — จัดการ session ของผู้ใช้ที่ล็อกอิน (persist ใน localStorage ของเบราว์เซอร์
-// ผู้ใช้เอง ต่ออายุ token อัตโนมัติ) ตั้งชื่อ "sb" กันชนกับ global "supabase" ที่มาจาก CDN script
-// สร้างไว้ 2 ไคลเอนต์ ต่างกันแค่ที่เก็บ session — เอาไว้รองรับติ๊ก "จำฉันไว้" ตอนล็อกอิน:
-// - sbLocal  เก็บใน localStorage → อยู่ข้ามการปิดเบราว์เซอร์ (ติ๊ก "จำฉันไว้")
-// - sbSession เก็บใน sessionStorage → หายทันทีที่ปิดแท็บ/เบราว์เซอร์ (ไม่ติ๊ก)
-// ตัวแปร sb ชี้ไปที่ตัวที่ "กำลังใช้งานอยู่จริง" ในแต่ละช่วงเวลา (สลับได้ตอนล็อกอิน)
-const sbLocal = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, storage: window.localStorage },
+// ไคลเอนต์ Supabase Auth — จัดการ session ของผู้ใช้ที่ล็อกอิน ต่ออายุ token อัตโนมัติ
+// ตั้งชื่อ "sb" กันชนกับ global "supabase" ที่มาจาก CDN script
+//
+// รองรับติ๊ก "จำฉันไว้" ด้วย storage adapter ที่เขียนได้ทั้ง localStorage (อยู่ข้ามการปิดเบราว์เซอร์)
+// หรือ sessionStorage (หายทันทีที่ปิดแท็บ) แล้วแต่ค่า rememberMe ตอนนั้น — ใช้ "ไคลเอนต์เดียว" เท่านั้น
+// (ก่อนหน้านี้เคยลองสร้าง 2 ไคลเอนต์แยกกันสำหรับ local/session แต่ Supabase ไม่รองรับการมีหลาย
+// GoTrueClient สำหรับโปรเจกต์เดียวกันพร้อมกันในแท็บเดียว ทำให้ auto-refresh/session ตีกันเอง
+// จนขึ้น "Auth session missing!" ทั้งที่หน้าเว็บมองว่ายังล็อกอินอยู่ — จึงเปลี่ยนมาใช้วิธีนี้แทน)
+let rememberMe = true; // ตั้งค่าจริงตอนกด "เข้าสู่ระบบ" (ดู doLogin) ก่อน signInWithPassword
+const authStorage = {
+  getItem: (key) => window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key),
+  setItem: (key, value) => {
+    if (rememberMe) {
+      window.localStorage.setItem(key, value);
+      window.sessionStorage.removeItem(key);
+    } else {
+      window.sessionStorage.setItem(key, value);
+      window.localStorage.removeItem(key);
+    }
+  },
+  removeItem: (key) => {
+    window.localStorage.removeItem(key);
+    window.sessionStorage.removeItem(key);
+  },
+};
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, storage: authStorage },
 });
-const sbSession = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, storage: window.sessionStorage },
-});
-let sb = sbLocal;
 
 // header สำหรับยิงตรงไปที่ Supabase REST (/rest/v1/...) — ต้องมี apikey เสมอ และใช้ access_token
 // ของผู้ใช้ที่ล็อกอินแล้วแทน anon key ตรงๆ เพื่อให้นับเป็น role "authenticated" (ดูนโยบาย RLS ที่ตั้งไว้
@@ -1321,12 +1336,10 @@ async function doLogin(){
   state.auth.loginError = null;
   render();
 
-  // ติ๊ก "จำฉันไว้" → เก็บ session ใน localStorage (อยู่ข้ามการปิดเบราว์เซอร์)
-  // ไม่ติ๊ก → เก็บใน sessionStorage (หายทันทีที่ปิดแท็บ/เบราว์เซอร์)
-  const chosenClient = remember ? sbLocal : sbSession;
-  const otherClient = remember ? sbSession : sbLocal;
-  await otherClient.auth.signOut().catch(() => {}); // กันมี session ค้างซ้อนกันทั้ง 2 ที่เก็บ
-  sb = chosenClient;
+  // ติ๊ก "จำฉันไว้" → authStorage จะเขียน session ลง localStorage (อยู่ข้ามการปิดเบราว์เซอร์)
+  // ไม่ติ๊ก → เขียนลง sessionStorage แทน (หายทันทีที่ปิดแท็บ/เบราว์เซอร์) — ต้องตั้งค่านี้ไว้
+  // "ก่อน" signInWithPassword เสมอ เพราะ session ใหม่จะถูกเขียนตอนนั้นเลย
+  rememberMe = remember;
 
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (error) {
@@ -1837,21 +1850,22 @@ document.getElementById('app').addEventListener('click', (e) => {
   }
 });
 
-// callback กลางที่ใช้ทั้ง 2 ไคลเอนต์ (sbLocal/sbSession) — อันไหนแจ้งมาก่อนว่ามี session จริง
-// ก็ใช้อันนั้น (ตัวแปร sb ชี้ตามไปด้วย) กันกรณีเปิดแท็บใหม่แล้วเช็คทั้งคู่พร้อมกัน
-function handleAuthState(client, event, session){
-  const hadSession = !!state.auth.session;
-  if (session) {
-    // client นี้มี session จริง — ให้ตัวแปร sb ใช้อันนี้ต่อไป (ใช้ตอนสั่ง sign-out/เรียก auth อื่นๆ)
-    sb = client;
-    state.auth.session = session;
-  } else if (sb === client) {
-    // client ที่ "กำลังใช้งานอยู่" แจ้งว่าไม่มี session แล้ว (sign out จริง) ถึงจะเคลียร์ — ถ้าเป็น
-    // client อีกตัวที่ไม่ได้ใช้งานอยู่ (แค่ไม่เคยมี session ตั้งแต่แรก) ไม่ต้องไปรบกวนสถานะปัจจุบัน
-    state.auth.session = null;
-  }
+// เช็ค session ที่อาจค้างอยู่จากครั้งก่อน (authStorage เช็คทั้ง localStorage/sessionStorage ให้เอง
+// ไม่ว่าครั้งก่อนจะติ๊ก "จำฉันไว้" หรือไม่ก็ตาม) ก่อนตัดสินใจว่าจะโชว์หน้า login หรือแดชบอร์ดเลย
+sb.auth.getSession().then(({ data }) => {
+  state.auth.session = data.session || null;
   state.auth.ready = true;
-  if (!state.auth.session) {
+  render();
+  if (state.auth.session) loadData();
+});
+
+// ฟังการเปลี่ยนแปลงสถานะล็อกอิน (ล็อกอินสำเร็จ, ออกจากระบบ, token หมดอายุแล้วต่ออายุอัตโนมัติ ฯลฯ)
+// แล้วอัปเดตหน้าจอให้ตรงกับสถานะล่าสุดเสมอ ไม่ต้องรีเฟรชหน้าเอง
+sb.auth.onAuthStateChange((event, session) => {
+  const hadSession = !!state.auth.session;
+  state.auth.session = session || null;
+  state.auth.ready = true;
+  if (!session) {
     // ออกจากระบบ (หรือ token ใช้ไม่ได้แล้ว) — เคลียร์ข้อมูลเก่าทิ้ง กันเห็นข้อมูลของบัญชีก่อนหน้า
     PAGES = [];
     ITEMS = [];
@@ -1859,30 +1873,8 @@ function handleAuthState(client, event, session){
     state.auth.loginError = null;
   }
   render();
-  if (state.auth.session && !hadSession) loadData();
-}
-
-// เช็ค session ที่อาจค้างอยู่จากครั้งก่อนทั้ง 2 ที่เก็บ (เผื่อครั้งก่อนติ๊ก "จำฉันไว้" ไว้หรือไม่ก็ตาม)
-// ก่อนตัดสินใจว่าจะโชว์หน้า login หรือแดชบอร์ดเลย — กัน login ค้างไว้แล้วต้องล็อกอินใหม่ทุกครั้งที่เปิดเว็บ
-Promise.all([sbSession.auth.getSession(), sbLocal.auth.getSession()]).then(([sessionRes, localRes]) => {
-  if (sessionRes.data.session) {
-    sb = sbSession;
-    state.auth.session = sessionRes.data.session;
-  } else if (localRes.data.session) {
-    sb = sbLocal;
-    state.auth.session = localRes.data.session;
-  } else {
-    state.auth.session = null;
-  }
-  state.auth.ready = true;
-  render();
-  if (state.auth.session) loadData();
+  if (session && !hadSession) loadData();
 });
-
-// ฟังการเปลี่ยนแปลงสถานะล็อกอินของทั้ง 2 ไคลเอนต์ (ล็อกอินสำเร็จ, ออกจากระบบ, token หมดอายุแล้ว
-// ต่ออายุอัตโนมัติ ฯลฯ) แล้วอัปเดตหน้าจอให้ตรงกับสถานะล่าสุดเสมอ ไม่ต้องรีเฟรชหน้าเอง
-sbLocal.auth.onAuthStateChange((event, session) => handleAuthState(sbLocal, event, session));
-sbSession.auth.onAuthStateChange((event, session) => handleAuthState(sbSession, event, session));
 
 setInterval(() => { if (!state.expandedId) loadData(); }, 20000);
 </script>
