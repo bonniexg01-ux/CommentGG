@@ -134,7 +134,7 @@
   .post-panel-msg{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-faint); padding:16px 12px;}
   .post-panel-msg svg{width:15px; height:15px; flex:none;}
   .post-panel-msg.error{color:var(--red-text);}
-  .ppc-image{width:100%; display:block;}
+  .ppc-image{width:100%; max-height:190px; object-fit:cover; display:block;}
   .ppp-caption{font-size:13.5px; font-weight:700; color:#1a1310; line-height:1.5; white-space:pre-wrap; padding:11px 12px; background:#f7f0ea; border-bottom:1px solid var(--border);}
   .ppc-body{padding:9px 12px; border-top:1px solid var(--border);}
   .ppc-body:first-child{border-top:none;}
@@ -981,17 +981,21 @@ function openPostPanel(item, anchorRect){
   // getBoundingClientRect() คืนค่าตำแหน่งเทียบกับ viewport อยู่แล้ว พอดีกับ fixed positioning
   // ทันที เมื่อก่อนบวก scrollY ซ้ำเข้าไปทำให้การ์ดเลื่อนลงไปนอกจอเรื่อยๆ ตามระยะที่เลื่อนหน้าลง
   const CARD_W = 300;
-  const CARD_MAX_H = 420; // ประมาณความสูงสูงสุดที่เป็นไปได้ (มี overflow-y:auto อยู่แล้วเผื่อยาวกว่านี้)
+  const MIN_H = 220; // เผื่อพื้นที่ขั้นต่ำที่พอจะแสดงอะไรได้บ้างก่อนต้องเลื่อนภายในการ์ด
   const GAP = 8;
   let left = anchorRect.left;
   left = Math.max(12, Math.min(left, window.innerWidth - CARD_W - 12));
 
-  let top = anchorRect.bottom + GAP;
-  // ถ้าเปิดลงด้านล่างแล้วจะโผล่พ้นจอ ให้เปิดขึ้นด้านบนของปุ่มแทน
-  if (top + CARD_MAX_H > window.innerHeight && anchorRect.top - CARD_MAX_H - GAP > 0) {
-    top = anchorRect.top - CARD_MAX_H - GAP;
-  }
-  top = Math.max(12, Math.min(top, window.innerHeight - 60));
+  const spaceBelow = window.innerHeight - anchorRect.bottom - GAP - 12;
+  const spaceAbove = anchorRect.top - GAP - 12;
+  // เปิดด้านล่างเป็นค่าเริ่มต้น เว้นแต่ด้านล่างเหลือพื้นที่น้อยกว่าขั้นต่ำ แต่ด้านบนมีเยอะกว่า
+  const openAbove = spaceBelow < MIN_H && spaceAbove > spaceBelow;
+  const top = openAbove ? 12 : anchorRect.bottom + GAP;
+  // ความสูงสูงสุดที่การ์ดจะขยายได้จริง โดยไม่มีวันพ้นขอบล่างจอ — คำนวณจาก top ที่เลือกจริง
+  // ไม่ใช่ค่าคงที่ลอยๆ (เนื้อหาข้างในยาวแค่ไหนก็ไม่หลุดจอ เพราะ .post-panel-body เลื่อนเองได้)
+  const maxHeight = openAbove
+    ? Math.max(160, anchorRect.top - GAP - 12 - 12)
+    : Math.max(160, window.innerHeight - top - 12);
 
   state.postPanel = {
     open: true,
@@ -1000,6 +1004,7 @@ function openPostPanel(item, anchorRect){
     data: null,
     top,
     left,
+    maxHeight,
   };
   render();
 
@@ -1057,7 +1062,7 @@ function renderPostPanel(){
 
   return `
     <div class="post-panel-backdrop" data-action="close-post-panel"></div>
-    <div class="post-panel" data-action="stop-propagation" style="top:${p.top}px; left:${p.left}px;">
+    <div class="post-panel" data-action="stop-propagation" style="top:${p.top}px; left:${p.left}px; max-height:${p.maxHeight}px;">
       <div class="post-panel-head">
         <div class="pph-copy" data-action="copy-comment-id">${ICONS.copy} Copy comment ID</div>
         <div class="modal-close" data-action="close-post-panel">${ICONS.x}</div>
