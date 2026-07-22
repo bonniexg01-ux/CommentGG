@@ -172,7 +172,9 @@ export default async function handler(request) {
       // (ไม่งั้น dashboard จะ mark เป็น failed ทั้งที่จริงๆ ส่งไป Facebook สำเร็จแล้ว จะกลายเป็นตอบซ้ำ)
       console.error('reply warning: FB ส่งสำเร็จ แต่บันทึกสถานะ replied ลง Supabase ไม่สำเร็จ', writeErr);
     }
-    return json({ ok: true });
+    // ส่ง admin_reply_fb_id กลับไปด้วย (ถ้ามี) — ฝั่ง frontend เอาไปใส่ใน state ทันทีที่ส่งสำเร็จ
+    // จะได้โชว์ปุ่มแก้ไข/ลบคำตอบขึ้นทันที ไม่ต้องรอ poll รอบถัดไป (20 วิ) หรือกด F5 เอง
+    return json({ ok: true, fbId: updateFields.admin_reply_fb_id || null });
   } catch (err) {
     console.error('reply error', err);
     // best-effort: กันรายการค้าง 'pending' เงียบๆ ถ้ามี itemId แล้วแต่ error เกิดขึ้นก่อนจะรู้ผล Facebook
