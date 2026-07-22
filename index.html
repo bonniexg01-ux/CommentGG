@@ -917,6 +917,8 @@ function renderProfileModal(){
   const firstNameVal = meta.first_name != null ? meta.first_name : p.firstName;
   const lastNameVal = meta.last_name != null ? meta.last_name : p.lastName;
   const emailVal = (state.auth.session && state.auth.session.user && state.auth.session.user.email) || p.email;
+  // แฮชแท็ก "ส่วนตัว" ของคนนี้เอง (คนละอันกับแฮชแท็กประจำเพจด้านล่าง) เก็บใน user_metadata เหมือนชื่อ
+  const personalHashtagVal = meta.hashtag || '';
 
   const profileTabHtml = `
     <div class="modal-desc">จัดการข้อมูลผู้ใช้และชื่อที่ใช้แสดงในระบบของคุณ</div>
@@ -931,6 +933,11 @@ function renderProfileModal(){
     <div class="form-row">
       <label>Email <span class="opt">(login username)</span></label>
       <input id="pf-email" type="email" value="${emailVal}" disabled />
+    </div>
+    <div class="form-row">
+      <label>แฮชแท็กส่วนตัว <span class="opt">(ของคุณคนเดียว ใช้แทรกตอนตอบกลับได้จากปุ่มในกล่องพิมพ์)</span></label>
+      <input id="pf-myHashtag" type="text" placeholder="เช่น #csbow" value="${personalHashtagVal}" />
+      <div class="form-hint">คนละอันกับแฮชแท็กประจำเพจด้านล่าง — อันนี้ผูกกับบัญชีคุณ ใครตอบจากบัญชีไหนก็ใช้แฮชแท็กของตัวเอง</div>
     </div>
     <div class="form-row">
       <label>แฮชแท็กประจำเพจ <span class="opt">(ต่อท้ายข้อความตอบกลับอัตโนมัติ แยกตามเพจ)</span></label>
@@ -1143,6 +1150,10 @@ function rowActions(item){
 function renderExpandPanel(item){
   const page = pageById(item.pageId);
   let inner = '';
+  // แฮชแท็กส่วนตัวของคนที่ล็อกอินอยู่ตอนนี้ (ตั้งได้ที่ Profile > Account settings) — คนละอันกับ
+  // แฮชแท็กประจำเพจ (page.hashtag) แต่ละคนใช้ของตัวเอง ไม่ต้องใช้ร่วมกัน
+  const myMeta = (state.auth.session && state.auth.session.user && state.auth.session.user.user_metadata) || {};
+  const myHashtag = myMeta.hashtag || '';
 
   if (item.status === 'spam_hidden') {
     inner += `
@@ -1170,7 +1181,10 @@ function renderExpandPanel(item){
     <div class="composer">
       <div class="composer-label" style="display:flex; align-items:center; justify-content:space-between;">
         <span>ตอบกลับในนามเพจ ${page.emoji} ${page.name}</span>
-        <span class="btn" style="padding:4px 9px; font-size:11px;" data-action="insert-signature" data-id="${item.id}">${ICONS.copy} แทรกลายเซ็น</span>
+        <span style="display:flex; gap:6px;">
+          ${myHashtag ? `<span class="btn" style="padding:4px 9px; font-size:11px;" data-action="insert-my-hashtag" data-id="${item.id}">${ICONS.copy} แฮชแท็กของฉัน</span>` : ''}
+          <span class="btn" style="padding:4px 9px; font-size:11px;" data-action="insert-signature" data-id="${item.id}">${ICONS.copy} แทรกลายเซ็น</span>
+        </span>
       </div>
       <textarea id="replyBox-${item.id}" placeholder="พิมพ์ข้อความตอบกลับ... (ต้องใช้สรรพนาม “${page.pronoun}” สำหรับเพจนี้)">${signatureFor(page)}</textarea>
       <div id="composerAlertZone-${item.id}"></div>
@@ -1621,12 +1635,14 @@ document.getElementById('app').addEventListener('click', (e) => {
     case 'save-profile': {
       const firstName = document.getElementById('pf-firstName').value.trim() || state.profile.firstName;
       const lastName = document.getElementById('pf-lastName').value.trim();
+      const myHashtag = document.getElementById('pf-myHashtag').value.trim();
       state.profile = { firstName, lastName, email: state.profile.email };
 
-      // เก็บชื่อ-นามสกุลลง user_metadata ของบัญชี Supabase Auth จริง (ไม่ใช่แค่ state.profile ในเครื่อง)
-      // จะได้โชว์เป็นชื่อในหัวเว็บ (topbar) แทนอีเมล และอยู่ถาวรข้ามการรีเฟรชหน้า/ล็อกอินใหม่
-      sb.auth.updateUser({ data: { first_name: firstName, last_name: lastName } }).catch((err) => {
-        console.error('บันทึกชื่อโปรไฟล์ไม่สำเร็จ:', err);
+      // เก็บชื่อ-นามสกุล + แฮชแท็กส่วนตัวลง user_metadata ของบัญชี Supabase Auth จริง (ไม่ใช่แค่
+      // state.profile ในเครื่อง) จะได้โชว์เป็นชื่อในหัวเว็บ (topbar) แทนอีเมล และแฮชแท็กส่วนตัวก็แทรก
+      // ในกล่องพิมพ์ได้ทันที อยู่ถาวรข้ามการรีเฟรชหน้า/ล็อกอินใหม่ (คนละก้อนกับแฮชแท็กประจำเพจ)
+      sb.auth.updateUser({ data: { first_name: firstName, last_name: lastName, hashtag: myHashtag } }).catch((err) => {
+        console.error('บันทึกโปรไฟล์ไม่สำเร็จ:', err);
       });
 
       // อ่านค่าจากช่องกรอกก่อนปิด modal (พอปิด/render ใหม่ input พวกนี้จะหายไปจาก DOM)
@@ -1852,6 +1868,22 @@ document.getElementById('app').addEventListener('click', (e) => {
       box.value = box.value.slice(0, pos) + sig + box.value.slice(pos);
       box.focus();
       box.setSelectionRange(pos + sig.length, pos + sig.length);
+      updateComposerState(item, box, page);
+      break;
+    }
+
+    // แทรกแฮชแท็ก "ส่วนตัว" ของคนที่ล็อกอินอยู่ตอนนี้ (ตั้งไว้ที่ Profile > Account settings)
+    // คนละอันกับ "แทรกลายเซ็น" ด้านบนที่เป็นแฮชแท็กของเพจ — แต่ละคนใช้ของตัวเอง
+    case 'insert-my-hashtag': {
+      const page = pageById(item.pageId);
+      const box = document.getElementById('replyBox-' + id);
+      const myMeta = (state.auth.session && state.auth.session.user && state.auth.session.user.user_metadata) || {};
+      const tag = myMeta.hashtag || '';
+      if (!tag) break;
+      const pos = box.selectionStart ?? box.value.length;
+      box.value = box.value.slice(0, pos) + tag + box.value.slice(pos);
+      box.focus();
+      box.setSelectionRange(pos + tag.length, pos + tag.length);
       updateComposerState(item, box, page);
       break;
     }
