@@ -974,12 +974,24 @@ function render(){
 ============================================================ */
 function openPostPanel(item, anchorRect){
   // จัดตำแหน่งการ์ดให้เริ่มจากขอบซ้ายของปุ่มที่กด ยื่นไปทางขวา (ไม่ยื่นไปทางซ้ายทับแถวคอมเมนต์/
-  // กล่องข้อความที่เปิดอยู่) แล้วอยู่ใต้ปุ่มลงมานิดหน่อย — กันชนขอบขวาจอด้วย
+  // กล่องข้อความที่เปิดอยู่) แล้วอยู่ใต้ปุ่มลงมานิดหน่อย — กันชนขอบขวา/ขอบล่างจอด้วย
+  //
+  // สำคัญ: .post-panel เป็น position:fixed (อ้างอิงกับ viewport) ไม่ใช่ position:absolute
+  // (อ้างอิงกับเอกสารทั้งหน้า) ดังนั้นห้ามบวก window.scrollY เข้าไปในค่า top/left เด็ดขาด —
+  // getBoundingClientRect() คืนค่าตำแหน่งเทียบกับ viewport อยู่แล้ว พอดีกับ fixed positioning
+  // ทันที เมื่อก่อนบวก scrollY ซ้ำเข้าไปทำให้การ์ดเลื่อนลงไปนอกจอเรื่อยๆ ตามระยะที่เลื่อนหน้าลง
   const CARD_W = 300;
+  const CARD_MAX_H = 420; // ประมาณความสูงสูงสุดที่เป็นไปได้ (มี overflow-y:auto อยู่แล้วเผื่อยาวกว่านี้)
   const GAP = 8;
   let left = anchorRect.left;
   left = Math.max(12, Math.min(left, window.innerWidth - CARD_W - 12));
-  const top = anchorRect.bottom + window.scrollY + GAP;
+
+  let top = anchorRect.bottom + GAP;
+  // ถ้าเปิดลงด้านล่างแล้วจะโผล่พ้นจอ ให้เปิดขึ้นด้านบนของปุ่มแทน
+  if (top + CARD_MAX_H > window.innerHeight && anchorRect.top - CARD_MAX_H - GAP > 0) {
+    top = anchorRect.top - CARD_MAX_H - GAP;
+  }
+  top = Math.max(12, Math.min(top, window.innerHeight - 60));
 
   state.postPanel = {
     open: true,
