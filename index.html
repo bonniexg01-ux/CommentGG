@@ -577,6 +577,13 @@ function sendReply(item, text, archiveAfter){
   if (archiveAfter) item.folder = 'archive';
   state.expandedId = null;
   showToast(archiveAfter ? 'กำลังส่งข้อความและจัดเก็บ...' : 'กำลังส่งข้อความ...', 'success');
+
+  // กัน loadData() (poll ทุก 20 วิ) ดึงสถานะเก่า ('pending') จาก Supabase มาทับสถานะ 'replied' ที่
+  // เพิ่ง optimistic ไว้ ระหว่างที่ /api/reply ยังส่งไป Facebook + เขียนกลับ Supabase ไม่เสร็จ —
+  // ไม่งั้นถ้า poll ดันมาตรงจังหวะนั้นพอดี รายการจะกระพริบ: ขึ้น "ตอบแล้ว" แวบหนึ่ง หายกลับไปเป็น
+  // "ต้องตอบกลับ" แล้วค่อยขึ้น "ตอบแล้ว"ใหม่ตอน poll รอบถัดไปเห็นค่าจริงที่เขียนเสร็จแล้ว
+  // (แพทเทิร์นเดียวกับที่ใช้กันบั๊กซ่อน/เผยแพร่คืนคอมเมนต์ซ้ำ ดู setCommentHidden)
+  state.pendingActionIds.add(item.id);
   render();
 
   if (archiveAfter) {
@@ -599,7 +606,8 @@ function sendReply(item, text, archiveAfter){
       // client เลยหลังส่งสำเร็จ — ตั้งไว้แค่ฝั่ง Supabase เท่านั้น)
       if (data.fbId) item.adminReplyFbId = data.fbId;
       if (data.replyBy) item.adminReplyBy = data.replyBy;
-      if (data.fbId || data.replyBy) render();
+      state.pendingActionIds.delete(item.id);
+      render();
     })
     .catch((err) => {
       console.error('ส่งข้อความไม่สำเร็จ:', err);
@@ -615,6 +623,7 @@ function sendReply(item, text, archiveAfter){
 function revertFailedReply(itemId, errorMessage){
   const item = ITEMS.find(i => i.id === itemId);
   if (item) item.status = 'failed';
+  state.pendingActionIds.delete(itemId);
   patchFeedItem(itemId, { status: 'failed' });
   showToast(errorMessage || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
   render();
