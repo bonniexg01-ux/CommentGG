@@ -114,6 +114,36 @@
   }
   .form-row input:focus{border-color:#E3B4C0;}
   .form-hint{font-size:11.5px; color:var(--text-faint); margin-top:6px; line-height:1.55;}
+
+  /* ---------------- Post detail panel (right-side drawer) ---------------- */
+  .post-panel-backdrop{position:fixed; inset:0; background:rgba(43,33,29,.35); z-index:95;}
+  .post-panel{
+    position:fixed; top:0; right:0; bottom:0; width:400px; max-width:92vw; background:#fff; z-index:96;
+    box-shadow:-16px 0 48px rgba(0,0,0,.22); display:flex; flex-direction:column;
+    animation:post-panel-in .18s ease-out;
+  }
+  @keyframes post-panel-in{ from{transform:translateX(100%);} to{transform:translateX(0);} }
+  .post-panel-head{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:18px 18px 14px; border-bottom:1px solid var(--border);}
+  .pph-title{font-size:15px; font-weight:700;}
+  .pph-sub{font-size:11.5px; color:var(--text-faint); margin-top:4px; line-height:1.5;}
+  .post-panel-body{padding:16px 18px; overflow-y:auto; flex:1;}
+  .post-panel-msg{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-faint); padding:12px 0;}
+  .post-panel-msg svg{width:15px; height:15px; flex:none;}
+  .post-panel-msg.error{color:var(--red-text);}
+  .post-panel-post{background:#f7f0ea; border-radius:11px; padding:12px 14px; margin-bottom:16px;}
+  .ppp-from{font-size:12.5px; font-weight:700; margin-bottom:5px;}
+  .ppp-message{font-size:13px; line-height:1.6; white-space:pre-wrap;}
+  .ppp-message.dim{color:var(--text-faint); font-style:italic;}
+  .ppp-image{width:100%; border-radius:9px; margin-top:10px; display:block;}
+  .ppp-link{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--blue-text); margin-top:10px; text-decoration:none;}
+  .ppp-link svg{width:13px; height:13px; transform:rotate(180deg);}
+  .ppp-link:hover{text-decoration:underline;}
+  .post-panel-comments-head{font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-faint); margin-bottom:10px;}
+  .post-panel-comments{display:flex; flex-direction:column; gap:12px;}
+  .ppc-item{border-bottom:1px solid var(--border); padding-bottom:10px;}
+  .ppc-item:last-child{border-bottom:none;}
+  .ppc-from{font-size:12px; font-weight:700; margin-bottom:3px;}
+  .ppc-message{font-size:12.5px; line-height:1.55; color:var(--text-dim); white-space:pre-wrap;}
   .modal-foot{
     display:flex; justify-content:flex-end; gap:10px; padding:16px 24px 22px; border-top:1px solid var(--border);
     margin-top:6px;
@@ -493,6 +523,16 @@ const state = {
     lastName: 'cs',
     email: 'bonniexg01@gmail.com',
   },
+
+  // แผงด้านขวาสำหรับดูโพสต์ต้นทาง + คอมเมนต์ทั้งหมดจาก Facebook (กดแว่นขยาย)
+  postPanel: {
+    open: false,
+    loading: false,
+    error: null,
+    data: null, // { post: {...}, comments: [...] }
+    sourceAuthor: '',
+    sourceText: '',
+  },
 };
 
 /* ============================================================
@@ -795,8 +835,7 @@ function rowActions(item){
     : `<div class="icon-btn" data-action="archive" data-id="${item.id}" title="ย้ายไป Archive">${ICONS.archive}</div>`;
 
   return `
-    <div class="icon-btn" data-action="toggle-expand" data-id="${item.id}" title="ดูรายละเอียด">${ICONS.search}</div>
-    <div class="icon-btn ${item.liked ? 'active-like' : ''}" data-action="like" data-id="${item.id}" title="ถูกใจ">${ICONS.thumbUp}</div>
+    <div class="icon-btn" data-action="view-post" data-id="${item.id}" title="ดูโพสต์และคอมเมนต์จาก Facebook">${ICONS.search}</div>
     <div class="icon-btn" data-action="toggle-expand" data-id="${item.id}" data-focus="1" title="ตอบกลับ">${ICONS.reply}</div>
     ${hideBtn}
     <div class="icon-btn" data-action="bin" data-id="${item.id}" title="ลบ (ย้ายไปถังขยะ)">${ICONS.trash}</div>
@@ -917,9 +956,92 @@ function render(){
         <div id="listWrap">${renderList()}</div>
       </div>
     </div>
+    ${state.postPanel.open ? renderPostPanel() : ''}
   `;
   bindAllReplyBoxes();
   bindSearchInput();
+}
+
+/* ============================================================
+   RIGHT-SIDE PANEL: โพสต์ต้นทาง + คอมเมนต์ทั้งหมดจาก Facebook
+   ============================================================
+   กดแว่นขยายที่แถวไหน ก็ดึงข้อมูลสดจาก Facebook Graph API ผ่าน /api/post-detail มาโชว์
+   ทางขวาได้เลย ไม่ต้องออกไปเปิด Facebook เพื่อดูว่าโพสต์นั้นพูดเรื่องอะไร
+============================================================ */
+function openPostPanel(item){
+  state.postPanel = {
+    open: true,
+    loading: true,
+    error: null,
+    data: null,
+    sourceAuthor: item.author,
+    sourceText: item.text,
+  };
+  render();
+
+  fetch(`/api/post-detail?itemId=${encodeURIComponent(item.id)}`)
+    .then(async (res) => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'โหลดโพสต์ไม่สำเร็จ');
+      state.postPanel.loading = false;
+      state.postPanel.data = data;
+      render();
+    })
+    .catch((err) => {
+      state.postPanel.loading = false;
+      state.postPanel.error = err.message || 'โหลดโพสต์ไม่สำเร็จ';
+      render();
+    });
+}
+
+function closePostPanel(){
+  state.postPanel.open = false;
+  render();
+}
+
+function renderPostPanel(){
+  const p = state.postPanel;
+  let body = '';
+
+  if (p.loading) {
+    body = `<div class="post-panel-msg">${ICONS.inbox} กำลังโหลดโพสต์จาก Facebook...</div>`;
+  } else if (p.error) {
+    body = `<div class="post-panel-msg error">${ICONS.alert} ${p.error}</div>`;
+  } else if (p.data) {
+    const post = p.data.post || {};
+    const comments = p.data.comments || [];
+    body = `
+      <div class="post-panel-post">
+        ${post.from ? `<div class="ppp-from">${post.from}</div>` : ''}
+        ${post.message ? `<div class="ppp-message">${post.message}</div>` : `<div class="ppp-message dim">(โพสต์นี้ไม่มีข้อความ)</div>`}
+        ${post.fullPicture ? `<img class="ppp-image" src="${post.fullPicture}" alt="" />` : ''}
+        ${post.permalinkUrl ? `<a class="ppp-link" href="${post.permalinkUrl}" target="_blank" rel="noopener">${ICONS.reply} เปิดโพสต์นี้บน Facebook</a>` : ''}
+      </div>
+      <div class="post-panel-comments-head">คอมเมนต์ทั้งหมด (${comments.length})</div>
+      <div class="post-panel-comments">
+        ${comments.length ? comments.map((c) => `
+          <div class="ppc-item">
+            <div class="ppc-from">${c.from}</div>
+            <div class="ppc-message">${c.message}</div>
+          </div>
+        `).join('') : `<div class="post-panel-msg">ยังไม่มีคอมเมนต์</div>`}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="post-panel-backdrop" data-action="close-post-panel"></div>
+    <div class="post-panel" data-action="stop-propagation">
+      <div class="post-panel-head">
+        <div>
+          <div class="pph-title">โพสต์ต้นทาง</div>
+          <div class="pph-sub">จากคอมเมนต์ของ ${state.postPanel.sourceAuthor}: “${state.postPanel.sourceText}”</div>
+        </div>
+        <div class="modal-close" data-action="close-post-panel">${ICONS.x}</div>
+      </div>
+      <div class="post-panel-body">${body}</div>
+    </div>
+  `;
 }
 
 function bindAllReplyBoxes(){
@@ -1150,13 +1272,16 @@ document.getElementById('app').addEventListener('click', (e) => {
       state.expandedId = state.expandedId === id ? null : id;
       render(); break;
 
+    case 'view-post':
+      if (item) openPostPanel(item);
+      break;
+
+    case 'close-post-panel':
+      closePostPanel();
+      break;
+
     case 'collapse':
       state.expandedId = null;
-      render(); break;
-
-    case 'like':
-      item.liked = !item.liked;
-      patchFeedItem(item.id, { liked: item.liked });
       render(); break;
 
     case 'hide':
