@@ -21,6 +21,9 @@ export const config = {
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://acwilhbtdbxhhwlabpes.supabase.co';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// publishable/anon key — ใช้แค่ตรวจสอบ token ผู้ใช้ที่แนบมากับคำขอผ่าน /auth/v1/user เท่านั้น
+// (ค่านี้ถูกออกแบบให้ฝังในฝั่ง client ได้อยู่แล้ว ไม่ใช่ความลับเหมือน SERVICE_KEY)
+const SUPABASE_ANON_KEY = 'sb_publishable_i9A_PqJhrOb8kmP47x2OOg_Ma2AhTRn';
 const GRAPH_VERSION = 'v23.0';
 // ถ้า Facebook ไม่ตอบภายในเวลานี้ ให้ตัดการเชื่อมต่อเองแล้วมาร์ค 'failed' ทันที
 // กันไม่ให้ Vercel Edge Function ถูก platform ตัดจบกลางคันแบบเงียบๆ (ซึ่งจะทำให้ไม่มีการเขียน
@@ -46,10 +49,31 @@ function json(data, status = 200) {
   });
 }
 
+// เดิม endpoint นี้ไม่เช็คเลยว่าใครเป็นคนเรียก -- ใครก็ตามที่รู้ URL ยิง POST เข้ามาตรงๆ ได้ทันที
+// (ส่งข้อความจริงไป Facebook โดยไม่ต้องล็อกอินผ่านหน้าเว็บเลย) ตอนนี้ตรวจ token ที่แนบมากับ
+// Authorization header ผ่าน Supabase Auth ก่อนเสมอ ไม่มี token ที่ใช้ได้ = ปฏิเสธ
+async function requireAuth(request) {
+  const authHeader = request.headers.get('Authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return null;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(request) {
   if (request.method !== 'POST') {
     return json({ error: 'Method Not Allowed' }, 405);
   }
+
+  const user = await requireAuth(request);
+  if (!user) return json({ error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' }, 401);
 
   // เอาไว้ให้ outer catch ด้านล่างใช้มาร์ค 'failed' ได้ ถ้า error เกิดขึ้นตรงไหนก็ตามหลังจากรู้ itemId แล้ว
   // (เดิม error ที่เกิดนอกช่วงเรียก Facebook โดยตรงจะหลุดไม่เขียนสถานะอะไรเลย รายการค้าง 'pending' เงียบๆ)

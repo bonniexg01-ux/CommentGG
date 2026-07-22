@@ -14,6 +14,7 @@ export const config = {
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://acwilhbtdbxhhwlabpes.supabase.co';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_ANON_KEY = 'sb_publishable_i9A_PqJhrOb8kmP47x2OOg_Ma2AhTRn';
 const GRAPH_VERSION = 'v23.0';
 const FB_TIMEOUT_MS = 12000;
 
@@ -36,10 +37,30 @@ function fetchWithTimeout(url, options, timeoutMs = FB_TIMEOUT_MS) {
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+// เดิม endpoint นี้ไม่เช็คเลยว่าใครเป็นคนเรียก -- ตรวจ token ที่แนบมากับ Authorization header
+// ผ่าน Supabase Auth ก่อนเสมอ ไม่มี token ที่ใช้ได้ = ปฏิเสธ (แพทเทิร์นเดียวกับ api/reply.mjs)
+async function requireAuth(request) {
+  const authHeader = request.headers.get('Authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return null;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(request) {
   if (request.method !== 'POST') {
     return json({ error: 'Method Not Allowed' }, 405);
   }
+
+  const user = await requireAuth(request);
+  if (!user) return json({ error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' }, 401);
 
   try {
     if (!SERVICE_KEY) {

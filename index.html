@@ -326,12 +326,46 @@
   .toast.error{background:#7f1d1d;}
   .toast.success{background:#14532d;}
   .toast svg{width:15px; height:15px; flex:none;}
+
+  /* ---- LOGIN SCREEN ---- */
+  .login-wrap{
+    min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg);
+  }
+  .login-card{
+    width:100%; max-width:340px; background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:28px 26px; box-shadow:0 12px 32px rgba(0,0,0,.06); display:flex; flex-direction:column; gap:4px;
+  }
+  .login-brand{
+    display:flex; align-items:center; gap:8px; font-weight:800; font-size:18px; color:var(--navy); margin-bottom:2px;
+  }
+  .login-brand .mark{width:26px; height:26px; color:var(--navy);}
+  .login-brand .mark svg{width:100%; height:100%;}
+  .login-sub{font-size:12.5px; color:var(--text-dim); margin-bottom:16px;}
+  .login-label{font-size:12px; font-weight:600; color:var(--text-dim); margin:8px 0 4px;}
+  .login-input{
+    width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-size:14px;
+    font-family:inherit; color:var(--text); box-sizing:border-box;
+  }
+  .login-input:focus{outline:none; border-color:var(--green-text);}
+  .login-error{
+    display:flex; align-items:center; gap:6px; font-size:12.5px; color:#b3261e; background:#fdecea;
+    border-radius:8px; padding:8px 10px; margin-top:12px;
+  }
+  .login-error svg{width:14px; height:14px; flex:none;}
+  .login-btn{
+    margin-top:18px; width:100%; padding:10px; border:none; border-radius:9px; background:var(--navy);
+    color:#fff; font-weight:700; font-size:14px; cursor:pointer;
+  }
+  .login-btn:hover{background:var(--navy-2);}
+  .login-btn:disabled{opacity:.6; cursor:default;}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <div id="toastWrap"></div>
 
+<!-- Supabase Auth: ใช้จัดการล็อกอินของทีม (คนละไอดีกันเข้า) แทนการเปิดหน้าเว็บแบบไม่ต้องล็อกอิน -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /* ============================================================
    ICONS
@@ -387,7 +421,25 @@ const ICONS = {
 ============================================================ */
 const SUPABASE_URL = 'https://acwilhbtdbxhhwlabpes.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_i9A_PqJhrOb8kmP47x2OOg_Ma2AhTRn';
-const sbHeaders = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+
+// ไคลเอนต์ Supabase Auth — จัดการ session ของผู้ใช้ที่ล็อกอิน (persist ใน localStorage ของเบราว์เซอร์
+// ผู้ใช้เอง ต่ออายุ token อัตโนมัติ) ตั้งชื่อ "sb" กันชนกับ global "supabase" ที่มาจาก CDN script
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// header สำหรับยิงตรงไปที่ Supabase REST (/rest/v1/...) — ต้องมี apikey เสมอ และใช้ access_token
+// ของผู้ใช้ที่ล็อกอินแล้วแทน anon key ตรงๆ เพื่อให้นับเป็น role "authenticated" (ดูนโยบาย RLS ที่ตั้งไว้
+// ว่าต้องล็อกอินก่อนถึงจะอ่าน/เขียนข้อมูลได้ — เดิมเปิดให้ anon ทำได้หมดเลย ไม่ปลอดภัย)
+function sbAuthHeaders(){
+  const token = state.auth.session ? state.auth.session.access_token : SUPABASE_KEY;
+  return { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}` };
+}
+
+// header สำหรับยิงไป /api/* ของเราเอง (Vercel Edge Functions) — แนบ token ผู้ใช้ไปด้วยเสมอ ให้ฝั่ง
+// เซิร์ฟเวอร์เช็คได้ว่าผู้เรียกล็อกอินอยู่จริง ก่อนจะไปสั่งการอะไรกับ Facebook จริง
+function apiAuthHeaders(){
+  const token = state.auth.session ? state.auth.session.access_token : '';
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+}
 
 let PAGES = [];
 let ITEMS = [];
@@ -423,7 +475,7 @@ function mapItem(row){
 async function updatePageHashtag(pageId, hashtag){
   const res = await fetch('/api/update-page', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: apiAuthHeaders(),
     body: JSON.stringify({ pageId, hashtag }),
   });
   if (!res.ok) {
@@ -436,7 +488,7 @@ async function patchFeedItem(id, fields){
   try {
     await fetch(`${SUPABASE_URL}/rest/v1/feed_items?id=eq.${id}`, {
       method: 'PATCH',
-      headers: { ...sbHeaders, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { ...sbAuthHeaders(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify(fields),
     });
   } catch (err) {
@@ -446,7 +498,7 @@ async function patchFeedItem(id, fields){
 }
 async function deleteFeedItem(id){
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/feed_items?id=eq.${id}`, { method: 'DELETE', headers: sbHeaders });
+    await fetch(`${SUPABASE_URL}/rest/v1/feed_items?id=eq.${id}`, { method: 'DELETE', headers: sbAuthHeaders() });
   } catch (err) {
     console.error('ลบไม่สำเร็จ:', err);
     showToast('ลบไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
@@ -472,7 +524,7 @@ function sendReply(item, text, archiveAfter){
 
   fetch('/api/reply', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: apiAuthHeaders(),
     body: JSON.stringify({ itemId: item.id, text }),
     // keepalive: บอกเบราว์เซอร์ให้ส่ง request นี้ให้จบแม้ผู้ใช้จะปิดแท็บ/หน้าเพจไปแล้วทันที
     // หลังกดส่ง (ปกติปิดแท็บจะตัด request ที่ค้างอยู่ทิ้งเลย) เซิร์ฟเวอร์จะยิงไป Facebook ต่อจนจบ
@@ -511,7 +563,7 @@ async function saveEditedReply(item, newText){
   try {
     const res = await fetch('/api/edit-reply', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiAuthHeaders(),
       body: JSON.stringify({ itemId: item.id, text: newText }),
     });
     const data = await res.json().catch(() => ({}));
@@ -536,7 +588,7 @@ async function deleteAdminReply(item){
   try {
     const res = await fetch('/api/delete-reply', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiAuthHeaders(),
       body: JSON.stringify({ itemId: item.id }),
     });
     const data = await res.json().catch(() => ({}));
@@ -571,7 +623,7 @@ async function setCommentHidden(item, hidden){
   try {
     const res = await fetch('/api/moderate-comment', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiAuthHeaders(),
       body: JSON.stringify({ itemId: item.id, hidden }),
     });
     const data = await res.json().catch(() => ({}));
@@ -592,10 +644,12 @@ async function setCommentHidden(item, hidden){
 }
 
 async function loadData(){
+  // ยังไม่ล็อกอิน ไม่ต้องดึงข้อมูล (RLS ฝั่ง Supabase จะปฏิเสธอยู่แล้ว แต่กันไว้ตั้งแต่ต้นเลย)
+  if (!state.auth.session) return;
   try {
     const [pagesRes, itemsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/pages_public?select=*`, { headers: sbHeaders }),
-      fetch(`${SUPABASE_URL}/rest/v1/feed_items?select=*&order=created_at.desc`, { headers: sbHeaders }),
+      fetch(`${SUPABASE_URL}/rest/v1/pages_public?select=*`, { headers: sbAuthHeaders() }),
+      fetch(`${SUPABASE_URL}/rest/v1/feed_items?select=*&order=created_at.desc`, { headers: sbAuthHeaders() }),
     ]);
     if (!pagesRes.ok || !itemsRes.ok) throw new Error('โหลดข้อมูลไม่สำเร็จ');
     PAGES = (await pagesRes.json()).map(mapPage);
@@ -659,6 +713,17 @@ const state = {
   // 2) กัน loadData() (poll ทุก 20 วิ) เอาข้อมูลเก่าจาก Supabase มาทับสถานะที่เพิ่ง optimistic ไว้
   //    ก่อนที่คำขอจริงจะเขียนลง Supabase เสร็จ — ไม่งั้นจะดูเหมือนกดแล้วไม่มีอะไรเกิดขึ้น
   pendingActionIds: new Set(),
+
+  // สถานะการล็อกอิน (Supabase Auth) — ทีมมีหลายคน ใช้คนละไอดีกันเข้า บัญชีสร้างโดยแอดมินเท่านั้น
+  // ไม่มีปุ่มสมัครเองในหน้าเว็บ ทุกคนที่ล็อกอินได้มีสิทธิ์เท่ากันหมด
+  auth: {
+    ready: false,       // เช็ค session ตอนเปิดหน้าเสร็จหรือยัง (กันแวบเห็นหน้า login ก่อนรู้ผลจริง)
+    session: null,      // session ปัจจุบัน จาก Supabase Auth (null = ยังไม่ได้ล็อกอิน)
+    loginEmail: '',
+    loginPassword: '',
+    loginError: null,
+    loginLoading: false,
+  },
 };
 
 /* ============================================================
@@ -745,7 +810,9 @@ function signatureFor(page){
    RENDER: TOP BAR
 ============================================================ */
 function renderTopbar(){
-  const displayName = `${state.profile.firstName} ${state.profile.lastName}`.trim();
+  // แสดงชื่อของผู้ใช้ที่ล็อกอินอยู่จริง (แต่ละคนใช้คนละไอดี) แทนชื่อที่ hardcode ไว้ก่อนหน้านี้
+  const authEmail = state.auth.session && state.auth.session.user && state.auth.session.user.email;
+  const displayName = authEmail || `${state.profile.firstName} ${state.profile.lastName}`.trim();
   return `
     <div class="topbar">
       <div class="topbar-brand">
@@ -1097,6 +1164,21 @@ function renderList(){
 ============================================================ */
 function render(){
   const app = document.getElementById('app');
+
+  // ยังไม่รู้ผลว่าล็อกอินค้างไว้จาก session เดิมหรือเปล่า — ไม่โชว์อะไรเลยดีกว่าโชว์หน้า login
+  // วาบแล้วหายไปทันทีถ้าจริงๆ มี session ค้างอยู่
+  if (!state.auth.ready) {
+    app.innerHTML = '';
+    return;
+  }
+
+  // ยังไม่ได้ล็อกอิน — โชว์หน้า login แทนแดชบอร์ดทั้งหมด
+  if (!state.auth.session) {
+    app.innerHTML = renderLogin();
+    bindLoginForm();
+    return;
+  }
+
   app.innerHTML = `
     ${renderTopbar()}
     <div class="main">
@@ -1113,6 +1195,68 @@ function render(){
   `;
   bindAllReplyBoxes();
   bindSearchInput();
+}
+
+/* ============================================================
+   RENDER: LOGIN SCREEN
+   ทีมมีหลายคน ใช้คนละไอดีกันเข้า — บัญชีสร้างโดยแอดมินเท่านั้น ไม่มีปุ่มสมัครเองในหน้านี้
+============================================================ */
+function renderLogin(){
+  const a = state.auth;
+  return `
+    <div class="login-wrap">
+      <form class="login-card" id="loginForm">
+        <div class="login-brand">
+          <div class="mark">${ICONS.catAngry}</div>
+          CommentGG
+        </div>
+        <div class="login-sub">เข้าสู่ระบบด้วยบัญชีที่แอดมินสร้างให้</div>
+        <label class="login-label">อีเมล</label>
+        <input class="login-input" type="email" id="loginEmail" autocomplete="username" value="${a.loginEmail}" required />
+        <label class="login-label">รหัสผ่าน</label>
+        <input class="login-input" type="password" id="loginPassword" autocomplete="current-password" required />
+        ${a.loginError ? `<div class="login-error">${ICONS.alert} ${a.loginError}</div>` : ''}
+        <button class="login-btn" type="submit" ${a.loginLoading ? 'disabled' : ''}>
+          ${a.loginLoading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
+        </button>
+      </form>
+    </div>
+  `;
+}
+
+function bindLoginForm(){
+  const form = document.getElementById('loginForm');
+  if (!form) return;
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    doLogin();
+  });
+}
+
+async function doLogin(){
+  const emailInput = document.getElementById('loginEmail');
+  const passwordInput = document.getElementById('loginPassword');
+  const email = (emailInput?.value || '').trim();
+  const password = passwordInput?.value || '';
+  if (!email || !password) return;
+
+  state.auth.loginEmail = email;
+  state.auth.loginLoading = true;
+  state.auth.loginError = null;
+  render();
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    state.auth.loginLoading = false;
+    state.auth.loginError = error.message === 'Invalid login credentials'
+      ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'
+      : (error.message || 'เข้าสู่ระบบไม่สำเร็จ');
+    render();
+    return;
+  }
+  // เดี๋ยว onAuthStateChange (ผูกไว้ตอนเริ่มสคริปต์) จะรับ session ใหม่แล้ว render()/loadData() ต่อเอง
+  state.auth.loginLoading = false;
+  state.auth.loginError = null;
 }
 
 /* ============================================================
@@ -1159,7 +1303,7 @@ function openPostPanel(item, anchorRect){
   };
   render();
 
-  fetch(`/api/post-detail?itemId=${encodeURIComponent(item.id)}`)
+  fetch(`/api/post-detail?itemId=${encodeURIComponent(item.id)}`, { headers: apiAuthHeaders() })
     .then(async (res) => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'โหลดคอมเมนต์ไม่สำเร็จ');
@@ -1329,8 +1473,8 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'sign-out':
       state.userMenuOpen = false;
-      showToast('ออกจากระบบแล้ว (จำลอง)', 'success');
-      render(); break;
+      sb.auth.signOut(); // onAuthStateChange ด้านล่างจะเคลียร์ session + พาไปหน้า login เอง
+      break;
 
     case 'open-profile':
       state.userMenuOpen = false;
@@ -1578,8 +1722,33 @@ document.getElementById('app').addEventListener('click', (e) => {
   }
 });
 
-render();
-loadData();
+// เช็ค session ที่อาจค้างอยู่จากครั้งก่อน (Supabase Auth persist ไว้ใน localStorage ของเบราว์เซอร์
+// ผู้ใช้เอง) ก่อนตัดสินใจว่าจะโชว์หน้า login หรือแดชบอร์ดเลย — กัน login ค้างไว้แล้วต้องล็อกอินใหม่
+// ทุกครั้งที่เปิดหน้าเว็บ
+sb.auth.getSession().then(({ data }) => {
+  state.auth.session = data.session || null;
+  state.auth.ready = true;
+  render();
+  if (state.auth.session) loadData();
+});
+
+// ฟังการเปลี่ยนแปลงสถานะล็อกอิน (ล็อกอินสำเร็จ, ออกจากระบบ, token หมดอายุแล้วต่ออายุอัตโนมัติ ฯลฯ)
+// แล้วอัปเดตหน้าจอให้ตรงกับสถานะล่าสุดเสมอ ไม่ต้องรีเฟรชหน้าเอง
+sb.auth.onAuthStateChange((event, session) => {
+  const hadSession = !!state.auth.session;
+  state.auth.session = session || null;
+  state.auth.ready = true;
+  if (!session) {
+    // ออกจากระบบ (หรือ token ใช้ไม่ได้แล้ว) — เคลียร์ข้อมูลเก่าทิ้ง กันเห็นข้อมูลของบัญชีก่อนหน้า
+    PAGES = [];
+    ITEMS = [];
+    state.auth.loginEmail = '';
+    state.auth.loginError = null;
+  }
+  render();
+  if (session && !hadSession) loadData();
+});
+
 setInterval(() => { if (!state.expandedId) loadData(); }, 20000);
 </script>
 </body>
