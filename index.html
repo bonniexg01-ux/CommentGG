@@ -393,12 +393,17 @@ async function deleteFeedItem(id){
 // ทำแบบ optimistic: ปิด panel และขึ้น "ตอบแล้ว" ทันทีที่กด ไม่ต้องรอเซิร์ฟเวอร์ตอบกลับก่อน
 // (เดิมรอ await ก่อนถึงจะปิด panel เลยรู้สึกค้าง) ตัว request ยิงต่อเบื้องหลังด้วย keepalive
 // กันปิดแท็บแล้วขาด ถ้าสุดท้าย Facebook ปฏิเสธจริงๆ ค่อยแก้สถานะเป็น 'failed' ทีหลังพร้อม toast แจ้ง
-function sendReply(item, text){
+function sendReply(item, text, archiveAfter){
   item.status = 'replied';
   item.adminReply = text;
+  if (archiveAfter) item.folder = 'archive';
   state.expandedId = null;
-  showToast('กำลังส่งข้อความ...', 'success');
+  showToast(archiveAfter ? 'กำลังส่งข้อความและจัดเก็บ...' : 'กำลังส่งข้อความ...', 'success');
   render();
+
+  if (archiveAfter) {
+    patchFeedItem(item.id, { folder: 'archive' });
+  }
 
   fetch('/api/reply', {
     method: 'POST',
@@ -801,6 +806,7 @@ function renderExpandPanel(item){
         <div class="composer-rules">สรรพนาม: <b>${page.pronoun}</b> &nbsp;·&nbsp; คำลงท้าย: <b>${page.ending}</b> &nbsp;·&nbsp; แฮชแท็ก: <b>${page.hashtag}</b></div>
         <div class="composer-actions">
           <button class="btn" data-action="collapse" data-id="${item.id}">ยกเลิก</button>
+          <button class="btn" id="sendArchiveBtn-${item.id}" data-action="send-archive" data-id="${item.id}">${ICONS.archive} ตอบกลับและจัดเก็บ</button>
           <button class="btn primary" id="sendBtn-${item.id}" data-action="send" data-id="${item.id}">${ICONS.send} ส่งข้อความ</button>
         </div>
       </div>
@@ -1154,6 +1160,19 @@ document.getElementById('app').addEventListener('click', (e) => {
       const endingViolation = checkEndingViolation(text, page);
       if (endingViolation) { showToast(`ส่งไม่สำเร็จ: เพจนี้ต้องใช้คำลงท้าย "${page.ending}" ไม่ใช่ "${endingViolation.term}"`, 'error'); return; }
       sendReply(item, text);
+      break;
+    }
+
+    case 'send-archive': {
+      const page = pageById(item.pageId);
+      const box = document.getElementById('replyBox-' + id);
+      const text = box.value.trim();
+      if (!text) { showToast('กรุณาพิมพ์ข้อความก่อนส่ง', 'error'); return; }
+      const violation = checkCrossPageViolation(text, page.id);
+      if (violation) { showToast(`ส่งไม่สำเร็จ: พบคำของเพจอื่น ("${violation.term}") กรุณาแก้ไขก่อนส่ง`, 'error'); return; }
+      const endingViolation = checkEndingViolation(text, page);
+      if (endingViolation) { showToast(`ส่งไม่สำเร็จ: เพจนี้ต้องใช้คำลงท้าย "${page.ending}" ไม่ใช่ "${endingViolation.term}"`, 'error'); return; }
+      sendReply(item, text, true);
       break;
     }
   }
