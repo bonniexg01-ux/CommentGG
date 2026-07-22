@@ -6,7 +6,19 @@
 const crypto = require('crypto');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://acwilhbtdbxhhwlabpes.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'sb_publishable_i9A_PqJhrOb8kmP47x2OOg_Ma2AhTRn';
+// เดิมไฟล์นี้ใช้ anon/publishable key อ่าน/เขียน Supabase — ตอนเพิ่มระบบ login เข้ามาทีหลัง เรา
+// ล็อก RLS ของ feed_items และ pages_public ให้เหลือแค่ role "authenticated" เท่านั้น (REVOKE
+// สิทธิ์ anon ออกไปหมด กันไม่ให้ใครก็ตามที่ไม่ได้ล็อกอินมาอ่าน/เขียนข้อมูลได้ตรงๆ)
+//
+// แต่ webhook นี้ไม่มี user session เลย (Meta ยิงมาเรียกเราตรงๆ ไม่ผ่านการล็อกอิน) พอ anon
+// หมดสิทธิ์ webhook เลยอ่าน/เขียนไม่ได้ไปด้วย ทำให้คอมเมนต์ใหม่จากเพจไม่เคยถูกบันทึกลง
+// feed_items เลยตั้งแต่ล็อก RLS (แต่ตัว handler ไม่เคยเช็ค response ของ Supabase เลย เลยยัง
+// ตอบ 200 กลับ Meta เหมือนสำเร็จ ทำให้เงียบไม่มีใครรู้ว่าคอมเมนต์หายไปไหนหมด)
+//
+// แก้โดยให้ webhook ใช้ service role key แทน (ข้าม RLS ได้ทั้งหมด) เหมาะสมเพราะ endpoint นี้
+// ตรวจลายเซ็นของ Meta ก่อนแล้ว (verifySignature) เป็นฝั่งเซิร์ฟเวอร์ที่เชื่อถือได้อยู่แล้ว
+// เหมือน api/reply.mjs และไฟล์อื่นๆ ที่ใช้ service key เช่นกัน
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN; // optional for now
 const APP_SECRET = process.env.META_APP_SECRET; // optional for now
 
@@ -117,7 +129,10 @@ function verifySignature(req, rawBody, appSecret) {
 async function lookupPageUuid(fbPageId) {
   const url = `${SUPABASE_URL}/rest/v1/pages_public?page_id=eq.${encodeURIComponent(fbPageId)}&select=id`;
   const r = await fetch(url, { headers: sbHeaders });
-  if (!r.ok) return null;
+  if (!r.ok) {
+    console.error('webhook error: lookupPageUuid ล้มเหลว', r.status, await r.text().catch(() => ''));
+    return null;
+  }
   const rows = await r.json();
   return rows[0] ? rows[0].id : null;
 }
@@ -152,9 +167,12 @@ async function insertMessage(pageUuid, event) {
 
 async function insertFeedItem(record) {
   const url = `${SUPABASE_URL}/rest/v1/feed_items?on_conflict=fb_id`;
-  await fetch(url, {
+  const r = await fetch(url, {
     method: 'POST',
     headers: { ...sbHeaders, Prefer: 'resolution=ignore-duplicates,return=minimal' },
     body: JSON.stringify(record),
   });
+  if (!r.ok) {
+    console.error('webhook error: insertFeedItem ล้มเหลว', r.status, await r.text().catch(() => ''));
+  }
 }
