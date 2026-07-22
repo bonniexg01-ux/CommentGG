@@ -552,6 +552,34 @@ async function deleteAdminReply(item){
   }
 }
 
+// ซ่อน/เผยแพร่คืนคอมเมนต์ — สั่งที่ Facebook จริงผ่าน /api/moderate-comment ก่อน (เดิมปุ่มนี้แค่
+// แก้สถานะใน Supabase ฝั่งเราเท่านั้น คอมเมนต์เลยยังโชว์อยู่บน Facebook ตามปกติ ไม่ได้ถูกซ่อนจริง)
+// อัปเดต UI แบบ optimistic แล้วค่อย revert ถ้า Facebook ปฏิเสธ
+async function setCommentHidden(item, hidden){
+  const prevStatus = item.status;
+  const prevReason = item.aiReason;
+  item.status = hidden ? 'spam_hidden' : 'pending';
+  if (hidden) item.aiReason = 'ซ่อนโดยแอดมินด้วยตนเอง';
+  render();
+
+  try {
+    const res = await fetch('/api/moderate-comment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemId: item.id, hidden }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || (hidden ? 'ซ่อนไม่สำเร็จ' : 'เผยแพร่คืนไม่สำเร็จ'));
+    showToast(hidden ? 'ซ่อนคอมเมนต์บน Facebook แล้ว' : 'เผยแพร่คืนบน Facebook แล้ว', 'success');
+  } catch (err) {
+    console.error((hidden ? 'ซ่อน' : 'เผยแพร่คืน') + 'ไม่สำเร็จ:', err);
+    item.status = prevStatus;
+    item.aiReason = prevReason;
+    showToast(err.message || 'ทำรายการไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+    render();
+  }
+}
+
 async function loadData(){
   try {
     const [pagesRes, itemsRes] = await Promise.all([
@@ -940,7 +968,6 @@ function rowActions(item){
     <div class="icon-btn" data-action="toggle-expand" data-id="${item.id}" data-focus="1" title="ตอบกลับ">${ICONS.reply}</div>
     ${hideBtn}
     <div class="icon-btn" data-action="bin" data-id="${item.id}" title="ลบ (ย้ายไปถังขยะ)">${ICONS.trash}</div>
-    <div class="icon-btn" data-action="block" data-id="${item.id}" title="บล็อกผู้ใช้">${ICONS.userX}</div>
     ${archiveBtn}
   `;
 }
@@ -1438,17 +1465,12 @@ document.getElementById('app').addEventListener('click', (e) => {
       render(); break;
 
     case 'hide':
-      item.status = 'spam_hidden';
-      item.aiReason = 'ซ่อนโดยแอดมินด้วยตนเอง';
-      patchFeedItem(item.id, { status: 'spam_hidden', ai_reason: item.aiReason });
-      showToast('ซ่อนคอมเมนต์เรียบร้อยแล้ว', 'success');
-      render(); break;
+      if (item) setCommentHidden(item, true);
+      break;
 
     case 'unhide':
-      item.status = 'pending';
-      patchFeedItem(item.id, { status: 'pending' });
-      showToast('เผยแพร่คืนแล้ว', 'success');
-      render(); break;
+      if (item) setCommentHidden(item, false);
+      break;
 
     case 'bin':
       item.folder = 'bin';
@@ -1479,12 +1501,6 @@ document.getElementById('app').addEventListener('click', (e) => {
       item.folder = 'inbox';
       patchFeedItem(item.id, { folder: 'inbox' });
       showToast('ย้ายกลับ Inbox แล้ว', 'success');
-      render(); break;
-
-    case 'block':
-      item.blocked = true;
-      patchFeedItem(item.id, { blocked: true });
-      showToast(`บล็อกผู้ใช้ "${item.author}" แล้ว`, 'success');
       render(); break;
 
     case 'copy':
