@@ -594,12 +594,12 @@ function sendReply(item, text, archiveAfter){
     .then(async (res) => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { revertFailedReply(item.id, data.error); return; }
-      // เก็บ comment id ที่ Facebook ส่งกลับมาไว้ทันที (เดิมต้องรอ poll รอบถัดไป/กด F5 ถึงจะเห็น
-      // ปุ่มแก้ไข/ลบคำตอบ เพราะ adminReplyFbId ยังไม่เคยถูกตั้งค่าในฝั่ง client เลยหลังส่งสำเร็จ)
-      if (data.fbId) {
-        item.adminReplyFbId = data.fbId;
-        render();
-      }
+      // เก็บ comment id + ชื่อคนตอบที่เซิร์ฟเวอร์ส่งกลับมาไว้ทันที (เดิมต้องรอ poll รอบถัดไป/กด F5
+      // ถึงจะเห็นปุ่มแก้ไข/ลบคำตอบและบรรทัด "ตอบโดย: ..." เพราะทั้งคู่ยังไม่เคยถูกตั้งค่าในฝั่ง
+      // client เลยหลังส่งสำเร็จ — ตั้งไว้แค่ฝั่ง Supabase เท่านั้น)
+      if (data.fbId) item.adminReplyFbId = data.fbId;
+      if (data.replyBy) item.adminReplyBy = data.replyBy;
+      if (data.fbId || data.replyBy) render();
     })
     .catch((err) => {
       console.error('ส่งข้อความไม่สำเร็จ:', err);
@@ -636,6 +636,7 @@ async function saveEditedReply(item, newText){
     if (!res.ok) throw new Error(data.error || 'แก้ไขไม่สำเร็จ');
 
     item.adminReply = newText;
+    if (data.replyBy) item.adminReplyBy = data.replyBy;
     state.editingReplyId = null;
     showToast('แก้ไขคำตอบแล้ว', 'success');
     render();

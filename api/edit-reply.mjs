@@ -114,8 +114,10 @@ export default async function handler(request) {
     }
 
     // อัปเดตด้วยว่าใครเป็นคน "แก้ไข" ล่าสุด (ทีมมีหลายคน ใช้คนละไอดี — สะท้อนคนที่แก้จริง)
-    await markFeedItem(itemId, { admin_reply: text, admin_reply_by: displayNameFromUser(user) });
-    return json({ ok: true });
+    const replierName = displayNameFromUser(user);
+    await markFeedItem(itemId, { admin_reply: text, admin_reply_by: replierName });
+    // ส่งชื่อกลับไปด้วย ให้ frontend อัปเดตบรรทัด "ตอบโดย: ..." ทันทีโดยไม่ต้องรอรีเฟรช
+    return json({ ok: true, replyBy: replierName });
   } catch (err) {
     console.error('edit-reply error', err);
     return json({ error: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' }, 500);
