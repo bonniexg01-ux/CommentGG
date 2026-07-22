@@ -1,9 +1,11 @@
 // api/post-detail.mjs
-// ให้แอดมินกดแว่นขยายที่แถวไหน แล้วดู "รายละเอียดคอมเมนต์นั้นเดี่ยวๆ" จาก Facebook ได้เลย
-// (ข้อความเต็ม, รูปที่แนบมากับคอมเมนต์ถ้ามี, ชื่อคนคอมเมนต์, เวลา, ลิงก์เปิดดูบน Facebook)
-// โดยไม่ต้องออกไปเปิด Facebook เอง — ดึงสดทุกครั้งที่กด (ไม่ได้แคชไว้ในระบบเรา)
+// ให้แอดมินกดแว่นขยายที่แถวไหน แล้วดู "คอมเมนต์นั้นเดี่ยวๆ พร้อมบริบทของโพสต์ต้นทาง" จาก Facebook
+// ได้เลย (รูป/แคปชั่นของโพสต์ต้นทางถ้ามี + ข้อความคอมเมนต์เต็ม + รูปที่แนบมากับคอมเมนต์ถ้ามี +
+// ชื่อคนคอมเมนต์ + เวลา + ลิงก์เปิดดูบน Facebook) โดยไม่ต้องออกไปเปิด Facebook เอง —
+// ดึงสดทุกครั้งที่กด (ไม่ได้แคชไว้ในระบบเรา)
 //
-// เอาเฉพาะคอมเมนต์ที่กดดู ไม่ใช่ทั้งโพสต์/คอมเมนต์ทั้งหมด (ตามที่ขอ — ของเดิมดึงมาทั้งโพสต์กว้างไป)
+// เอาเฉพาะคอมเมนต์ที่กดดู ไม่ใช่คอมเมนต์อื่นๆ ทั้งหมดใต้โพสต์เดียวกัน (ของเดิมเคยดึงมาทั้งเธรดกว้างไป)
+// แต่ยังดึงโพสต์ต้นทางมาโชว์คู่กันด้วย เพื่อให้รู้บริบทว่ากำลังดูคอมเมนต์ใต้โพสต์อะไร
 //
 // รับ itemId (feed_items.id) แล้วมาหา fb_id/fb_post_id + page access_token ต่อ (แพทเทิร์นเดียวกับ
 // api/reply.mjs) แล้วดึง comment_id จริงด้วย deriveCommentId แบบเดียวกับตอนตอบกลับ
@@ -68,9 +70,17 @@ export default async function handler(request) {
 
     const commentId = deriveCommentId(item.fb_id, item.fb_post_id);
 
-    let comment;
+    let comment, post;
     try {
-      comment = await fetchComment(commentId, page.access_token);
+      // ดึงคอมเมนต์ที่กด + โพสต์ต้นทาง (เอาแค่รูป/แคปชั่นพอ ให้รู้บริบทว่าคอมเมนต์นี้อยู่ใต้โพสต์อะไร)
+      // ยิงขนานกัน ถ้าโพสต์ดึงไม่ได้ (เช่น โดนลบ) ก็ไม่ให้ทั้งคำขอพัง แค่ไม่มีส่วนโพสต์ให้แสดง
+      const results = await Promise.allSettled([
+        fetchComment(commentId, page.access_token),
+        item.fb_post_id ? fetchPost(item.fb_post_id, page.access_token) : Promise.resolve(null),
+      ]);
+      comment = results[0].status === 'fulfilled' ? results[0].value : null;
+      post = results[1].status === 'fulfilled' ? results[1].value : null;
+      if (!comment) throw (results[0].reason || new Error('โหลดคอมเมนต์ไม่สำเร็จ'));
     } catch (fbErr) {
       const isTimeout = fbErr && fbErr.name === 'AbortError';
       console.error('post-detail error: เรียก Facebook ไม่สำเร็จ', isTimeout ? 'timeout' : fbErr);
@@ -101,6 +111,9 @@ export default async function handler(request) {
       createdTime: comment.created_time || null,
       permalinkUrl: comment.permalink_url || null,
       images,
+      post: post && !post.error
+        ? { message: post.message || null, fullPicture: post.full_picture || null }
+        : null,
     });
   } catch (err) {
     console.error('post-detail error', err);
@@ -128,6 +141,12 @@ async function fetchFeedItemWithPage(id) {
 async function fetchComment(commentId, accessToken) {
   const fields = 'message,from,created_time,permalink_url,attachment{media,type,url,subattachments}';
   const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(commentId)}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(accessToken)}`;
+  const r = await fetchWithTimeout(url, { method: 'GET' });
+  return r.json();
+}
+
+async function fetchPost(postId, accessToken) {
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(postId)}?fields=message,full_picture&access_token=${encodeURIComponent(accessToken)}`;
   const r = await fetchWithTimeout(url, { method: 'GET' });
   return r.json();
 }
