@@ -86,7 +86,10 @@ export default async function handler(request) {
 
     if (fbResult && fbResult.error) {
       console.error('moderate-comment error: Facebook ปฏิเสธ', fbResult.error);
-      return json({ error: `Facebook ปฏิเสธ: ${fbResult.error.message || 'unknown error'}` }, 502);
+      const e = fbResult.error;
+      const detail = [e.message, e.type, e.code != null ? `code ${e.code}` : null, e.error_subcode != null ? `subcode ${e.error_subcode}` : null]
+        .filter(Boolean).join(' | ');
+      return json({ error: `Facebook ปฏิเสธ: ${detail || 'unknown error'}` }, 502);
     }
 
     if (hidden) {
