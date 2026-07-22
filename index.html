@@ -367,6 +367,20 @@ function mapItem(row){
   };
 }
 
+// อัปเดตแฮชแท็กของเพจจริงผ่าน API ฝั่งเซิร์ฟเวอร์ (ต้องใช้ service key เขียนตาราง pages
+// ซึ่ง anon key ของ frontend เขียนตรงๆ ไม่ได้ — ดู api/update-page.mjs)
+async function updatePageHashtag(pageId, hashtag){
+  const res = await fetch('/api/update-page', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pageId, hashtag }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'บันทึกแฮชแท็กไม่สำเร็จ');
+  }
+}
+
 async function patchFeedItem(id, fields){
   try {
     await fetch(`${SUPABASE_URL}/rest/v1/feed_items?id=eq.${id}`, {
@@ -469,7 +483,6 @@ const state = {
     firstName: 'Bow',
     lastName: 'cs',
     email: 'bonniexg01@gmail.com',
-    hashtags: { dragon:'', neon:'', forge:'', sky:'' },
   },
 };
 
@@ -599,16 +612,16 @@ function renderProfileModal(){
       <input id="pf-email" type="email" value="${p.email}" />
     </div>
     <div class="form-row">
-      <label>แฮชแท็กประจำตัว CS <span class="opt">(ใช้ระบุตัวตนตอนตอบลูกค้า แยกตามเพจ เพราะแต่ละเกมใช้ไม่เหมือนกัน)</span></label>
+      <label>แฮชแท็กประจำเพจ <span class="opt">(ต่อท้ายข้อความตอบกลับอัตโนมัติ แยกตามเพจ)</span></label>
       ${PAGES.map(page => `
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
           <span style="width:170px; flex:none; font-size:12.5px; color:var(--text-dim); display:flex; align-items:center; gap:6px;">
             <span class="dot" style="width:7px;height:7px;border-radius:50%;background:${page.color};display:inline-block;"></span>${page.emoji} ${page.name}
           </span>
-          <input id="pf-hashtag-${page.id}" type="text" placeholder="เช่น ${page.hashtag}" value="${(p.hashtags && p.hashtags[page.id]) || ''}" />
+          <input id="pf-hashtag-${page.id}" type="text" placeholder="เช่น #${page.name}" value="${page.hashtag || ''}" />
         </div>
       `).join('')}
-      <div class="form-hint">ตั้งไว้เพื่ออ้างอิงว่าแอดมินคนนี้เป็นใครเวลาไล่ดูประวัติการตอบของแต่ละเกม — ยังไม่ผูกกับระบบเช็กสรรพนามผิดเพจ (เป็นการตั้งค่าตามเพจอยู่)</div>
+      <div class="form-hint">แก้แล้วกด Save จะอัปเดตแฮชแท็กที่ใช้ในข้อความตอบกลับของเพจนั้นทันที</div>
     </div>
     <div class="form-hint" style="margin-top:2px;">* ระบบตั้งรหัสผ่านเข้าสู่ระบบจะเปิดให้ใช้งานภายหลังเมื่อเว็บพร้อมใช้งานจริง</div>
   `;
@@ -997,14 +1010,38 @@ document.getElementById('app').addEventListener('click', (e) => {
       const firstName = document.getElementById('pf-firstName').value.trim() || state.profile.firstName;
       const lastName = document.getElementById('pf-lastName').value.trim();
       const email = document.getElementById('pf-email').value.trim() || state.profile.email;
-      const hashtags = {};
+      state.profile = { firstName, lastName, email };
+
+      // อ่านค่าจากช่องกรอกก่อนปิด modal (พอปิด/render ใหม่ input พวกนี้จะหายไปจาก DOM)
+      // แล้วเก็บเฉพาะเพจที่แฮชแท็กมีการแก้ไขจริง
+      const changedPages = [];
       PAGES.forEach(page => {
-        hashtags[page.id] = document.getElementById('pf-hashtag-' + page.id).value.trim();
+        const input = document.getElementById('pf-hashtag-' + page.id);
+        if (!input) return;
+        const newHashtag = input.value.trim();
+        if (newHashtag !== (page.hashtag || '')) changedPages.push({ page, newHashtag });
       });
-      state.profile = { firstName, lastName, email, hashtags };
+
       state.profileOpen = false;
-      showToast('บันทึกโปรไฟล์เรียบร้อยแล้ว', 'success');
-      render(); break;
+      render();
+
+      if (changedPages.length === 0) {
+        showToast('บันทึกโปรไฟล์เรียบร้อยแล้ว', 'success');
+        break;
+      }
+
+      Promise.all(changedPages.map(({ page, newHashtag }) =>
+        updatePageHashtag(page.id, newHashtag).then(() => { page.hashtag = newHashtag; })
+      ))
+        .then(() => {
+          showToast('บันทึกโปรไฟล์และแฮชแท็กเรียบร้อยแล้ว', 'success');
+          render();
+        })
+        .catch((err) => {
+          console.error('บันทึกแฮชแท็กไม่สำเร็จ:', err);
+          showToast(err.message || 'บันทึกแฮชแท็กบางเพจไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+        });
+      break;
     }
 
     case 'select-page':
