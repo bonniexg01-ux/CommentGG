@@ -1930,12 +1930,15 @@ function updateComposerState(item, box, page){
 /* ============================================================
    EVENT DELEGATION
 ============================================================ */
-// เก็บ target ของ mousedown ล่าสุดไว้เทียบกับตอน click — กันบั๊ก: ลาก/เลือกข้อความเริ่มจากข้างใน
-// modal (เช่น select ข้อความในช่อง input) แล้วปล่อยเมาส์ออกไปโดนพื้นหลังนอกกล่อง จะถูกนับเป็น
-// "คลิกที่พื้นหลัง" แล้วปิด modal ทันที ทั้งที่ผู้ใช้แค่ลากเลือกข้อความอยู่ ไม่ได้ตั้งใจปิดกล่องเลย
+// เก็บ "ancestor ที่มี data-action" ของ mousedown ล่าสุดไว้เทียบกับตอน click (ไม่ใช่ raw target ตรงๆ
+// เพราะปุ่มไอคอนอย่างกากบาท modal-close มักคลิกโดนตัว <svg>/<path> ข้างในซึ่งเป็นคนละ element กับ
+// div ที่มี data-action จริงๆ — เทียบ raw target ตรงๆ เลยทำให้กดกากบาทไม่ติด ต้องเทียบที่ closest
+// ancestor แทน) กันบั๊ก: ลาก/เลือกข้อความเริ่มจากข้างใน modal (เช่น select ข้อความในช่อง input)
+// แล้วปล่อยเมาส์ออกไปโดนพื้นหลังนอกกล่อง จะถูกนับเป็น "คลิกที่พื้นหลัง" แล้วปิด modal ทันที ทั้งที่
+// ผู้ใช้แค่ลากเลือกข้อความอยู่ ไม่ได้ตั้งใจปิดกล่องเลย
 let lastMouseDownTarget = null;
 document.getElementById('app').addEventListener('mousedown', (e) => {
-  lastMouseDownTarget = e.target;
+  lastMouseDownTarget = e.target.closest('[data-action]');
 });
 
 // select/input[type=date] ในแผง Filters ใช้ event "change" (ไม่ใช่ "click" เหมือน data-action อื่นๆ
