@@ -326,10 +326,6 @@
     border-radius:8px; padding:9px 11px; margin-top:8px; font-size:12px; color:var(--red-text); line-height:1.5;
   }
   .composer-alert svg{width:15px; height:15px; flex:none; margin-top:1px; color:var(--red);}
-  .composer-hint-ok{display:flex; gap:6px; align-items:center; font-size:11.5px; color:var(--green); margin-top:7px;}
-  .composer-hint-ok svg{width:13px; height:13px;}
-  .composer-hint-neutral{display:flex; gap:6px; align-items:center; font-size:11.5px; color:var(--text-faint); margin-top:7px;}
-  .composer-hint-neutral svg{width:13px; height:13px; flex:none;}
   .composer-foot{display:flex; align-items:center; justify-content:space-between; margin-top:9px;}
   .composer-rules{font-size:11px; color:var(--text-faint);}
   .composer-rules b{color:var(--text-dim);}
@@ -963,20 +959,6 @@ function checkEndingViolation(text, page){
   const wrongEnding = page.ending === 'ครับ' ? 'ค่ะ' : 'ครับ';
   if (text.includes(wrongEnding)) return { term: wrongEnding, expected: page.ending };
   return null;
-}
-
-/* ============================================================
-   OWN-IDENTITY CHECK — บังคับว่าต้องมีสรรพนาม/คำลงท้าย/แฮชแท็ก "ของเพจนี้เอง"
-   อยู่ในข้อความก่อนส่งได้ (กันเผลอกดตอบเพจหนึ่งแต่ลืมใส่ identity ให้ถูกเพจ
-   เวลาสลับตอบหลายเพจ) — คืนค่า array ของสิ่งที่ขาด หรือ null ถ้าครบ
-============================================================ */
-function checkOwnIdentityMissing(text, page){
-  const missing = [];
-  if (page.pronoun && !text.includes(page.pronoun)) missing.push({ type: 'สรรพนาม', term: page.pronoun });
-  if (page.ending && !text.includes(page.ending)) missing.push({ type: 'คำลงท้าย', term: page.ending });
-  const myTag = myHashtagFor(page.id);
-  if (myTag && !text.includes(myTag)) missing.push({ type: 'แฮชแท็ก', term: myTag });
-  return missing.length ? missing : null;
 }
 
 // ไม่ใส่คำลงท้าย (ค่ะ/ครับ) อัตโนมัติแล้ว — ให้แอดมินพิมพ์เองตามที่เห็นในบรรทัด
@@ -1722,9 +1704,6 @@ function updateComposerState(item, box, page){
   const text = box.value;
   const violation = checkCrossPageViolation(text, page.id);
   const endingViolation = !violation ? checkEndingViolation(text, page) : null;
-  const ownMissing = (!violation && !endingViolation && text.trim().length > 0)
-    ? checkOwnIdentityMissing(text, page) : null;
-
   if (violation) {
     box.classList.add('violate');
     alertZone.innerHTML = `
@@ -1749,17 +1728,10 @@ function updateComposerState(item, box, page){
     `;
     setDisabled(true);
   } else {
-    // ไม่บล็อกการส่งแม้ identity เพจตัวเองจะยังไม่ครบ (บางทีตอบแบบไม่มีสรรพนามก็ได้) —
-    // แค่เตือนไว้เฉยๆ ให้รู้ว่าเพจนี้ปกติควรมีอะไรบ้าง กันหลงเวลาสลับตอบหลายเพจ
+    // ไม่บล็อกการส่งแม้ identity เพจตัวเองจะยังไม่ครบ (บางทีตอบแบบไม่มีสรรพนามก็ได้) — เอาข้อความ
+    // เตือนเฉยๆ (composer-hint-neutral/ok) ออกไปตามที่ขอ เหลือแค่ตัวเตือนที่บล็อกการส่งจริงด้านบน
     box.classList.remove('violate');
-    if (ownMissing) {
-      const list = ownMissing.map(m => `${m.type} “${m.term}”`).join(', ');
-      alertZone.innerHTML = `<div class="composer-hint-neutral">${ICONS.alert} เพจนี้ปกติใช้: สรรพนาม “${page.pronoun}”, คำลงท้าย “${page.ending}”, แฮชแท็กของคุณ “${myHashtagFor(page.id)}” — ยังไม่มี: ${list}</div>`;
-    } else if (text.trim().length > 0) {
-      alertZone.innerHTML = `<div class="composer-hint-ok">${ICONS.checkCircle} ใช้สรรพนาม “${page.pronoun}”, คำลงท้าย “${page.ending}” และแฮชแท็กของคุณ “${myHashtagFor(page.id)}” ถูกต้องสำหรับเพจนี้ครบแล้ว</div>`;
-    } else {
-      alertZone.innerHTML = '';
-    }
+    alertZone.innerHTML = '';
     setDisabled(false);
   }
 }
