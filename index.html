@@ -113,6 +113,7 @@
     font-family:inherit; outline:none;
   }
   .form-row input:focus{border-color:#E3B4C0;}
+  .form-row input:disabled{background:#F4EDE4; color:var(--text-faint); cursor:not-allowed;}
   .form-hint{font-size:11.5px; color:var(--text-faint); margin-top:6px; line-height:1.55;}
 
   /* ---------------- Comment detail popover (compact card, anchored near the clicked row) ---------------- */
@@ -862,9 +863,13 @@ function signatureFor(page){
    RENDER: TOP BAR
 ============================================================ */
 function renderTopbar(){
-  // แสดงชื่อของผู้ใช้ที่ล็อกอินอยู่จริง (แต่ละคนใช้คนละไอดี) แทนชื่อที่ hardcode ไว้ก่อนหน้านี้
+  // แสดงชื่อโปรไฟล์ของผู้ใช้ที่ล็อกอินอยู่จริง (เก็บไว้ใน user_metadata ของบัญชี Supabase Auth
+  // เอง — ตั้งได้จากเมนู Profile > Account settings) ถ้ายังไม่เคยตั้งชื่อไว้เลย ค่อย fallback
+  // ไปโชว์อีเมลแทน (แต่ละคนใช้คนละไอดี ชื่อจะไม่ปนกันระหว่างบัญชี)
+  const meta = (state.auth.session && state.auth.session.user && state.auth.session.user.user_metadata) || {};
+  const metaName = `${meta.first_name || ''} ${meta.last_name || ''}`.trim();
   const authEmail = state.auth.session && state.auth.session.user && state.auth.session.user.email;
-  const displayName = authEmail || `${state.profile.firstName} ${state.profile.lastName}`.trim();
+  const displayName = metaName || authEmail || `${state.profile.firstName} ${state.profile.lastName}`.trim();
   return `
     <div class="topbar">
       <div class="topbar-brand">
@@ -905,19 +910,27 @@ function renderProfileModal(){
   const p = state.profile;
   const tab = state.profileTab;
 
+  // ชื่อ-นามสกุลเก็บไว้ใน user_metadata ของบัญชี Supabase Auth จริง (คนละก้อนกับ state.profile ที่
+  // เป็นแค่ค่า default ในเครื่อง) ใช้ค่าจากบัญชีจริงก่อนถ้ามีการตั้งไว้แล้ว ส่วนอีเมลโชว์อีเมลที่
+  // ล็อกอินอยู่จริงเสมอ (เป็น username สำหรับล็อกอิน แก้จากหน้านี้ยังไม่ได้)
+  const meta = (state.auth.session && state.auth.session.user && state.auth.session.user.user_metadata) || {};
+  const firstNameVal = meta.first_name != null ? meta.first_name : p.firstName;
+  const lastNameVal = meta.last_name != null ? meta.last_name : p.lastName;
+  const emailVal = (state.auth.session && state.auth.session.user && state.auth.session.user.email) || p.email;
+
   const profileTabHtml = `
     <div class="modal-desc">จัดการข้อมูลผู้ใช้และชื่อที่ใช้แสดงในระบบของคุณ</div>
     <div class="form-row">
       <label>First name</label>
-      <input id="pf-firstName" type="text" value="${p.firstName}" />
+      <input id="pf-firstName" type="text" value="${firstNameVal}" />
     </div>
     <div class="form-row">
       <label>Last name</label>
-      <input id="pf-lastName" type="text" value="${p.lastName}" />
+      <input id="pf-lastName" type="text" value="${lastNameVal}" />
     </div>
     <div class="form-row">
       <label>Email <span class="opt">(login username)</span></label>
-      <input id="pf-email" type="email" value="${p.email}" />
+      <input id="pf-email" type="email" value="${emailVal}" disabled />
     </div>
     <div class="form-row">
       <label>แฮชแท็กประจำเพจ <span class="opt">(ต่อท้ายข้อความตอบกลับอัตโนมัติ แยกตามเพจ)</span></label>
@@ -1592,8 +1605,13 @@ document.getElementById('app').addEventListener('click', (e) => {
     case 'save-profile': {
       const firstName = document.getElementById('pf-firstName').value.trim() || state.profile.firstName;
       const lastName = document.getElementById('pf-lastName').value.trim();
-      const email = document.getElementById('pf-email').value.trim() || state.profile.email;
-      state.profile = { firstName, lastName, email };
+      state.profile = { firstName, lastName, email: state.profile.email };
+
+      // เก็บชื่อ-นามสกุลลง user_metadata ของบัญชี Supabase Auth จริง (ไม่ใช่แค่ state.profile ในเครื่อง)
+      // จะได้โชว์เป็นชื่อในหัวเว็บ (topbar) แทนอีเมล และอยู่ถาวรข้ามการรีเฟรชหน้า/ล็อกอินใหม่
+      sb.auth.updateUser({ data: { first_name: firstName, last_name: lastName } }).catch((err) => {
+        console.error('บันทึกชื่อโปรไฟล์ไม่สำเร็จ:', err);
+      });
 
       // อ่านค่าจากช่องกรอกก่อนปิด modal (พอปิด/render ใหม่ input พวกนี้จะหายไปจาก DOM)
       // แล้วเก็บเฉพาะเพจที่แฮชแท็กมีการแก้ไขจริง
