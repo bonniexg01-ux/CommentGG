@@ -87,28 +87,32 @@
      เข้ม การ์ด/พื้นผิวเป็นน้ำตาลเข้มรองลงมา (ให้เห็นขอบการ์ดชัดกับพื้นหลังรอบนอก) ตัวหนังสือเป็นครีม/
      ขาวอุ่นแทนสีดำ (สลับกับโหมดสว่างที่ตัวหนังสือเข้ม/พื้นหลังอ่อน) ป้าย badge และกล่องคำตอบยังใช้
      โทนชมพูพีช/น้ำตาลอุ่นเดิม แค่ปรับให้ตัดกับพื้นมืดได้ชัดขึ้น */
+  /* High-contrast card approach: การ์ด/กล่องคอมเมนต์ยังคงเป็นพื้นสว่างครีม/ขาวเหมือนโหมดสว่างเดิม
+     (อ่านง่ายสุด ไม่ต้องปรับสายตา) มีแค่ "พื้นหลังรอบนอกสุด" (body/topbar) เท่านั้นที่เป็นน้ำตาล
+     ช็อกโกแลตเข้ม ให้ยังรู้สึกว่าอยู่ใน dark mode แต่ตัวการ์ด/badge/ปุ่ม ยังคงโทนสีพาสเทลแบบเดิมของ
+     ธีมพีชเฮเซลนัทไว้เกือบทั้งหมด (--green/--red/--blue-soft ฯลฯ จึงใช้ค่าเดียวกับโหมดสว่าง) */
   html[data-theme="peachHazelnut"][data-mode="dark"]{
-    --navy:#4A3830;        /* มอคค่าเข้ม — top bar (ยังเป็นโทนน้ำตาลเดิม แค่เข้มขึ้นให้เข้ากับพื้นมืด) */
-    --navy-2:#3A2C26;
-    --bg:#1C1615;          /* ช็อกโกแลตเข้ม — พื้นหลังรอบนอก */
-    --surface:#2D2320;     /* น้ำตาลเข้มรองลงมา — การ์ด/กล่องหลัก ให้เห็นขอบชัดกับพื้นหลัง */
-    --border:#4A3A32;
-    --text:#F5EBE6;        /* ครีมอุ่นเกือบขาว — หัวข้อ/ชื่อผู้ใช้ */
-    --text-dim:#E8DDD7;    /* ครีมอุ่นรอง — เนื้อความคอมเมนต์ */
-    --text-faint:#B3A39C;  /* เทาอุ่นนวล — เวลา/ข้อความรอง */
-    --green:#E8B9C5;
-    --green-soft:#47303A;
-    --green-text:#F5C9D6;
-    --red:#EB6B63;
-    --red-soft:#3A1D1B;
-    --red-text:#FFB3AC;
-    --blue-soft:#3A2C27;   /* กล่องคำตอบด้านใน — น้ำตาลอุ่นอ่อนกว่าพื้นการ์ด แยกจากกระทู้หลักชัดเจน */
-    --blue-text:#D9A98C;   /* ตัวหนังสือ/label ในกล่องคำตอบ — คาราเมลอุ่น ตัดกับพื้นน้ำตาลเข้มชัด */
-    --peach-blue:#E8C4A8;
-    --peach-cream:#362B28;
-    --hover-bg:#3A2C27;
-    --neutral-soft:#3A2E28;
-    --neutral-text:#C9BAB2;
+    --navy:#3A2C26;         /* มอคค่าเข้ม — top bar (เป็นส่วน "รอบนอก" เท่านั้น ไม่ใช่การ์ด) */
+    --navy-2:#2C211C;
+    --bg:#211815;           /* ช็อกโกแลตเข้ม — พื้นหลังรอบนอกสุด (นอกการ์ด) */
+    --surface:#FFFDF9;      /* การ์ด/รายการคอมเมนต์ — ครีมขาวสว่าง ให้อ่านง่ายเหมือนโหมดสว่างเดิม */
+    --border:#E8DFD3;       /* เส้นขอบอ่อนแบบโหมดสว่าง (การ์ดเป็นพื้นสว่างแล้ว border เข้มจะแปลกตา) */
+    --text:#2B1D19;         /* น้ำตาลเข้มเกือบดำ — หัวข้อ/ชื่อผู้ใช้/เนื้อความ (ตัดกับการ์ดสว่างชัด) */
+    --text-dim:#6E5B53;     /* น้ำตาลเข้มนวล — เวลา/ข้อความรอง */
+    --text-faint:#9C8A7E;
+    --green:#DDA4B4;        /* ใช้ค่าเดียวกับโหมดสว่าง — พาสเทลบนพื้นการ์ดสว่างยังเข้ากันดี */
+    --green-soft:#FBEEF1;
+    --green-text:#9C5468;
+    --red:#dc2626;
+    --red-soft:#fee2e2;
+    --red-text:#b91c1c;
+    --blue-soft:#EBE3D8;    /* กล่องคำตอบด้านใน — ครีมเข้มกว่าการ์ดเล็กน้อย แยกชั้นชัดเจน */
+    --blue-text:#2B1D19;    /* ตัวหนังสือในกล่องคำตอบ — น้ำตาลเข้มอ่านง่าย (ไม่ใช้สีฟ้าแบบเดิม) */
+    --peach-blue:#78A5CE;
+    --peach-cream:#F5EFE6;
+    --hover-bg:#F5EFE6;     /* ปุ่มไอคอน/hover — ครีมอ่อนกว่าการ์ดนิดหน่อย ให้เห็นสถานะ hover ชัด */
+    --neutral-soft:#EFE9E2;
+    --neutral-text:#5C463D;
   }
   *{box-sizing:border-box;}
   html,body{height:100%;}
@@ -400,7 +404,7 @@
   /* ---------------- Expand panel ---------------- */
   .expand-wrap{grid-column:1/-1;}
   .expand-panel{
-    margin:0 8px 12px 206px; background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:14px 16px;
+    margin:0 8px 12px 206px; background:var(--peach-cream); border:1px solid var(--border); border-radius:10px; padding:14px 16px;
   }
   .expand-post{font-size:12px; color:var(--text-faint); background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin-bottom:12px;}
 
@@ -486,7 +490,7 @@
   .login-sub{font-size:14px; color:var(--text-dim); margin-bottom:32px;}
 
   .login-input{
-    width:100%; padding:16px 22px; border:none; border-radius:999px; background:var(--bg);
+    width:100%; padding:16px 22px; border:none; border-radius:999px; background:var(--peach-cream);
     font-size:15px; font-family:inherit; color:var(--text); box-sizing:border-box; text-align:center;
     box-shadow: inset 3px 3px 7px rgba(124,85,73,.14), inset -3px -3px 7px rgba(255,255,255,.85);
     margin-bottom:16px;
