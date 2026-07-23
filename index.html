@@ -226,14 +226,15 @@
   html[data-theme="peachHazelnut"][data-mode="dark"] body{
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cpath d='M18 17 L19.5 20.5 L23 22 L19.5 23.5 L18 27 L16.5 23.5 L13 22 L16.5 20.5 Z' fill='%239CC3E3' opacity='0.4'/%3E%3Cpath d='M58 12 L59.3 15 L62.5 16.3 L59.3 17.6 L58 20.7 L56.7 17.6 L53.5 16.3 L56.7 15 Z' fill='%23E8B9C5' opacity='0.45'/%3E%3Cpath d='M35 55 L36.5 58.5 L40.2 60 L36.5 61.5 L35 65 L33.5 61.5 L29.8 60 L33.5 58.5 Z' fill='%238B6559' opacity='0.3'/%3E%3Cpath d='M75 62 L76 64.3 L78.4 65.3 L76 66.3 L75 68.6 L74 66.3 L71.6 65.3 L74 64.3 Z' fill='%239CC3E3' opacity='0.35'/%3E%3Cpath d='M8 60 L9 62.3 L11.4 63.3 L9 64.3 L8 66.6 L7 64.3 L4.6 63.3 L7 62.3 Z' fill='%23E8B9C5' opacity='0.35'/%3E%3C/svg%3E");
   }
-  /* ธีม "ลาเวนเดอร์คุโรมิ" ใช้ลาย Polka Dot นุ่มๆ แทน (ตามที่ขอ) — ใช้ radial-gradient ตรงๆ เพราะจุดกลม
-     เรียบง่ายกว่ารอยตีนหมี/ดาว ไม่ต้องเข้ารหัส SVG แยกสีจุดคนละเฉดกันโหมดสว่าง/มืด */
+  /* ธีม "ลาเวนเดอร์คุโรมิ" ใช้ลาย Polka Dot กระจายๆ ขนาดเล็ก-ใหญ่ปนกัน (ไม่เรียงตารางถี่ๆ แบบ
+     radial-gradient ตรงๆ เพราะดูแข็งทื่อเกินไปตามที่ท้วงมา) เข้ารหัสเป็น SVG tile แบบเดียวกับลาย
+     รอยตีนหมี/ดาวของธีมอื่น กระจายตำแหน่ง/ขนาด/ความโปร่งแสงจุดให้ดูเป็นธรรมชาติมากขึ้น */
   html[data-theme="kuromiLavender"] body{
-    background-image: radial-gradient(rgba(207,188,246,.45) 18%, transparent 19%);
-    background-size: 26px 26px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Ccircle cx='18' cy='22' r='6' fill='%23CFBCF6' opacity='0.5'/%3E%3Ccircle cx='52' cy='14' r='3' fill='%23FAFAB4' opacity='0.6'/%3E%3Ccircle cx='95' cy='28' r='8' fill='%23CFBCF6' opacity='0.35'/%3E%3Ccircle cx='128' cy='18' r='4' fill='%23E9D2FA' opacity='0.55'/%3E%3Ccircle cx='30' cy='62' r='4' fill='%23FAFAB4' opacity='0.55'/%3E%3Ccircle cx='70' cy='55' r='7' fill='%23CFBCF6' opacity='0.4'/%3E%3Ccircle cx='110' cy='70' r='3' fill='%23E9D2FA' opacity='0.6'/%3E%3Ccircle cx='14' cy='100' r='8' fill='%23E9D2FA' opacity='0.35'/%3E%3Ccircle cx='55' cy='105' r='3' fill='%23CFBCF6' opacity='0.55'/%3E%3Ccircle cx='90' cy='112' r='5' fill='%23FAFAB4' opacity='0.5'/%3E%3Ccircle cx='132' cy='95' r='6' fill='%23CFBCF6' opacity='0.4'/%3E%3Ccircle cx='40' cy='135' r='3' fill='%23E9D2FA' opacity='0.55'/%3E%3Ccircle cx='78' cy='138' r='6' fill='%23FAFAB4' opacity='0.4'/%3E%3Ccircle cx='118' cy='133' r='4' fill='%23CFBCF6' opacity='0.5'/%3E%3C/svg%3E");
+    background-size: 150px 150px;
   }
   html[data-theme="kuromiLavender"][data-mode="dark"] body{
-    background-image: radial-gradient(rgba(199,185,199,.16) 18%, transparent 19%);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Ccircle cx='18' cy='22' r='6' fill='%23C7B9C7' opacity='0.16'/%3E%3Ccircle cx='52' cy='14' r='3' fill='%23D7B6D6' opacity='0.22'/%3E%3Ccircle cx='95' cy='28' r='8' fill='%23C7B9C7' opacity='0.12'/%3E%3Ccircle cx='128' cy='18' r='4' fill='%23D7B6D6' opacity='0.18'/%3E%3Ccircle cx='30' cy='62' r='4' fill='%23D7B6D6' opacity='0.2'/%3E%3Ccircle cx='70' cy='55' r='7' fill='%23C7B9C7' opacity='0.14'/%3E%3Ccircle cx='110' cy='70' r='3' fill='%23D7B6D6' opacity='0.22'/%3E%3Ccircle cx='14' cy='100' r='8' fill='%23C7B9C7' opacity='0.12'/%3E%3Ccircle cx='55' cy='105' r='3' fill='%23D7B6D6' opacity='0.2'/%3E%3Ccircle cx='90' cy='112' r='5' fill='%23C7B9C7' opacity='0.16'/%3E%3Ccircle cx='132' cy='95' r='6' fill='%23D7B6D6' opacity='0.14'/%3E%3Ccircle cx='40' cy='135' r='3' fill='%23C7B9C7' opacity='0.2'/%3E%3Ccircle cx='78' cy='138' r='6' fill='%23D7B6D6' opacity='0.14'/%3E%3Ccircle cx='118' cy='133' r='4' fill='%23C7B9C7' opacity='0.18'/%3E%3C/svg%3E");
   }
   svg{display:block;}
 
