@@ -40,6 +40,11 @@
        ธีมพีชเฮเซลนัทโหมดมืดที่กล่องคำตอบขอเป็นครีม/น้ำตาลแทน) */
     --reply-soft:#E8F1F6;
     --reply-text:#2C5C78;
+    /* --tag-urgent-* สำหรับป้าย "ต้องตอบกลับ" โดยเฉพาะ — ธีมนี้ตัวแปร --green ถูกใช้เป็นสีฟ้าไปแล้ว
+       (ดูหมายเหตุด้านบน) ถ้าป้าย "ต้องตอบกลับ" ใช้ --green-soft/--green-text ต่อไปจะกลายเป็นสีฟ้า
+       เหมือนป้าย "ตอบแล้ว" (--blue-soft/--blue-text) เป๊ะ แยกไม่ออก เลยแยกเป็นสีเหลืองอำพันต่างหาก */
+    --tag-urgent-soft:#FBEBC8;
+    --tag-urgent-text:#8A5A12;
   }
   html[data-theme="bearNavy"][data-mode="dark"]{
     --navy:#0A3A56;
@@ -65,6 +70,8 @@
     --neutral-text:#A9C3CF;
     --reply-soft:#1E3A4A;
     --reply-text:#9CD1EE;
+    --tag-urgent-soft:#4A3A1E;
+    --tag-urgent-text:#F0C97A;
   }
   /* ---- ธีมสี "พีชเฮเซลนัท" (甜桃榛果 — ธีมเดิมของเว็บก่อนเพิ่มระบบธีม) — Warm Chocolate / Cream ---- */
   html[data-theme="peachHazelnut"]{
@@ -91,6 +98,8 @@
     --neutral-text:#4b5563;
     --reply-soft:#E4EEF9;
     --reply-text:#3B6591;
+    --tag-urgent-soft:#FBEEF1;
+    --tag-urgent-text:#9C5468;
   }
   /* โหมดมืดของธีม "พีชเฮเซลนัท" — คงโทนช็อกโกแลตอุ่น/ครีมพาสเทลแบบเดียวกับโหมดสว่างไว้ทั้งหมด
      (ไม่ใช้ดำ/เทาล้วนแบบธีมอื่นทั่วไป) แค่ปรับ contrast ให้อ่านง่ายในที่มืด: พื้นหลังเป็นน้ำตาลช็อกโกแลต
@@ -127,6 +136,8 @@
     --neutral-text:#5C463D;
     --reply-soft:#EBE3D8;   /* กล่องคำตอบด้านใน (เฉพาะจุดนี้เท่านั้น) — ครีมเข้มกว่าการ์ดเล็กน้อย */
     --reply-text:#2B1D19;   /* ตัวหนังสือในกล่องคำตอบ — น้ำตาลเข้มอ่านง่าย */
+    --tag-urgent-soft:#FBEEF1;
+    --tag-urgent-text:#9C5468;
   }
   *{box-sizing:border-box;}
   html,body{height:100%;}
@@ -404,7 +415,7 @@
     display:inline-flex; align-items:center; font-size:11px; font-weight:700; padding:2px 9px; border-radius:99px;
     margin-left:8px; vertical-align:middle;
   }
-  .tag.needs-reply{background:var(--green-soft); color:var(--green-text);}
+  .tag.needs-reply{background:var(--tag-urgent-soft); color:var(--tag-urgent-text);}
   .tag.hidden-tag{background:var(--red-soft); color:var(--red-text);}
   .tag.replied-tag{background:var(--blue-soft); color:var(--blue-text);}
   .tag.blocked-tag{background:var(--neutral-soft); color:var(--neutral-text);}
