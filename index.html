@@ -621,6 +621,19 @@ const SUPABASE_KEY = 'sb_publishable_i9A_PqJhrOb8kmP47x2OOg_Ma2AhTRn';
 // GoTrueClient สำหรับโปรเจกต์เดียวกันพร้อมกันในแท็บเดียว ทำให้ auto-refresh/session ตีกันเอง
 // จนขึ้น "Auth session missing!" ทั้งที่หน้าเว็บมองว่ายังล็อกอินอยู่ — จึงเปลี่ยนมาใช้วิธีนี้แทน)
 let rememberMe = true; // ตั้งค่าจริงตอนกด "เข้าสู่ระบบ" (ดู doLogin) ก่อน signInWithPassword
+
+// บังคับให้ล็อกอินใหม่ทุกวัน — ไม่ว่าจะติ๊ก "จำฉันไว้" หรือไม่ก็ตาม (session ของ Supabase เองต่ออายุ
+// อัตโนมัติได้เรื่อยๆ ไม่มีวันหมดถ้าไม่ตั้งเพิ่ม) เก็บ "วันที่ล็อกอินล่าสุด" ไว้ใน localStorage แยก
+// ต่างหากจาก session แล้วเทียบกับวันที่วันนี้ทุกครั้งที่เปิดเว็บ/แท็บใหม่ ถ้าไม่ตรง (ข้ามวันมาแล้ว)
+// ให้ sign out บังคับออกไปหน้า login ทันที แม้ session เดิมจะยังไม่หมดอายุจริงก็ตาม
+const LOGIN_DATE_KEY = 'commentgg_last_login_date';
+function todayStr(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function isLoginStillFreshToday(){
+  return window.localStorage.getItem(LOGIN_DATE_KEY) === todayStr();
+}
 const authStorage = {
   getItem: (key) => window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key),
   setItem: (key, value) => {
@@ -1748,6 +1761,8 @@ async function doLogin(){
     render();
     return;
   }
+  // จำ "วันนี้" ไว้เป็นวันที่ล็อกอินล่าสุด — ใช้บังคับให้ล็อกอินใหม่ทุกวัน (ดู isLoginStillFreshToday)
+  window.localStorage.setItem(LOGIN_DATE_KEY, todayStr());
   // เดี๋ยว onAuthStateChange (ผูกไว้ตอนเริ่มสคริปต์) จะรับ session ใหม่แล้ว render()/loadData() ต่อเอง
   state.auth.loginLoading = false;
   state.auth.loginError = null;
@@ -2295,8 +2310,16 @@ document.getElementById('app').addEventListener('click', (e) => {
 
 // เช็ค session ที่อาจค้างอยู่จากครั้งก่อน (authStorage เช็คทั้ง localStorage/sessionStorage ให้เอง
 // ไม่ว่าครั้งก่อนจะติ๊ก "จำฉันไว้" หรือไม่ก็ตาม) ก่อนตัดสินใจว่าจะโชว์หน้า login หรือแดชบอร์ดเลย
+// — แต่ถ้าข้ามวันมาแล้ว (เปิดเว็บ/เปิดคอมใหม่คนละวันกับที่ล็อกอินล่าสุด) ให้บังคับ sign out ออกไป
+// หน้า login ก่อนเสมอ แม้ session เดิมจะยังไม่หมดอายุจริงก็ตาม (ตามที่ขอให้ล็อกอินใหม่ทุกวัน)
 sb.auth.getSession().then(({ data }) => {
-  state.auth.session = data.session || null;
+  const session = data.session || null;
+  if (session && !isLoginStillFreshToday()) {
+    state.auth.ready = true;
+    sb.auth.signOut(); // onAuthStateChange จะเคลียร์ state ให้เอง แล้ว render() หน้า login
+    return;
+  }
+  state.auth.session = session;
   state.auth.ready = true;
   render();
   if (state.auth.session) loadData();
@@ -2314,6 +2337,7 @@ sb.auth.onAuthStateChange((event, session) => {
     ITEMS = [];
     state.auth.loginEmail = '';
     state.auth.loginError = null;
+    window.localStorage.removeItem(LOGIN_DATE_KEY);
   }
   render();
   if (session && !hadSession) loadData();
@@ -2331,7 +2355,14 @@ function isUserEditingSomething(){
   const searchFocused = state.searchOpen && document.activeElement && document.activeElement.id === 'searchInput';
   return !!state.expandedId || !!state.editingReplyId || state.profileOpen || state.postPanel.open || searchFocused;
 }
-setInterval(() => { if (!isUserEditingSomething()) loadData(); }, 20000);
+setInterval(() => {
+  // เผื่อกรณีเปิดแท็บทิ้งไว้ข้ามวัน (ไม่ได้ปิดคอม/ปิดเว็บเลย) ก็ยังบังคับให้ล็อกอินใหม่ตอนข้ามวันด้วย
+  if (state.auth.session && !isLoginStillFreshToday()) {
+    sb.auth.signOut();
+    return;
+  }
+  if (!isUserEditingSomething()) loadData();
+}, 20000);
 </script>
 </body>
 </html>
