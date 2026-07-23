@@ -34,6 +34,12 @@
     --hover-bg:#EFF4F8;
     --neutral-soft:#E7ECEF;
     --neutral-text:#4B5C66;
+    /* --reply-soft/--reply-text แยกออกจาก --blue-soft/--blue-text โดยเฉพาะ — ใช้กับ "กล่องคำตอบ"
+       เท่านั้น (ป้าย "ตอบแล้ว" กับลิงก์/bulk bar ยังใช้ --blue-soft/--blue-text ปกติ) กันไม่ให้สีป้าย
+       "ตอบแล้ว" ไปชนกับสีกล่องคำตอบจนแยกไม่ออก (ปกติค่าจะเหมือน --blue-soft/--blue-text เป๊ะ ยกเว้น
+       ธีมพีชเฮเซลนัทโหมดมืดที่กล่องคำตอบขอเป็นครีม/น้ำตาลแทน) */
+    --reply-soft:#E8F1F6;
+    --reply-text:#2C5C78;
   }
   html[data-theme="bearNavy"][data-mode="dark"]{
     --navy:#0A3A56;
@@ -57,6 +63,8 @@
     --hover-bg:#1E3A48;
     --neutral-soft:#26404E;
     --neutral-text:#A9C3CF;
+    --reply-soft:#1E3A4A;
+    --reply-text:#9CD1EE;
   }
   /* ---- ธีมสี "พีชเฮเซลนัท" (甜桃榛果 — ธีมเดิมของเว็บก่อนเพิ่มระบบธีม) — Warm Chocolate / Cream ---- */
   html[data-theme="peachHazelnut"]{
@@ -81,6 +89,8 @@
     --hover-bg:#f7f0ea;
     --neutral-soft:#f3f4f6;
     --neutral-text:#4b5563;
+    --reply-soft:#E4EEF9;
+    --reply-text:#3B6591;
   }
   /* โหมดมืดของธีม "พีชเฮเซลนัท" — คงโทนช็อกโกแลตอุ่น/ครีมพาสเทลแบบเดียวกับโหมดสว่างไว้ทั้งหมด
      (ไม่ใช้ดำ/เทาล้วนแบบธีมอื่นทั่วไป) แค่ปรับ contrast ให้อ่านง่ายในที่มืด: พื้นหลังเป็นน้ำตาลช็อกโกแลต
@@ -106,13 +116,17 @@
     --red:#dc2626;
     --red-soft:#fee2e2;
     --red-text:#b91c1c;
-    --blue-soft:#EBE3D8;    /* กล่องคำตอบด้านใน — ครีมเข้มกว่าการ์ดเล็กน้อย แยกชั้นชัดเจน */
-    --blue-text:#2B1D19;    /* ตัวหนังสือในกล่องคำตอบ — น้ำตาลเข้มอ่านง่าย (ไม่ใช้สีฟ้าแบบเดิม) */
+    --blue-soft:#E4EEF9;    /* ป้าย "ตอบแล้ว" / ลิงก์ / bulk bar — ใช้ค่าเดียวกับโหมดสว่าง (ฟ้าพาสเทล)
+                                ตั้งใจแยกออกจาก --reply-soft ด้านล่าง กันไม่ให้สีป้าย "ตอบแล้ว" ไปชน
+                                กับสีกล่องคำตอบจนแยกไม่ออก */
+    --blue-text:#3B6591;
     --peach-blue:#78A5CE;
     --peach-cream:#F5EFE6;
     --hover-bg:#F5EFE6;     /* ปุ่มไอคอน/hover — ครีมอ่อนกว่าการ์ดนิดหน่อย ให้เห็นสถานะ hover ชัด */
     --neutral-soft:#EFE9E2;
     --neutral-text:#5C463D;
+    --reply-soft:#EBE3D8;   /* กล่องคำตอบด้านใน (เฉพาะจุดนี้เท่านั้น) — ครีมเข้มกว่าการ์ดเล็กน้อย */
+    --reply-text:#2B1D19;   /* ตัวหนังสือในกล่องคำตอบ — น้ำตาลเข้มอ่านง่าย */
   }
   *{box-sizing:border-box;}
   html,body{height:100%;}
@@ -414,14 +428,14 @@
   .ai-banner .d{font-size:12px; color:var(--red-text); line-height:1.5;}
   .ai-actions{display:flex; gap:8px; margin-top:9px;}
 
-  .reply-quote{background:var(--blue-soft); border:1px solid var(--border); border-radius:9px; padding:9px 11px; margin-bottom:12px; font-size:12px; color:var(--blue-text);}
+  .reply-quote{background:var(--reply-soft); border:1px solid var(--border); border-radius:9px; padding:9px 11px; margin-bottom:12px; font-size:12px; color:var(--reply-text);}
   .reply-quote .lbl{font-weight:700; font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; margin-bottom:3px; display:block;}
   .reply-quote-text{white-space:pre-wrap;}
   .reply-quote.inline{margin-top:7px; margin-bottom:0; padding:6px 9px; font-size:11.5px;}
   .reply-quote-foot{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px;}
   .reply-quote .reply-by{font-size:10.5px; color:var(--text-faint);}
   .reply-quote-actions{display:flex; align-items:center; gap:9px; flex:none;}
-  .reply-quote-actions span{display:flex; cursor:pointer; color:var(--blue-text); opacity:.65;}
+  .reply-quote-actions span{display:flex; cursor:pointer; color:var(--reply-text); opacity:.65;}
   .reply-quote-actions span:hover{opacity:1;}
   .reply-quote-actions svg{width:12.5px; height:12.5px;}
   .reply-quote.editing{background:var(--surface); border-color:var(--border);}
