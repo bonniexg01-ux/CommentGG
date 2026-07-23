@@ -170,34 +170,35 @@
     --tag-urgent-soft:#E9D2FA;  /* ป้าย "ต้องตอบกลับ" — ม่วงลาเวนเดอร์ */
     --tag-urgent-text:#6B4FA0;
   }
-  /* โหมดมืดสไตล์ "คุโรมิ" — ม่วงเข้มล้วนแบบตั้งใจ (ไม่ใช่การ์ดสว่างแบบ 2 ธีมด้านบน) ใช้สีตามที่ขอเป๊ะๆ:
-     bg/surface/text/accent เป็นม่วงเข้ม-อ่อนไล่เฉด ให้ฟีลลิ่ง Kuromi ชัดเจน */
+  /* High-contrast card approach (เหมือน 2 ธีมด้านบน): การ์ด/รายการคอมเมนต์เป็นพื้นขาวนวล/ม่วงพาสเทล
+     สว่างมาก อ่านง่ายเหมือนโหมดสว่างเดิม มีแค่ "รอบนอกสุด" (body) กับแถบบนสุด (topbar) เท่านั้นที่ยัง
+     เป็นม่วงเข้มสไตล์คุโรมิ — badge/กล่องคำตอบ ใช้โทนพาสเทลแบบเดียวกับโหมดสว่าง */
   html[data-theme="kuromiLavender"][data-mode="dark"]{
-    --navy:#4A3A57;
-    --navy-2:#3A2D44;
-    --bg:#2E2833;           /* ม่วงเข้มเกือบดำ — พื้นหลังรอบนอก */
-    --surface:#5F4B6F;      /* ม่วงเข้มรองลงมา — การ์ด/กล่องหลัก */
-    --border:#7A6389;
-    --text:#D7B6D6;         /* ม่วงพาสเทลสว่าง — ตัวหนังสือหลัก */
-    --text-dim:#C7B9C7;     /* เทาม่วงนวล — ข้อความรอง */
-    --text-faint:#A896A8;
-    --green:#D7B6D6;
-    --green-soft:#4A3A57;
-    --green-text:#E8D5F0;
-    --red:#E8A8BE;
-    --red-soft:#4A2A38;
-    --red-text:#F0A8C0;
-    --blue-soft:#4A4020;    /* ป้าย "ตอบแล้ว" — น้ำตาลทองเข้ม แยกจากม่วง/ชมพูชัดเจน */
-    --blue-text:#F0DFA0;
-    --peach-blue:#C7B9C7;
-    --peach-cream:#3D3346;
-    --hover-bg:#6F5A80;
-    --neutral-soft:#4A3A57;
-    --neutral-text:#C7B9C7;
-    --reply-soft:#4A3A57;
-    --reply-text:#D7B6D6;
-    --tag-urgent-soft:#4A3A57;
-    --tag-urgent-text:#E8D5F0;
+    --navy:#3D3545;         /* เทา-ม่วงเข้มขึ้นมาเล็กน้อย — top bar เป็นชั้น "แผงหลัก" แยกจาก body */
+    --navy-2:#322B3A;
+    --bg:#2E2833;           /* ม่วงเข้มเกือบดำ (Kuromi) — พื้นหลังรอบนอกสุด (นอกการ์ด) */
+    --surface:#FAF8FC;      /* การ์ด/รายการคอมเมนต์ — ขาวนวล/ม่วงพาสเทลสว่างมาก อ่านง่าย */
+    --border:#E5D9ED;
+    --text:#2E2833;         /* ม่วงเข้ม/ดำ — หัวข้อ/ชื่อผู้ใช้/เนื้อความ */
+    --text-dim:#7A6A8C;     /* เทาอมม่วงปานกลาง — เวลา/ข้อความรอง */
+    --text-faint:#A99BB5;
+    --green:#CFBCF6;        /* คงสี accent เดิมไว้ (ไม่เกี่ยวกับพื้นการ์ด) */
+    --green-soft:#F1E9FC;   /* badge — ใช้ค่าเดียวกับโหมดสว่าง พาสเทลบนการ์ดขาวเข้ากันดี */
+    --green-text:#6B4FA0;
+    --red:#D97A93;
+    --red-soft:#FBE4EA;
+    --red-text:#B03A57;
+    --blue-soft:#FCF8CC;
+    --blue-text:#8A7A1F;
+    --peach-blue:#CFBCF6;
+    --peach-cream:#F1E9FC;
+    --hover-bg:#EFE6F5;     /* ปุ่มไอคอน/hover — ม่วงอ่อนนุ่มนวล */
+    --neutral-soft:#EDE7F2;
+    --neutral-text:#6B5B7A;
+    --reply-soft:#EADDF5;   /* กล่องคำตอบด้านใน — ม่วงพาสเทลอ่อน แยกชั้นจากการ์ดขาวชัดเจน */
+    --reply-text:#2E2833;   /* ตัวหนังสือในกล่องคำตอบ — เข้มอ่านง่าย */
+    --tag-urgent-soft:#E9D2FA;
+    --tag-urgent-text:#6B4FA0;
   }
   *{box-sizing:border-box;}
   html,body{height:100%;}
