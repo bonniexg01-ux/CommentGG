@@ -142,6 +142,63 @@
     --tag-urgent-soft:#FBEEF1;
     --tag-urgent-text:#9C5468;
   }
+  /* ---- ธีมสี "ลาเวนเดอร์คุโรมิ" — Pastel Lavender & Butter Yellow (สว่าง) / Kuromi Dark Purple (มืด) ---- */
+  html[data-theme="kuromiLavender"]{
+    --navy:#9B7FD4;         /* ม่วงลาเวนเดอร์เข้ม — top bar */
+    --navy-2:#7F63B8;
+    --bg:#F9FCDA;           /* ครีมเหลืองอ่อน — พื้นหลังรอบนอก */
+    --surface:#ffffff;
+    --border:#E9D2FA;       /* ลาเวนเดอร์อ่อน — เส้นขอบ */
+    --text:#2E2833;
+    --text-dim:#6B5B7A;
+    --text-faint:#A79BB0;
+    --green:#CFBCF6;        /* ม่วงลาเวนเดอร์ — accent หลัก */
+    --green-soft:#F1E9FC;
+    --green-text:#6B4FA0;
+    --red:#D97A93;          /* ชมพูโรสฝุ่น — ใช้กับป้าย "ซ่อนแล้ว" */
+    --red-soft:#FBE4EA;
+    --red-text:#B03A57;
+    --blue-soft:#FCF8CC;    /* เหลืองบัตเตอร์อ่อน — ป้าย "ตอบแล้ว" แยกโทนจากม่วง/ชมพูชัดเจน */
+    --blue-text:#8A7A1F;
+    --peach-blue:#CFBCF6;
+    --peach-cream:#FAFAB4;
+    --hover-bg:#F3ECFC;
+    --neutral-soft:#EDE7F2;
+    --neutral-text:#6B5B7A;
+    --reply-soft:#FCF8E3;   /* กล่องคำตอบด้านใน — บัตเตอร์ครีมอ่อนกว่าการ์ด */
+    --reply-text:#2E2833;
+    --tag-urgent-soft:#E9D2FA;  /* ป้าย "ต้องตอบกลับ" — ม่วงลาเวนเดอร์ */
+    --tag-urgent-text:#6B4FA0;
+  }
+  /* โหมดมืดสไตล์ "คุโรมิ" — ม่วงเข้มล้วนแบบตั้งใจ (ไม่ใช่การ์ดสว่างแบบ 2 ธีมด้านบน) ใช้สีตามที่ขอเป๊ะๆ:
+     bg/surface/text/accent เป็นม่วงเข้ม-อ่อนไล่เฉด ให้ฟีลลิ่ง Kuromi ชัดเจน */
+  html[data-theme="kuromiLavender"][data-mode="dark"]{
+    --navy:#4A3A57;
+    --navy-2:#3A2D44;
+    --bg:#2E2833;           /* ม่วงเข้มเกือบดำ — พื้นหลังรอบนอก */
+    --surface:#5F4B6F;      /* ม่วงเข้มรองลงมา — การ์ด/กล่องหลัก */
+    --border:#7A6389;
+    --text:#D7B6D6;         /* ม่วงพาสเทลสว่าง — ตัวหนังสือหลัก */
+    --text-dim:#C7B9C7;     /* เทาม่วงนวล — ข้อความรอง */
+    --text-faint:#A896A8;
+    --green:#D7B6D6;
+    --green-soft:#4A3A57;
+    --green-text:#E8D5F0;
+    --red:#E8A8BE;
+    --red-soft:#4A2A38;
+    --red-text:#F0A8C0;
+    --blue-soft:#4A4020;    /* ป้าย "ตอบแล้ว" — น้ำตาลทองเข้ม แยกจากม่วง/ชมพูชัดเจน */
+    --blue-text:#F0DFA0;
+    --peach-blue:#C7B9C7;
+    --peach-cream:#3D3346;
+    --hover-bg:#6F5A80;
+    --neutral-soft:#4A3A57;
+    --neutral-text:#C7B9C7;
+    --reply-soft:#4A3A57;
+    --reply-text:#D7B6D6;
+    --tag-urgent-soft:#4A3A57;
+    --tag-urgent-text:#E8D5F0;
+  }
   *{box-sizing:border-box;}
   html,body{height:100%;}
   body{
@@ -149,6 +206,10 @@
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans Thai",sans-serif;
     -webkit-font-smoothing:antialiased;
     background-color:var(--bg);
+    /* สลับธีม/โหมดแบบนุ่มนวล ไม่กระตุกทันที (ตามที่ขอ) — ใส่ transition กับสีพื้นหลัง/ตัวหนังสือหลักๆ
+       เท่านั้น (ไม่ใส่ทุก property กันเปลืองประสิทธิภาพ) การ์ด/ปุ่ม/badge อื่นๆ สืบทอด transition
+       ผ่าน .content-card, .btn, .icon-btn ด้านล่างเพิ่มเติม */
+    transition: background-color .25s ease, color .25s ease;
     /* ลายพื้นหลัง "รอยตีนหมี" เข้าธีมมาสคอตหมี — เว้นระยะห่างมากขึ้น (tile ใหญ่ขึ้น รอยน้อยลง จางลง)
        ตามที่ขอให้ลดความถี่ของอุ้งเท้าลง — คนละชุดสีกับโหมดมืด ดูด้านล่าง */
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='170' viewBox='0 0 170 170'%3E%3Cg transform='translate(30,32) rotate(-10)'%3E%3Cellipse cx='0' cy='3.2' rx='5.0' ry='4.0' fill='%2302314B' opacity='0.35'/%3E%3Ccircle cx='-6.5' cy='-3.6' r='2.0' fill='%2302314B' opacity='0.35'/%3E%3Ccircle cx='-2.4' cy='-5.6' r='2.0' fill='%2302314B' opacity='0.35'/%3E%3Ccircle cx='2.4' cy='-5.6' r='2.0' fill='%2302314B' opacity='0.35'/%3E%3Ccircle cx='6.5' cy='-3.6' r='2.0' fill='%2302314B' opacity='0.35'/%3E%3C/g%3E%3Cg transform='translate(120,75) rotate(15)'%3E%3Cellipse cx='0' cy='3.2' rx='5.0' ry='4.0' fill='%23679CBE' opacity='0.4'/%3E%3Ccircle cx='-6.5' cy='-3.6' r='2.0' fill='%23679CBE' opacity='0.4'/%3E%3Ccircle cx='-2.4' cy='-5.6' r='2.0' fill='%23679CBE' opacity='0.4'/%3E%3Ccircle cx='2.4' cy='-5.6' r='2.0' fill='%23679CBE' opacity='0.4'/%3E%3Ccircle cx='6.5' cy='-3.6' r='2.0' fill='%23679CBE' opacity='0.4'/%3E%3C/g%3E%3Cg transform='translate(70,135) rotate(20)'%3E%3Cellipse cx='0' cy='3.2' rx='5.0' ry='4.0' fill='%23C21121' opacity='0.28'/%3E%3Ccircle cx='-6.5' cy='-3.6' r='2.0' fill='%23C21121' opacity='0.28'/%3E%3Ccircle cx='-2.4' cy='-5.6' r='2.0' fill='%23C21121' opacity='0.28'/%3E%3Ccircle cx='2.4' cy='-5.6' r='2.0' fill='%23C21121' opacity='0.28'/%3E%3Ccircle cx='6.5' cy='-3.6' r='2.0' fill='%23C21121' opacity='0.28'/%3E%3C/g%3E%3C/svg%3E");
@@ -165,12 +226,21 @@
   html[data-theme="peachHazelnut"][data-mode="dark"] body{
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cpath d='M18 17 L19.5 20.5 L23 22 L19.5 23.5 L18 27 L16.5 23.5 L13 22 L16.5 20.5 Z' fill='%239CC3E3' opacity='0.4'/%3E%3Cpath d='M58 12 L59.3 15 L62.5 16.3 L59.3 17.6 L58 20.7 L56.7 17.6 L53.5 16.3 L56.7 15 Z' fill='%23E8B9C5' opacity='0.45'/%3E%3Cpath d='M35 55 L36.5 58.5 L40.2 60 L36.5 61.5 L35 65 L33.5 61.5 L29.8 60 L33.5 58.5 Z' fill='%238B6559' opacity='0.3'/%3E%3Cpath d='M75 62 L76 64.3 L78.4 65.3 L76 66.3 L75 68.6 L74 66.3 L71.6 65.3 L74 64.3 Z' fill='%239CC3E3' opacity='0.35'/%3E%3Cpath d='M8 60 L9 62.3 L11.4 63.3 L9 64.3 L8 66.6 L7 64.3 L4.6 63.3 L7 62.3 Z' fill='%23E8B9C5' opacity='0.35'/%3E%3C/svg%3E");
   }
+  /* ธีม "ลาเวนเดอร์คุโรมิ" ใช้ลาย Polka Dot นุ่มๆ แทน (ตามที่ขอ) — ใช้ radial-gradient ตรงๆ เพราะจุดกลม
+     เรียบง่ายกว่ารอยตีนหมี/ดาว ไม่ต้องเข้ารหัส SVG แยกสีจุดคนละเฉดกันโหมดสว่าง/มืด */
+  html[data-theme="kuromiLavender"] body{
+    background-image: radial-gradient(rgba(207,188,246,.45) 18%, transparent 19%);
+    background-size: 26px 26px;
+  }
+  html[data-theme="kuromiLavender"][data-mode="dark"] body{
+    background-image: radial-gradient(rgba(199,185,199,.16) 18%, transparent 19%);
+  }
   svg{display:block;}
 
   /* ---------------- Top bar ---------------- */
   .topbar{
     height:68px; background:var(--navy); display:flex; align-items:center; justify-content:space-between;
-    padding:0 22px; color:#fff;
+    padding:0 22px; color:#fff; transition: background-color .25s ease;
   }
   .topbar-brand{display:flex; align-items:center; gap:12px; font-weight:800; font-size:23px; letter-spacing:-.01em;}
   .topbar-brand .mark{
@@ -303,6 +373,7 @@
   .content-card{
     background:var(--surface); border-radius:22px; padding:26px 26px 10px;
     box-shadow:0 6px 24px rgba(124,85,73,.10); border:1px solid var(--surface);
+    transition: background-color .25s ease, border-color .25s ease;
   }
   h1{font-size:29px; margin:0 0 16px;}
 
@@ -593,6 +664,27 @@ const ICONS = {
     <circle cx="32" cy="39.5" r="2.2" fill="#111318"/>
     <path d="M27.5 45 Q32 48.5 36.5 45" stroke="#111318" stroke-width="2.2" fill="none" stroke-linecap="round"/>
   </svg>`,
+  // มาสคอตน้องหมาขนปุยกวนๆ (ธีมลาเวนเดอร์คุโรมิ) หูสีฟ้า แก้มชมพู หมวกปาร์ตี้สีฟ้า โบว์สีส้ม ผ้าพันคอสีฟ้าอ่อน
+  dog: `<svg viewBox="0 0 64 64" fill="none">
+    <path d="M14 20 Q6 14 10 28 Q14 34 20 30 Z" fill="#BFE0F5" stroke="#111318" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M50 20 Q58 14 54 28 Q50 34 44 30 Z" fill="#BFE0F5" stroke="#111318" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="32" cy="36" r="22" fill="#fff" stroke="#111318" stroke-width="3.5"/>
+    <circle cx="18" cy="40" r="4" fill="#F3C9CE" opacity="0.9"/>
+    <circle cx="46" cy="40" r="4" fill="#F3C9CE" opacity="0.9"/>
+    <line x1="19" y1="29" x2="26" y2="33" stroke="#111318" stroke-width="3" stroke-linecap="round"/>
+    <line x1="45" y1="29" x2="38" y2="33" stroke="#111318" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="23" cy="35" r="2.4" fill="#111318"/>
+    <circle cx="41" cy="35" r="2.4" fill="#111318"/>
+    <ellipse cx="32" cy="43" rx="8" ry="6" fill="#fff" stroke="#111318" stroke-width="2.8"/>
+    <ellipse cx="32" cy="41" rx="2.6" ry="2" fill="#111318"/>
+    <path d="M27 47 Q32 50 37 47" stroke="#111318" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M32 4 L24 20 L40 20 Z" fill="#6FA8DC" stroke="#111318" stroke-width="2.5" stroke-linejoin="round"/>
+    <circle cx="32" cy="4" r="2.4" fill="#FAFAB4" stroke="#111318" stroke-width="1.5"/>
+    <path d="M10 24 L15 21 L15 27 Z" fill="#F0883E" stroke="#111318" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M20 24 L15 21 L15 27 Z" fill="#F0883E" stroke="#111318" stroke-width="1.8" stroke-linejoin="round"/>
+    <circle cx="15" cy="24" r="2" fill="#D9622A"/>
+    <path d="M20 54 Q32 60 44 54 L44 58 Q32 63 20 58 Z" fill="#BFE0F5" stroke="#111318" stroke-width="2.5" stroke-linejoin="round"/>
+  </svg>`,
   users: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
   search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
   filter: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>`,
@@ -635,6 +727,7 @@ const THEME_NAME_KEY = 'commentgg_theme_name';
 const THEMES = {
   bearNavy: { label: 'หมีเนวี่', swatch: ['#02314B', '#679CBE', '#C21121'] },
   peachHazelnut: { label: 'พีชเฮเซลนัท (ธีมเดิม)', swatch: ['#7C5549', '#DDA4B4', '#78A5CE'] },
+  kuromiLavender: { label: 'ลาเวนเดอร์คุโรมิ', swatch: ['#CFBCF6', '#FAFAB4', '#5F4B6F'] },
 };
 function getThemeMode(){
   const v = localStorage.getItem(THEME_MODE_KEY);
@@ -655,7 +748,10 @@ function setThemeName(name){
 }
 // ไอคอน CommentGG เปลี่ยนไปตามธีมที่เลือก (หมี ↔ แมว ธีมเดิม)
 function iconForTheme(){
-  return getThemeName() === 'peachHazelnut' ? ICONS.catAngry : ICONS.bear;
+  const name = getThemeName();
+  if (name === 'peachHazelnut') return ICONS.catAngry;
+  if (name === 'kuromiLavender') return ICONS.dog;
+  return ICONS.bear;
 }
 // ตั้งค่าตาม localStorage ทันทีตั้งแต่ต้น (ก่อนแม้แต่หน้า login) กันไม่ให้วาบเห็นธีมผิดตอนโหลดหน้า
 document.documentElement.setAttribute('data-mode', getThemeMode());
@@ -1707,6 +1803,9 @@ const LOGIN_PAW_COLORS_DARK = ['#679CBE', '#E3B94A', '#C21121', '#679CBE'];
 const LOGIN_STAR_PATH = 'M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z';
 const LOGIN_STAR_COLORS = ['#78A5CE', '#FFF0D9', '#DDA4B4', '#7C5549'];
 const LOGIN_STAR_COLORS_DARK = ['#9CC3E3', '#4A3A30', '#E8B9C5', '#8B6559'];
+// ธีม "ลาเวนเดอร์คุโรมิ" ใช้ลาย Polka Dot กลมๆ ง่ายๆ แทนดาว/อุ้งเท้า
+const LOGIN_DOT_COLORS = ['#CFBCF6', '#E9D2FA', '#FAFAB4', '#CFBCF6'];
+const LOGIN_DOT_COLORS_DARK = ['#5F4B6F', '#D7B6D6', '#C7B9C7', '#5F4B6F'];
 // วาดอุ้งเท้า 1 ดวง: เบาะฝ่าเท้า (ellipse) + นิ้ว 4 นิ้ว (circle) ล้อมด้านบน
 function pawShape(color){
   return `
@@ -1720,13 +1819,20 @@ function pawShape(color){
 function starShape(color){
   return `<path d="${LOGIN_STAR_PATH}" transform="translate(-12,-12)" fill="${color}" stroke="rgba(124,85,73,.18)" stroke-width="0.6"/>`;
 }
+function dotShape(color){
+  return `<circle cx="0" cy="0" r="7" fill="${color}"/>`;
+}
 function renderLoginStars(){
   const dark = getThemeMode() === 'dark';
-  const isPeach = getThemeName() === 'peachHazelnut';
-  const colors = isPeach
+  const themeName = getThemeName();
+  const isPeach = themeName === 'peachHazelnut';
+  const isKuromi = themeName === 'kuromiLavender';
+  const colors = isKuromi
+    ? (dark ? LOGIN_DOT_COLORS_DARK : LOGIN_DOT_COLORS)
+    : isPeach
     ? (dark ? LOGIN_STAR_COLORS_DARK : LOGIN_STAR_COLORS)
     : (dark ? LOGIN_PAW_COLORS_DARK : LOGIN_PAW_COLORS);
-  const shapeFn = isPeach ? starShape : pawShape;
+  const shapeFn = isKuromi ? dotShape : isPeach ? starShape : pawShape;
   // 4 รูปทรง คนละสี ต่อ 1 ช่องลาย (tile) ขนาดเล็กลง ให้ดูเป็นลายพื้นผิวแบบเบาๆ (ไม่แย่งซีนกล่อง login)
   const dots = [
     { x: 22,  y: 22,  scale: .95, rot: -12, color: colors[0] },
