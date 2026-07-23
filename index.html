@@ -46,32 +46,35 @@
     --tag-urgent-soft:#FBEBC8;
     --tag-urgent-text:#8A5A12;
   }
+  /* High-contrast card approach (เหมือนที่ทำกับธีมพีชเฮเซลนัทโหมดมืด): การ์ด/รายการคอมเมนต์เป็นพื้น
+     ขาว/เกือบขาวอ่านง่ายเหมือนโหมดสว่างเดิม มีแค่ "รอบนอกสุด" (body) กับแถบบนสุด (topbar) เท่านั้นที่
+     เป็นกรมท่าเข้ม ให้ยังรู้สึกว่าอยู่ใน dark mode — badge/กล่องคำตอบ ใช้โทนพาสเทลแบบเดียวกับโหมดสว่าง */
   html[data-theme="bearNavy"][data-mode="dark"]{
-    --navy:#0A3A56;
-    --navy-2:#052839;
-    --bg:#0D1B24;
-    --surface:#16303D;
-    --border:#264756;
-    --text:#EDF4F7;
-    --text-dim:#A9C3CF;
-    --text-faint:#6E8B97;
-    --green:#7FB3D5;
-    --green-soft:#1E3A4A;
-    --green-text:#9CD1EE;
-    --red:#E15A67;
-    --red-soft:#3A1B1F;
-    --red-text:#FFA8AF;
-    --blue-soft:#1E3A4A;
-    --blue-text:#9CD1EE;
-    --peach-blue:#7FB3D5;
-    --peach-cream:#16303D;
-    --hover-bg:#1E3A48;
-    --neutral-soft:#26404E;
-    --neutral-text:#A9C3CF;
-    --reply-soft:#1E3A4A;
-    --reply-text:#9CD1EE;
-    --tag-urgent-soft:#4A3A1E;
-    --tag-urgent-text:#F0C97A;
+    --navy:#1E293B;         /* กรมท่าเข้ม (slate navy) — top bar เป็นชั้น "แผงหลัก" เข้มกว่า body นิดหน่อย */
+    --navy-2:#16202B;
+    --bg:#0B192C;           /* กรมท่าเข้มสุด — พื้นหลังรอบนอกสุด (นอกการ์ด) */
+    --surface:#FFFFFF;      /* การ์ด/รายการคอมเมนต์ — ขาวสว่าง อ่านง่ายเหมือนโหมดสว่างเดิม */
+    --border:#E2E8F0;
+    --text:#0F172A;         /* กรมท่าเข้มเกือบดำ — หัวข้อ/ชื่อผู้ใช้/เนื้อความ */
+    --text-dim:#64748B;     /* เทาสเลท — เวลา/ชื่อเพจ/ข้อความรอง */
+    --text-faint:#94A3B8;
+    --green:#679CBE;        /* คงสี accent เดิมไว้ (ไม่เกี่ยวกับพื้นการ์ด) */
+    --green-soft:#E8F1F6;   /* badge — ใช้ค่าเดียวกับโหมดสว่าง พาสเทลบนการ์ดขาวเข้ากันดี */
+    --green-text:#2C5C78;
+    --red:#C21121;
+    --red-soft:#FBE4E6;
+    --red-text:#A10E1B;
+    --blue-soft:#E8F1F6;
+    --blue-text:#2C5C78;
+    --peach-blue:#679CBE;
+    --peach-cream:#F1F5F9;
+    --hover-bg:#F1F5F9;     /* ปุ่มไอคอน/hover — เทาสเลทอ่อน */
+    --neutral-soft:#E7ECEF;
+    --neutral-text:#4B5C66;
+    --reply-soft:#F1F5F9;   /* กล่องคำตอบด้านใน — เทาสเลทอ่อน/ฟ้าน้ำแข็ง แยกจากการ์ดขาวชัดเจน */
+    --reply-text:#0F172A;   /* ตัวหนังสือในกล่องคำตอบ — เข้มอ่านง่าย */
+    --tag-urgent-soft:#FBEBC8;
+    --tag-urgent-text:#8A5A12;
   }
   /* ---- ธีมสี "พีชเฮเซลนัท" (甜桃榛果 — ธีมเดิมของเว็บก่อนเพิ่มระบบธีม) — Warm Chocolate / Cream ---- */
   html[data-theme="peachHazelnut"]{
