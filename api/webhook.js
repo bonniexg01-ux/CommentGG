@@ -81,6 +81,13 @@ async function handleEvent(req, res) {
       if (entry.changes) {
         for (const change of entry.changes) {
           if (change.field === 'feed' && change.value && change.value.item === 'comment') {
+            // ลูกค้าลบคอมเมนต์ตัวเองทิ้ง (หรือคอมเมนต์ถูกลบจาก Facebook ไม่ว่าด้วยเหตุผลอะไรก็ตาม)
+            // Meta ส่ง event เดิมกลับมาอีกรอบแต่ verb เป็น "remove" — ให้ลบรายการที่ตรงกันออกจาก
+            // feed_items ไปด้วยเลย กันไม่ให้ค้างเป็นคอมเมนต์ "ต้องตอบกลับ" ทั้งที่ลูกค้าลบไปแล้วจริง
+            if (change.value.verb === 'remove') {
+              await deleteComment(change.value);
+              continue;
+            }
             // ข้ามคอมเมนต์ที่ "เพจตัวเอง" เป็นคนโพสต์ (เช่น echo ของข้อความที่เราเพิ่งตอบไป)
             // ไม่งั้นทุกครั้งที่ตอบคอมเมนต์สำเร็จ Facebook จะยิง event คอมเมนต์ใหม่กลับมาเป็นของเพจเอง
             // แล้วระบบจะเก็บมันเป็นรายการ "ต้องตอบกลับ" ซ้ำไปเรื่อยๆ ไม่รู้จบ
@@ -150,6 +157,17 @@ async function insertComment(pageUuid, value) {
     folder: 'inbox',
   };
   await insertFeedItem(record);
+}
+
+// ลูกค้า/Facebook ลบคอมเมนต์ทิ้ง — ลบแถวที่ตรงกันออกจาก feed_items ไปเลย (ไม่ใช่แค่ย้ายเข้าถัง)
+// เพราะต้นทางไม่มีอยู่จริงแล้ว เก็บไว้ก็ตอบกลับไม่ได้ ให้หายไปจากแดชบอร์ดตรงๆ ตามที่ขอ
+async function deleteComment(value) {
+  const fbId = `${value.post_id}_${value.comment_id}`;
+  const url = `${SUPABASE_URL}/rest/v1/feed_items?fb_id=eq.${encodeURIComponent(fbId)}`;
+  const r = await fetch(url, { method: 'DELETE', headers: sbHeaders });
+  if (!r.ok) {
+    console.error('webhook error: deleteComment ล้มเหลว', r.status, await r.text().catch(() => ''));
+  }
 }
 
 async function insertMessage(pageUuid, event) {

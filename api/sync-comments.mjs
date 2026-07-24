@@ -108,14 +108,18 @@ async function syncOnePage(page) {
 
   for (const post of posts) {
     const comments = await fetchRecentComments(post.id, page.access_token);
+    const liveFbIds = new Set();
+
     for (const c of comments) {
       const commenterId = c.from && String(c.from.id);
       // ข้ามคอมเมนต์ที่ "เพจตัวเอง" เป็นคนโพสต์ (echo ของคำตอบแอดมิน) แบบเดียวกับ webhook.js
       if (commenterId === String(page.page_id)) continue;
+      const fbId = `${post.id}_${c.id}`;
+      liveFbIds.add(fbId);
       const ok = await insertFeedItem({
         page_id: page.id,
         type: 'comment',
-        fb_id: `${post.id}_${c.id}`,
+        fb_id: fbId,
         fb_post_id: post.id,
         author_fb_id: c.from && c.from.id,
         author_name: c.from && c.from.name,
@@ -125,8 +129,33 @@ async function syncOnePage(page) {
       });
       if (ok) inserted += 1;
     }
+
+    // ลูกค้าลบคอมเมนต์ตัวเองทิ้งไปจาก Facebook แล้ว แต่ยังค้างอยู่ในกล่อง "ต้องตอบกลับ" ของเรา —
+    // เทียบรายการที่ยังไม่ตอบ (folder=inbox) ของโพสต์นี้กับชุดที่ดึงมาสดๆ ล่าสุด อันไหนไม่มีอยู่จริง
+    // แล้วให้ลบทิ้งจากแดชบอร์ดไปด้วย (เฉพาะที่ยังไม่ตอบ ไม่ยุ่งกับ Archive/ประวัติที่ตอบไปแล้ว)
+    await removeDeletedComments(page.id, post.id, liveFbIds);
   }
   return inserted;
+}
+
+async function removeDeletedComments(pageUuid, postId, liveFbIds) {
+  const existing = await fetchExistingInboxFbIds(pageUuid, postId);
+  const toDelete = existing.filter((fbId) => !liveFbIds.has(fbId));
+  for (const fbId of toDelete) {
+    const url = `${SUPABASE_URL}/rest/v1/feed_items?fb_id=eq.${encodeURIComponent(fbId)}`;
+    const r = await fetch(url, { method: 'DELETE', headers: sbHeaders });
+    if (!r.ok) {
+      console.error('sync-comments error: removeDeletedComments ล้มเหลว', fbId, r.status, await r.text().catch(() => ''));
+    }
+  }
+}
+
+async function fetchExistingInboxFbIds(pageUuid, postId) {
+  const url = `${SUPABASE_URL}/rest/v1/feed_items?page_id=eq.${encodeURIComponent(pageUuid)}&fb_post_id=eq.${encodeURIComponent(postId)}&folder=eq.inbox&select=fb_id`;
+  const r = await fetch(url, { headers: sbHeaders });
+  if (!r.ok) return [];
+  const rows = await r.json();
+  return rows.map((row) => row.fb_id);
 }
 
 async function fetchRecentPosts(pageId, accessToken) {
