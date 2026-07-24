@@ -2497,7 +2497,7 @@ sb.auth.getSession().then(({ data }) => {
   state.auth.session = session;
   state.auth.ready = true;
   render();
-  if (state.auth.session) loadData();
+  if (state.auth.session) { loadData(); syncPollingPages(); }
 });
 
 // ฟังการเปลี่ยนแปลงสถานะล็อกอิน (ล็อกอินสำเร็จ, ออกจากระบบ, token หมดอายุแล้วต่ออายุอัตโนมัติ ฯลฯ)
@@ -2515,7 +2515,7 @@ sb.auth.onAuthStateChange((event, session) => {
     window.localStorage.removeItem(LOGIN_DATE_KEY);
   }
   render();
-  if (session && !hadSession) loadData();
+  if (session && !hadSession) { loadData(); syncPollingPages(); }
 });
 
 // ระหว่างที่ผู้ใช้กำลังพิมพ์/แก้ไขอะไรอยู่ (กล่องตอบกลับ, แก้ไขคำตอบเดิม, หรือเปิด Account settings
@@ -2538,6 +2538,24 @@ setInterval(() => {
   }
   if (!isUserEditingSomething()) loadData();
 }, 20000);
+
+// เพจที่ยังตั้ง Webhook เรียลไทม์ไม่ได้ (pages.needs_polling = true เช่น WarZ TH ที่ยังไม่มี App
+// Secret ของแอปที่ออก Token ให้) — ให้แดชบอร์ดเป็นฝ่ายไปถามเพจนั้นเองเป็นระยะแทน ทำงานคู่ขนานกับ
+// loadData() ปกติ ไม่ใช้ Vercel Cron เพราะแผน Hobby จำกัดความถี่ไว้แค่วันละครั้ง ไม่พอ ใช้ interval
+// ฝั่งเบราว์เซอร์แทน (ทำงานเฉพาะตอนมีคนล็อกอินเปิดแดชบอร์ดค้างอยู่จริง)
+async function syncPollingPages(){
+  if (!state.auth.session) return;
+  try {
+    const res = await fetch('/api/sync-comments', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${state.auth.session.access_token}` },
+    });
+    if (res.ok && !isUserEditingSomething()) loadData();
+  } catch (err) {
+    console.error('syncPollingPages ล้มเหลว:', err);
+  }
+}
+setInterval(syncPollingPages, 90000);
 </script>
 </body>
 </html>
