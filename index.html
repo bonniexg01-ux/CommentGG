@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>CommentGG — Unified Moderation Dashboard</title>
+<title>CommentGG</title>
 <style>
   :root{
     /* ---- ธีมสี "หมีเนวี่" (อ้างอิงจากพาเลต 泰兰德夏 — navy/blue/cream/red) — ธีม default ----
@@ -744,6 +744,7 @@ function setThemeName(name){
   if (!THEMES[name]) return;
   localStorage.setItem(THEME_NAME_KEY, name);
   document.documentElement.setAttribute('data-theme', name);
+  setFavicon();
 }
 // ไอคอน CommentGG เปลี่ยนไปตามธีมที่เลือก (หมี ↔ แมว ธีมเดิม)
 function iconForTheme(){
@@ -752,9 +753,24 @@ function iconForTheme(){
   if (name === 'kuromiLavender') return ICONS.dog;
   return ICONS.bear;
 }
+// ไอคอนแท็บเบราว์เซอร์ (favicon) — ใช้มาสคอตของธีมที่เลือกอยู่แทนไอคอนโลกเริ่มต้นของเบราว์เซอร์
+// อัปเดตสดตามธีมที่เปลี่ยน (เรียกซ้ำได้จาก setThemeName ด้านบน)
+function setFavicon(){
+  const svg = iconForTheme().replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+  let link = document.getElementById('dynamicFavicon');
+  if (!link) {
+    link = document.createElement('link');
+    link.id = 'dynamicFavicon';
+    link.rel = 'icon';
+    link.type = 'image/svg+xml';
+    document.head.appendChild(link);
+  }
+  link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
 // ตั้งค่าตาม localStorage ทันทีตั้งแต่ต้น (ก่อนแม้แต่หน้า login) กันไม่ให้วาบเห็นธีมผิดตอนโหลดหน้า
 document.documentElement.setAttribute('data-mode', getThemeMode());
 document.documentElement.setAttribute('data-theme', getThemeName());
+setFavicon();
 
 /* ============================================================
    LIVE DATA (Supabase) — โหลดคอมเมนต์/ข้อความจริงจากฐานข้อมูล
