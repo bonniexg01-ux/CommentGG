@@ -130,7 +130,9 @@ async function syncOnePage(page) {
 }
 
 async function fetchRecentPosts(pageId, accessToken) {
-  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}/posts?fields=id&limit=${POSTS_PER_PAGE}&access_token=${encodeURIComponent(accessToken)}`;
+  // since=48 ชม.ล่าสุด เหตุผลเดียวกับ fetchRecentComments ด้านล่าง (กัน sync รอบแรกไล่ทวนโพสต์เก่า)
+  const sinceTs = Math.floor(Date.now() / 1000) - 48 * 3600;
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}/posts?fields=id&since=${sinceTs}&limit=${POSTS_PER_PAGE}&access_token=${encodeURIComponent(accessToken)}`;
   const r = await fetchWithTimeout(url, { method: 'GET' });
   const data = await r.json();
   if (data.error) {
@@ -142,7 +144,11 @@ async function fetchRecentPosts(pageId, accessToken) {
 
 async function fetchRecentComments(postId, accessToken) {
   const fields = 'id,message,from,created_time';
-  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(postId)}/comments?fields=${encodeURIComponent(fields)}&filter=stream&limit=${COMMENTS_PER_POST}&access_token=${encodeURIComponent(accessToken)}`;
+  // จำกัดแค่คอมเมนต์ 48 ชม.ล่าสุด (since=unix timestamp) กันไม่ให้ sync รอบแรกดึงคอมเมนต์เก่าย้อนหลัง
+  // เป็นร้อยรายการเข้ามาพร้อมกันทีเดียว (เพจนี้มีคนเก่าคุยไว้เยอะแล้วผ่านเครื่องมืออื่น ไม่อยากให้ซ้ำ
+  // เป็นภาระทีมตรวจซ้ำของเก่า เอาแค่ตามทันจากนี้ไปพอ)
+  const sinceTs = Math.floor(Date.now() / 1000) - 48 * 3600;
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(postId)}/comments?fields=${encodeURIComponent(fields)}&filter=stream&since=${sinceTs}&limit=${COMMENTS_PER_POST}&access_token=${encodeURIComponent(accessToken)}`;
   const r = await fetchWithTimeout(url, { method: 'GET' });
   const data = await r.json();
   if (data.error) {
