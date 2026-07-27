@@ -1481,14 +1481,15 @@ function renderTopTabs(){
    RENDER: SUBNAV (Inbox / Archive / Bin)
 ============================================================ */
 function renderSubnav(){
+  // ยังคำนวณตัวเลขไว้เหมือนเดิม (ข้อมูลปกติ) แค่ไม่เอามาแสดงในป้ายชื่อแท็บ ตามที่ขอ
   const inboxN = folderCount(state.tab, 'inbox');
   const archiveN = folderCount(state.tab, 'archive');
   const binN = folderCount(state.tab, 'bin');
   return `
     <div class="subnav">
-      <div class="subnav-item ${state.folder === 'inbox' ? 'active' : ''}" data-action="select-folder" data-folder="inbox">Inbox ${inboxN}</div>
-      <div class="subnav-item ${state.folder === 'archive' ? 'active' : ''}" data-action="select-folder" data-folder="archive">Archive ${archiveN}</div>
-      <div class="subnav-item ${state.folder === 'bin' ? 'active' : ''}" data-action="select-folder" data-folder="bin">Bin ${binN}</div>
+      <div class="subnav-item ${state.folder === 'inbox' ? 'active' : ''}" data-action="select-folder" data-folder="inbox">Inbox</div>
+      <div class="subnav-item ${state.folder === 'archive' ? 'active' : ''}" data-action="select-folder" data-folder="archive">Archive</div>
+      <div class="subnav-item ${state.folder === 'bin' ? 'active' : ''}" data-action="select-folder" data-folder="bin">Bin</div>
     </div>
   `;
 }
