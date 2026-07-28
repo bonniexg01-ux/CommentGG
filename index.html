@@ -1271,6 +1271,14 @@ function showToast(msg, type){
 /* ============================================================
    CROSS-PAGE VIOLATION CHECK
 ============================================================ */
+// สรรพนามของเพจที่ "กำลังจะเพิ่ม" เข้าระบบเร็วๆ นี้ แต่ยังไม่ได้ตั้งค่าเพจจริง (เลยยังไม่มีใน PAGES
+// ให้ลูปเช็คแบบปกติด้านล่างได้) กันไว้ล่วงหน้าตามที่ขอ — Cabal : Infinite Combo / Ultimate Combo
+// จะใช้สรรพนาม "แอดมิน" แต่คนมักพิมพ์สั้นๆ แค่ "แอด" เลยกันคำนี้ไว้ก่อนเผื่อพิมพ์ผิดเพจ พอเพิ่มเพจ
+// Cabal เข้าระบบจริงแล้วสามารถเอารายการนี้ออกได้ (ลูปเช็คปกติด้านล่างจะครอบคลุมแทนอัตโนมัติ)
+const RESERVED_PRONOUNS = [
+  { term: 'แอด', pageName: 'Cabal (เพจที่กำลังจะเพิ่ม)', pageEmoji: '⚔️' },
+];
+
 function checkCrossPageViolation(text, currentPageId){
   const others = PAGES.filter(p => p.id !== currentPageId);
   for (const p of others) {
@@ -1278,6 +1286,11 @@ function checkCrossPageViolation(text, currentPageId){
     // แฮชแท็กเป็นของ "ฉัน" แยกตามเพจ — เช็คว่าเผลอใส่แฮชแท็กที่ตัวเองตั้งไว้สำหรับเพจอื่นหรือเปล่า
     const otherTag = myHashtagFor(p.id);
     if (otherTag && text.includes(otherTag)) return { term: otherTag, type: 'แฮชแท็ก', page: p };
+  }
+  for (const r of RESERVED_PRONOUNS) {
+    if (text.includes(r.term)) {
+      return { term: r.term, type: 'สรรพนาม', page: { emoji: r.pageEmoji, name: r.pageName } };
+    }
   }
   return null;
 }
