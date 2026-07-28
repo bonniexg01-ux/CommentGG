@@ -339,7 +339,7 @@
   /* ---------------- Comment detail popover (compact card, anchored near the clicked row) ---------------- */
   .post-panel-backdrop{position:fixed; inset:0; background:transparent; z-index:95;}
   .post-panel{
-    position:fixed; width:300px; max-width:88vw; max-height:80vh; background:var(--surface); z-index:96;
+    position:fixed; width:440px; max-width:92vw; max-height:85vh; background:var(--surface); z-index:96;
     border-radius:14px; box-shadow:0 16px 40px rgba(0,0,0,.20); border:1px solid var(--border);
     display:flex; flex-direction:column; overflow:hidden;
     animation:post-panel-in .14s ease-out;
@@ -1971,7 +1971,7 @@ function openPostPanel(item, anchorRect){
   // (อ้างอิงกับเอกสารทั้งหน้า) ดังนั้นห้ามบวก window.scrollY เข้าไปในค่า top/left เด็ดขาด —
   // getBoundingClientRect() คืนค่าตำแหน่งเทียบกับ viewport อยู่แล้ว พอดีกับ fixed positioning
   // ทันที เมื่อก่อนบวก scrollY ซ้ำเข้าไปทำให้การ์ดเลื่อนลงไปนอกจอเรื่อยๆ ตามระยะที่เลื่อนหน้าลง
-  const CARD_W = 300;
+  const CARD_W = 440; // ต้องตรงกับ .post-panel width ใน CSS เสมอ ไม่งั้นคำนวณตำแหน่งชิดขอบขวาผิด
   const MIN_H = 220; // เผื่อพื้นที่ขั้นต่ำที่พอจะแสดงอะไรได้บ้างก่อนต้องเลื่อนภายในการ์ด
   const GAP = 8;
   let left = anchorRect.left;
