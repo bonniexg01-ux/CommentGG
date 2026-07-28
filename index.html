@@ -1552,7 +1552,9 @@ function renderFiltersPanel(){
 }
 
 function renderToolbar(){
-  const items = visibleItems();
+  // ใช้ currentPageItems() ไม่ใช่ visibleItems() เพราะ "Select visible" ควรติ๊กแค่รายการที่เห็น
+  // อยู่ในหน้านี้จริงๆ (ตามที่ขอ) ไม่ใช่ทุกรายการที่ตรงตัวกรองในทุกหน้ารวมกัน
+  const items = currentPageItems();
   const allSelected = items.length > 0 && items.every(i => state.selected.has(i.id));
   const n = state.selected.size;
 
@@ -1735,6 +1737,18 @@ function renderRow(item){
 /* ============================================================
    RENDER: LIST
 ============================================================ */
+// รายการเฉพาะ "หน้าปัจจุบัน" ที่กำลังโชว์อยู่จริงบนจอ (ต่างจาก visibleItems() ที่เป็นรายการทั้งหมด
+// ตามตัวกรอง แต่ยังไม่ตัดแบ่งหน้า) ใช้ทั้งตอน render แถวจริง และตอนกด "Select visible" เพื่อให้
+// ติ๊กเลือกแค่รายการที่เห็นในหน้านี้ ไม่ใช่ทุกรายการทุกหน้ารวมกัน
+function currentPageItems(){
+  const items = visibleItems();
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  // เผื่อรายการลดลงจนหน้าปัจจุบันเกินขอบเขต (เช่น ลบ/ย้ายรายการจนหน้าสุดท้ายว่างไปแล้ว)
+  if (state.page > totalPages) state.page = totalPages;
+  const start = (state.page - 1) * PAGE_SIZE;
+  return items.slice(start, start + PAGE_SIZE);
+}
+
 function renderList(){
   const items = visibleItems();
   if (!items.length) {
@@ -1746,10 +1760,7 @@ function renderList(){
     `;
   }
   const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
-  // เผื่อรายการลดลงจนหน้าปัจจุบันเกินขอบเขต (เช่น ลบ/ย้ายรายการจนหน้าสุดท้ายว่างไปแล้ว)
-  if (state.page > totalPages) state.page = totalPages;
-  const start = (state.page - 1) * PAGE_SIZE;
-  const pageItems = items.slice(start, start + PAGE_SIZE);
+  const pageItems = currentPageItems();
   return pageItems.map(renderRow).join('') + renderPagination(totalPages);
 }
 
@@ -2319,7 +2330,8 @@ document.getElementById('app').addEventListener('click', (e) => {
       render(); break;
 
     case 'select-all': {
-      const items = visibleItems();
+      // เลือกเฉพาะรายการหน้าปัจจุบัน (currentPageItems) ตามที่ขอ ไม่ใช่ทุกรายการทุกหน้า
+      const items = currentPageItems();
       const allSelected = items.length > 0 && items.every(i => state.selected.has(i.id));
       if (allSelected) items.forEach(i => state.selected.delete(i.id));
       else items.forEach(i => state.selected.add(i.id));
