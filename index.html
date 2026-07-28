@@ -358,7 +358,9 @@
   .post-panel-msg{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-faint); padding:16px 12px;}
   .post-panel-msg svg{width:15px; height:15px; flex:none;}
   .post-panel-msg.error{color:var(--red-text);}
-  .ppc-image{width:100%; max-height:190px; object-fit:cover; display:block;}
+  /* object-fit:contain (ไม่ใช่ cover) + max-height สูงขึ้นมาก เพราะตอนนี้เป็นแถบด้านขวาเต็มจอ
+     มีที่พอให้โชว์รูปเต็มๆ ไม่ต้องครอปแล้ว (ของเดิม cover+190px ตัดภาพที่สูง/มีหลายท่อนขาดไป) */
+  .ppc-image{width:100%; max-height:60vh; object-fit:contain; background:var(--hover-bg); display:block;}
   .ppp-caption{font-size:13.5px; font-weight:700; color:var(--text); line-height:1.5; white-space:pre-wrap; padding:11px 12px; background:var(--hover-bg); border-bottom:1px solid var(--border);}
   .ppc-body{padding:9px 12px; border-top:1px solid var(--border);}
   .ppc-body:first-child{border-top:none;}
