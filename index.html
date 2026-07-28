@@ -337,14 +337,17 @@
   .theme-swatch-dots span{width:11px; height:11px; border-radius:50%; display:inline-block;}
 
   /* ---------------- Comment detail popover (compact card, anchored near the clicked row) ---------------- */
-  .post-panel-backdrop{position:fixed; inset:0; background:transparent; z-index:95;}
+  .post-panel-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.12); z-index:95;}
+  /* แถบด้านขวา (docked sidebar) เต็มความสูงจอ แทนที่การ์ดลอยแบบเดิม ตามที่ขอ — ไม่อ้างอิงตำแหน่ง
+     ปุ่มที่กดอีกต่อไป เปิดที่ไหนก็โผล่ชิดขอบขวาเสมอ */
   .post-panel{
-    position:fixed; width:440px; max-width:92vw; max-height:85vh; background:var(--surface); z-index:96;
-    border-radius:14px; box-shadow:0 16px 40px rgba(0,0,0,.20); border:1px solid var(--border);
+    position:fixed; top:0; right:0; bottom:0; width:440px; max-width:92vw; height:100vh;
+    background:var(--surface); z-index:96; border-left:1px solid var(--border);
+    box-shadow:-16px 0 40px rgba(0,0,0,.16);
     display:flex; flex-direction:column; overflow:hidden;
-    animation:post-panel-in .14s ease-out;
+    animation:post-panel-in .16s ease-out;
   }
-  @keyframes post-panel-in{ from{opacity:0; transform:translateY(-6px);} to{opacity:1; transform:translateY(0);} }
+  @keyframes post-panel-in{ from{opacity:0; transform:translateX(24px);} to{opacity:1; transform:translateX(0);} }
   .post-panel-head{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:9px 10px; border-bottom:1px solid var(--border);}
   .pph-copy{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-faint); cursor:pointer;}
   .pph-copy:hover{color:var(--text-dim);}
@@ -1963,39 +1966,14 @@ async function doLogin(){
    ของโพสต์ต้นทางถ้ามี, รูปแนบของคอมเมนต์ถ้ามี, ข้อความคอมเมนต์เต็ม, ชื่อ, เวลา, ลิงก์เปิดบน
    Facebook, ปุ่มคัดลอก comment ID — ไม่ต้องออกไปเปิด Facebook เอง และไม่ต้องโหลดคอมเมนต์อื่นๆ
 ============================================================ */
-function openPostPanel(item, anchorRect){
-  // จัดตำแหน่งการ์ดให้เริ่มจากขอบซ้ายของปุ่มที่กด ยื่นไปทางขวา (ไม่ยื่นไปทางซ้ายทับแถวคอมเมนต์/
-  // กล่องข้อความที่เปิดอยู่) แล้วอยู่ใต้ปุ่มลงมานิดหน่อย — กันชนขอบขวา/ขอบล่างจอด้วย
-  //
-  // สำคัญ: .post-panel เป็น position:fixed (อ้างอิงกับ viewport) ไม่ใช่ position:absolute
-  // (อ้างอิงกับเอกสารทั้งหน้า) ดังนั้นห้ามบวก window.scrollY เข้าไปในค่า top/left เด็ดขาด —
-  // getBoundingClientRect() คืนค่าตำแหน่งเทียบกับ viewport อยู่แล้ว พอดีกับ fixed positioning
-  // ทันที เมื่อก่อนบวก scrollY ซ้ำเข้าไปทำให้การ์ดเลื่อนลงไปนอกจอเรื่อยๆ ตามระยะที่เลื่อนหน้าลง
-  const CARD_W = 440; // ต้องตรงกับ .post-panel width ใน CSS เสมอ ไม่งั้นคำนวณตำแหน่งชิดขอบขวาผิด
-  const MIN_H = 220; // เผื่อพื้นที่ขั้นต่ำที่พอจะแสดงอะไรได้บ้างก่อนต้องเลื่อนภายในการ์ด
-  const GAP = 8;
-  let left = anchorRect.left;
-  left = Math.max(12, Math.min(left, window.innerWidth - CARD_W - 12));
-
-  const spaceBelow = window.innerHeight - anchorRect.bottom - GAP - 12;
-  const spaceAbove = anchorRect.top - GAP - 12;
-  // เปิดด้านล่างเป็นค่าเริ่มต้น เว้นแต่ด้านล่างเหลือพื้นที่น้อยกว่าขั้นต่ำ แต่ด้านบนมีเยอะกว่า
-  const openAbove = spaceBelow < MIN_H && spaceAbove > spaceBelow;
-  const top = openAbove ? 12 : anchorRect.bottom + GAP;
-  // ความสูงสูงสุดที่การ์ดจะขยายได้จริง โดยไม่มีวันพ้นขอบล่างจอ — คำนวณจาก top ที่เลือกจริง
-  // ไม่ใช่ค่าคงที่ลอยๆ (เนื้อหาข้างในยาวแค่ไหนก็ไม่หลุดจอ เพราะ .post-panel-body เลื่อนเองได้)
-  const maxHeight = openAbove
-    ? Math.max(160, anchorRect.top - GAP - 12 - 12)
-    : Math.max(160, window.innerHeight - top - 12);
-
+function openPostPanel(item){
+  // แถบด้านขวาแบบ docked เต็มความสูงจอ — ไม่ต้องคำนวณตำแหน่งอ้างอิงปุ่มที่กดอีกต่อไป (เปิดที่ไหน
+  // ก็ชิดขอบขวาเสมอ ตำแหน่ง/ขนาดคุมด้วย CSS .post-panel ล้วนๆ)
   state.postPanel = {
     open: true,
     loading: true,
     error: null,
     data: null,
-    top,
-    left,
-    maxHeight,
   };
   render();
 
@@ -2053,7 +2031,7 @@ function renderPostPanel(){
 
   return `
     <div class="post-panel-backdrop" data-action="close-post-panel"></div>
-    <div class="post-panel" data-action="stop-propagation" style="top:${p.top}px; left:${p.left}px; max-height:${p.maxHeight}px;">
+    <div class="post-panel" data-action="stop-propagation">
       <div class="post-panel-head">
         <div class="pph-copy" data-action="copy-comment-id">${ICONS.copy} Copy comment ID</div>
         <div class="modal-close" data-action="close-post-panel">${ICONS.x}</div>
@@ -2370,7 +2348,7 @@ document.getElementById('app').addEventListener('click', (e) => {
       render(); break;
 
     case 'view-post':
-      if (item) openPostPanel(item, el.getBoundingClientRect());
+      if (item) openPostPanel(item);
       break;
 
     case 'close-post-panel':
