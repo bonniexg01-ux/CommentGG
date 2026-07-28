@@ -88,11 +88,16 @@ async function handleEvent(req, res) {
               await deleteComment(change.value);
               continue;
             }
-            // ข้ามคอมเมนต์ที่ "เพจตัวเอง" เป็นคนโพสต์ (เช่น echo ของข้อความที่เราเพิ่งตอบไป)
-            // ไม่งั้นทุกครั้งที่ตอบคอมเมนต์สำเร็จ Facebook จะยิง event คอมเมนต์ใหม่กลับมาเป็นของเพจเอง
-            // แล้วระบบจะเก็บมันเป็นรายการ "ต้องตอบกลับ" ซ้ำไปเรื่อยๆ ไม่รู้จบ
+            // เพจตัวเองเป็นคนคอมเมนต์ — มี 2 กรณี: (1) echo ของคำตอบที่เราเพิ่งส่งไปเองผ่านปุ่มตอบ
+            // ในเว็บนี้ (ต้องข้าม ไม่งั้นจะเก็บเป็นรายการ "ต้องตอบกลับ" ซ้ำไปเรื่อยๆ ไม่รู้จบ) หรือ
+            // (2) มีคนตอบคอมเมนต์นั้นผ่านเครื่องมืออื่น (เช่นบอท AI อีกตัวที่ทีมใช้คู่กัน) ตรงที่
+            // หน้าเพจ Facebook เลย ไม่ผ่านเว็บเรา — กรณีนี้อยากให้คอมเมนต์ต้นทางในเว็บเราขึ้นสถานะ
+            // "ตอบแล้ว" ไปด้วย ไม่ใช่ค้างเป็น "ต้องตอบกลับ" ทั้งที่จริงมีคนตอบไปแล้ว (ตามที่ขอ)
             const commenterId = change.value.from && String(change.value.from.id);
-            if (commenterId === fbPageId) continue;
+            if (commenterId === fbPageId) {
+              await handlePageAuthoredComment(pageUuid, change.value);
+              continue;
+            }
             await insertComment(pageUuid, change.value);
           }
         }
@@ -142,6 +147,57 @@ async function lookupPageUuid(fbPageId) {
   }
   const rows = await r.json();
   return rows[0] ? rows[0].id : null;
+}
+
+// ถ้า rawId มี post_id ต่อท้ายอยู่แล้ว (บาง reply ที่ซ้อนลึกๆ Facebook ส่งมาเป็นรูปแบบผสมเลย)
+// ก็ใช้ตามนั้น ไม่ต้องต่อ post_id ซ้ำอีกที — กันปัญหาแบบเดียวกับที่เจอตอน fb_id ผิดรูปจนตอบไม่สำเร็จ
+function toFbId(postId, rawId) {
+  if (!rawId) return null;
+  const raw = String(rawId);
+  return raw.startsWith(`${postId}_`) ? raw : `${postId}_${raw}`;
+}
+
+// เพจตัวเองเป็นคนคอมเมนต์ — ถ้าเป็นคอมเมนต์ระดับบนสุด (ไม่มี parent_id เช่นแคปชั่นประกาศของเพจ)
+// ไม่เกี่ยวอะไรกับการตอบคอมเมนต์ ข้ามไปเฉยๆ ถ้าเป็น "reply ซ้อนใต้คอมเมนต์อื่น" (มี parent_id)
+// ต้องแยกให้ออกว่าเป็น echo ของคำตอบที่เราเพิ่งส่งเองผ่านเว็บนี้ (ข้าม กันลูป) หรือเป็นคำตอบที่มาจาก
+// เครื่องมือ/บอทอื่นที่ทีมใช้คู่กันตอบตรงที่หน้าเพจ Facebook เลย (ถ้าใช่ ให้ไปมาร์คคอมเมนต์ต้นทาง
+// ในเว็บเราว่า "ตอบแล้ว" ด้วย จะได้ไม่ค้างเป็น "ต้องตอบกลับ" ทั้งที่มีคนตอบไปแล้วจริง)
+async function handlePageAuthoredComment(pageUuid, value) {
+  if (!value.parent_id) return;
+
+  const replyFbId = toFbId(value.post_id, value.comment_id);
+  const alreadyOurs = await isOwnRecordedReply(replyFbId);
+  if (alreadyOurs) return; // เราส่งเองผ่านเว็บนี้แล้ว บันทึกไว้แล้ว — แค่ echo กลับมา ไม่ต้องทำอะไรซ้ำ
+
+  const parentFbId = toFbId(value.post_id, value.parent_id);
+  await markRepliedExternally(pageUuid, parentFbId, value.message, replyFbId);
+}
+
+async function isOwnRecordedReply(replyFbId) {
+  const url = `${SUPABASE_URL}/rest/v1/feed_items?admin_reply_fb_id=eq.${encodeURIComponent(replyFbId)}&select=id&limit=1`;
+  const r = await fetch(url, { headers: sbHeaders });
+  if (!r.ok) return false;
+  const rows = await r.json();
+  return rows.length > 0;
+}
+
+// เจอว่ามีคนตอบคอมเมนต์ต้นทางนี้ผ่านเครื่องมืออื่นแล้ว (ไม่ใช่ผ่านเว็บเรา) — มาร์คสถานะเป็น "ตอบแล้ว"
+// ให้ตรงกับความจริง เฉพาะรายการที่ยัง pending อยู่เท่านั้น (กันเผลอไปทับของที่จัดการไปแล้วซ้ำ)
+async function markRepliedExternally(pageUuid, parentFbId, replyMessage, replyFbId) {
+  const url = `${SUPABASE_URL}/rest/v1/feed_items?page_id=eq.${encodeURIComponent(pageUuid)}&fb_id=eq.${encodeURIComponent(parentFbId)}&status=eq.pending`;
+  const r = await fetch(url, {
+    method: 'PATCH',
+    headers: { ...sbHeaders, Prefer: 'return=minimal' },
+    body: JSON.stringify({
+      status: 'replied',
+      admin_reply: replyMessage || '(ตอบผ่านเครื่องมืออื่น ไม่มีข้อความให้แสดง)',
+      admin_reply_fb_id: replyFbId,
+      admin_reply_by: 'บอท/เครื่องมืออื่น (ตอบที่หน้าเพจ)',
+    }),
+  });
+  if (!r.ok) {
+    console.error('webhook error: markRepliedExternally ล้มเหลว', r.status, await r.text().catch(() => ''));
+  }
 }
 
 async function insertComment(pageUuid, value) {
