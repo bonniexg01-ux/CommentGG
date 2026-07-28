@@ -126,7 +126,11 @@ export default async function handler(request) {
     return json({
       commentId,
       message: comment.message || '',
-      from: comment.from ? comment.from.name : null,
+      // Facebook มักไม่ส่งชื่อคนคอมเมนต์กลับมาตอนเราไปดึงซ้ำแบบนี้ (pull ผ่าน Graph API ตรงๆ
+      // ติดข้อจำกัดสิทธิ์ Advanced Access เดียวกับที่เจอตอนวินิจฉัยปัญหา sync ก่อนหน้านี้) ทั้งที่
+      // ตอน Webhook ส่งเข้ามาครั้งแรกกลับมีชื่อมาด้วย (เก็บไว้แล้วใน author_name) — ใช้ชื่อที่เก็บไว้
+      // เป็น fallback แทนการโชว์ "ไม่ทราบชื่อ" ทั้งที่จริงๆ เรารู้ชื่ออยู่แล้ว
+      from: (comment.from && comment.from.name) || item.author_name || null,
       createdTime: comment.created_time || null,
       permalinkUrl: comment.permalink_url || null,
       images,
@@ -150,7 +154,7 @@ function deriveCommentId(fbId, fbPostId) {
 }
 
 async function fetchFeedItemWithPage(id) {
-  const url = `${SUPABASE_URL}/rest/v1/feed_items?id=eq.${encodeURIComponent(id)}&select=id,page_id,type,fb_id,fb_post_id,status,pages(access_token)`;
+  const url = `${SUPABASE_URL}/rest/v1/feed_items?id=eq.${encodeURIComponent(id)}&select=id,page_id,type,fb_id,fb_post_id,status,author_name,pages(access_token)`;
   const r = await fetch(url, { headers: sbHeaders });
   if (!r.ok) return null;
   const rows = await r.json();
