@@ -941,6 +941,7 @@ function sendReply(item, text, archiveAfter){
   item.adminReply = text;
   if (archiveAfter) item.folder = 'archive';
   state.expandedId = null;
+  delete state.replyDrafts[item.id]; // ส่งสำเร็จแล้ว ล้าง draft ที่พิมพ์ค้างไว้ทิ้ง กันโผล่ซ้ำครั้งหน้า
   showToast(archiveAfter ? 'กำลังส่งข้อความและจัดเก็บ...' : 'กำลังส่งข้อความ...', 'success');
 
   // กัน loadData() (poll ทุก 20 วิ) ดึงสถานะเก่า ('pending') จาก Supabase มาทับสถานะ 'replied' ที่
@@ -1137,6 +1138,9 @@ const state = {
   sortDesc: true,
   selected: new Set(),
   expandedId: null,
+  // ข้อความที่พิมพ์ค้างไว้ในกล่องตอบกลับของแต่ละคอมเมนต์ (key = item.id) — เก็บไว้กัน re-render
+  // เต็มหน้า (เช่น ตอนเปิดแผงดูโพสต์ด้านขวา) ล้างข้อความที่พิมพ์อยู่ทิ้งไปเฉยๆ
+  replyDrafts: {},
   bulkMenuOpen: false,
   page: 1, // หน้าปัจจุบันของรายการ (แบ่งหน้าละ PAGE_SIZE รายการ) รีเซ็ตเป็น 1 ทุกครั้งที่เปลี่ยนตัวกรอง
 
@@ -1710,7 +1714,7 @@ function renderExpandPanel(item){
           <span class="btn" style="padding:4px 9px; font-size:11px;" data-action="insert-signature" data-id="${item.id}">${ICONS.copy} แทรกลายเซ็น</span>
         </span>
       </div>
-      <textarea id="replyBox-${item.id}" placeholder="พิมพ์ข้อความตอบกลับ... (ต้องใช้สรรพนาม “${page.pronoun}” สำหรับเพจนี้)">${signatureFor(page)}</textarea>
+      <textarea id="replyBox-${item.id}" placeholder="พิมพ์ข้อความตอบกลับ... (ต้องใช้สรรพนาม “${page.pronoun}” สำหรับเพจนี้)">${state.replyDrafts[item.id] !== undefined ? state.replyDrafts[item.id] : signatureFor(page)}</textarea>
       <div id="composerAlertZone-${item.id}"></div>
       <div class="composer-foot">
         <div class="composer-rules">สรรพนาม: <b>${page.pronoun}</b> &nbsp;·&nbsp; คำลงท้าย: <b>${page.ending}</b> &nbsp;·&nbsp; แฮชแท็กของคุณ: <b>${myHashtagFor(page.id) || '(ยังไม่ตั้ง)'}</b></div>
@@ -2063,9 +2067,18 @@ function bindAllReplyBoxes(){
   const box = document.getElementById('replyBox-' + item.id);
   if (!box) return;
   const page = pageById(item.pageId);
-  box.addEventListener('input', () => updateComposerState(item, box, page));
-  box.focus();
-  box.setSelectionRange(0, 0); // วางเคอร์เซอร์ไว้หน้าลายเซ็นที่แทรกไว้ล่วงหน้า พิมพ์ข้อความนำหน้าได้เลย
+  box.addEventListener('input', () => {
+    // เก็บข้อความที่พิมพ์อยู่ไว้ใน state ทุกครั้งที่พิมพ์ กัน re-render เต็มหน้า (เช่น เปิดแผงดูโพสต์
+    // ด้านขวา) มาล้างข้อความที่พิมพ์ค้างไว้ทิ้งไปเฉยๆ ตามที่แจ้ง
+    state.replyDrafts[item.id] = box.value;
+    updateComposerState(item, box, page);
+  });
+  // ถ้ามีข้อความค้างพิมพ์ไว้แล้ว (re-render ระหว่างพิมพ์) ไม่ต้อง focus/ย้ายเคอร์เซอร์ซ้ำ กันกระโดด
+  // ไปหน้าข้อความรบกวนขณะพิมพ์อยู่ — focus แค่ตอนเพิ่งเปิดกล่องนี้ครั้งแรกเท่านั้น
+  if (state.replyDrafts[item.id] === undefined) {
+    box.focus();
+    box.setSelectionRange(0, 0); // วางเคอร์เซอร์ไว้หน้าลายเซ็นที่แทรกไว้ล่วงหน้า พิมพ์ข้อความนำหน้าได้เลย
+  }
   updateComposerState(item, box, page);
 }
 
