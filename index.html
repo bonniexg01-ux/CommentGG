@@ -1091,7 +1091,10 @@ async function loadData(){
   if (!state.auth.session) return;
   try {
     const [pagesRes, itemsRes, hashtagsRes] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/pages_public?select=*`, { headers: sbAuthHeaders() }),
+      // เรียงตาม created_at เสมอ (เพจที่เพิ่มก่อนอยู่หน้าก่อน) — เดิมไม่ได้ระบุ order เลย Postgres
+      // จะคืนแถวมาตามลำดับภายในของมันเอง ไม่การันตีว่าจะตรงกับลำดับที่เพิ่มเพจจริง ทำให้แท็บเพจ
+      // สลับที่ไปมาดูไม่เป็นระเบียบ (เช่น WarZ TH ซึ่งเพิ่มก่อน ดันไปโผล่ท้ายแถว)
+      fetch(`${SUPABASE_URL}/rest/v1/pages_public?select=*&order=created_at.asc`, { headers: sbAuthHeaders() }),
       fetch(`${SUPABASE_URL}/rest/v1/feed_items?select=*&order=created_at.desc`, { headers: sbAuthHeaders() }),
       fetch(`${SUPABASE_URL}/rest/v1/user_page_hashtags?select=page_id,hashtag`, { headers: sbAuthHeaders() }),
     ]);
