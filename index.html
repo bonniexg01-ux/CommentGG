@@ -764,33 +764,11 @@ function pendingBadgeCount(){
   return ITEMS.filter(it => it.folder === 'inbox' && it.status === 'pending' && !it.blocked).length;
 }
 // ไอคอนแท็บเบราว์เซอร์ (favicon) — ใช้มาสคอตของธีมที่เลือกอยู่แทนไอคอนโลกเริ่มต้นของเบราว์เซอร์
-// อัปเดตสดตามธีมที่เปลี่ยน (เรียกซ้ำได้จาก setThemeName ด้านบน) และตามจำนวนคอมเมนต์ที่ต้องตอบกลับ
-// (วาดวงกลมแดง+ตัวเลขทับมุมขวาล่างของไอคอน คล้ายตัวเลขแจ้งเตือนบนแท็บ Facebook/Gmail)
+// อัปเดตสดตามธีมที่เปลี่ยน (เรียกซ้ำได้จาก setThemeName ด้านบน) — ไม่วาดตัวเลขทับไอคอนแล้ว
+// (ลองแล้วแต่ไอคอนแท็บเล็กเกินไป ตัวเลขที่วาดทับมองไม่เห็น) เปลี่ยนไปโชว์ตัวเลขที่ชื่อแท็บแทน
+// (ดู updateTabTitle ด้านล่าง) ซึ่งอ่านออกชัดเจนกว่า
 function setFavicon(){
-  let svg = iconForTheme().replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
-  // ตอนสคริปต์เพิ่งโหลด (เรียก setFavicon() ครั้งแรกสุดด้านล่าง ก่อนตัวแปร state/ITEMS จะถูกประกาศ
-  // จริงด้วยซ้ำ) การอ้างถึงตัวแปรที่ประกาศด้วย let/const ที่ยังไม่ถึงบรรทัดประกาศจะโยน
-  // ReferenceError (temporal dead zone) ทันที ทำให้สคริปต์ทั้งไฟล์พังไปหมด — ครอบด้วย try/catch
-  // กันไว้ ถ้าอ่านไม่ได้ก็ถือว่ายังไม่มีตัวเลขแจ้งเตือน (0) ไปก่อน
-  let count = 0;
-  try {
-    count = state.auth.session ? pendingBadgeCount() : 0;
-  } catch (e) {
-    count = 0;
-  }
-  if (count > 0) {
-    const label = count > 99 ? '99+' : String(count);
-    // ตัวเลขยิ่งยาว วงกลมยิ่งต้องกว้างขึ้นเป็นแคปซูล ไม่งั้น "99+" ล้นออกนอกวงกลม
-    const badgeW = label.length > 2 ? 34 : label.length > 1 ? 28 : 22;
-    const fontSize = label.length > 2 ? 17 : 20;
-    const badge = `
-      <g>
-        <rect x="${64 - badgeW}" y="34" width="${badgeW}" height="24" rx="12" fill="#DC2626" stroke="#fff" stroke-width="2.5"/>
-        <text x="${64 - badgeW / 2}" y="52" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="700" fill="#fff" text-anchor="middle">${label}</text>
-      </g>
-    `;
-    svg = svg.replace('</svg>', badge + '</svg>');
-  }
+  const svg = iconForTheme().replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
   let link = document.getElementById('dynamicFavicon');
   if (!link) {
     link = document.createElement('link');
@@ -801,10 +779,23 @@ function setFavicon(){
   }
   link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
+// ตัวเลขแจ้งเตือนบนชื่อแท็บ เช่น "(3) CommentGG" คล้ายอีเมล/แชทอื่นๆ — เขียนตรงนี้แยกจาก setFavicon()
+// เพราะครอบ try/catch กันเคสเดียวกัน (เรียกตอนสคริปต์เพิ่งโหลด ก่อน state/ITEMS จะถูกประกาศจริง
+// ซึ่งจะโยน ReferenceError จาก temporal dead zone ถ้าไม่กันไว้ — ดูคอมเมนต์ในบั๊กที่แก้ไปก่อนหน้านี้)
+function updateTabTitle(){
+  let count = 0;
+  try {
+    count = state.auth.session ? pendingBadgeCount() : 0;
+  } catch (e) {
+    count = 0;
+  }
+  document.title = count > 0 ? `(${count > 99 ? '99+' : count}) CommentGG` : 'CommentGG';
+}
 // ตั้งค่าตาม localStorage ทันทีตั้งแต่ต้น (ก่อนแม้แต่หน้า login) กันไม่ให้วาบเห็นธีมผิดตอนโหลดหน้า
 document.documentElement.setAttribute('data-mode', getThemeMode());
 document.documentElement.setAttribute('data-theme', getThemeName());
 setFavicon();
+updateTabTitle();
 
 /* ============================================================
    LIVE DATA (Supabase) — โหลดคอมเมนต์/ข้อความจริงจากฐานข้อมูล
@@ -1852,7 +1843,8 @@ function render(){
   if (!state.auth.session) {
     app.innerHTML = renderLogin();
     bindLoginForm();
-    setFavicon(); // ล็อกเอาต์แล้วเอาตัวเลขแจ้งเตือนออกจากแท็บด้วย
+    setFavicon();
+    updateTabTitle(); // ล็อกเอาต์แล้วเอาตัวเลขแจ้งเตือนออกจากแท็บด้วย
     return;
   }
 
@@ -1872,7 +1864,8 @@ function render(){
   `;
   bindAllReplyBoxes();
   bindSearchInput();
-  setFavicon(); // อัปเดตตัวเลขแจ้งเตือนบนแท็บทุกครั้งที่ข้อมูล/สถานะเปลี่ยน
+  setFavicon();
+  updateTabTitle(); // อัปเดตตัวเลขแจ้งเตือนบนแท็บทุกครั้งที่ข้อมูล/สถานะเปลี่ยน
 }
 
 /* ============================================================
