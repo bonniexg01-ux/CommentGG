@@ -1751,6 +1751,7 @@ function renderExpandPanel(item){
       </div>
       <textarea id="replyBox-${item.id}" placeholder="พิมพ์ข้อความตอบกลับ... (ต้องใช้สรรพนาม “${page.pronoun}” สำหรับเพจนี้ — วางลิงก์ในนี้ได้เลย ส่งเป็นข้อความปกติ, วางรูปด้วย Ctrl+V ได้เหมือนกัน)">${state.replyDrafts[item.id] !== undefined ? state.replyDrafts[item.id] : signatureFor(page)}</textarea>
       <input type="file" id="imageInput-${item.id}" accept="image/*" style="display:none;" />
+      <div id="composerLinkZone-${item.id}"></div>
       ${state.replyImages[item.id] ? `
         <div class="reply-image-preview" style="margin-top:8px; position:relative; display:inline-block;">
           <img src="${state.replyImages[item.id].dataUrl}" style="max-width:160px; max-height:160px; border-radius:8px; border:1px solid var(--border); display:block;" />
@@ -2199,12 +2200,39 @@ function renderListOnly(){
   bindAllReplyBoxes();
 }
 
+// หาลิงก์ http/https ทั้งหมดในข้อความ — ตัดเครื่องหมายวรรคตอนท้ายๆ ที่มักติดมาด้วยตอนพิมพ์ประโยค
+// ปกติ (เช่น "...ดูที่ https://a.com ครับ" หรือ "https://a.com." จบประโยค) ออกจากท้ายลิงก์ ไม่งั้น
+// ลิงก์ที่เปิดทดสอบจะพังเพราะมีจุด/วงเล็บปิดติดไปด้วย
+function extractUrls(text){
+  const matches = text.match(/https?:\/\/[^\s]+/g) || [];
+  return matches.map(u => u.replace(/[.,)\]}!?"']+$/, ''));
+}
+
 function updateComposerState(item, box, page){
   const alertZone = document.getElementById('composerAlertZone-' + item.id);
+  const linkZone = document.getElementById('composerLinkZone-' + item.id);
   const sendBtn = document.getElementById('sendBtn-' + item.id);
   const sendArchiveBtn = document.getElementById('sendArchiveBtn-' + item.id);
   const setDisabled = (val) => { sendBtn.disabled = val; if (sendArchiveBtn) sendArchiveBtn.disabled = val; };
   const text = box.value;
+
+  // โชว์ลิงก์ที่พิมพ์ไว้เป็นปุ่มกดเปิดได้จริง (เปิดแท็บใหม่) ก่อนส่ง — เพราะ textarea เป็นข้อความล้วน
+  // กดลิงก์ในนั้นตรงๆ ไม่ได้ (เหมือนช่องพิมพ์ทั่วไปทุกเว็บ) อันนี้ให้ทดสอบว่าลิงก์ใช้ได้จริงก่อนส่งไป
+  // Facebook โดยไม่ต้องพึ่งการกดลิงก์ในกล่องพิมพ์เอง
+  if (linkZone) {
+    const urls = extractUrls(text);
+    linkZone.innerHTML = urls.length ? `
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+        ${urls.map(u => `
+          <a href="${u.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer"
+            style="font-size:11px; padding:4px 9px; border-radius:999px; background:var(--hover-bg); border:1px solid var(--border); color:var(--text-dim); text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+            🔗 เปิดลิงก์ทดสอบ: ${u.length > 40 ? u.slice(0, 40) + '…' : u}
+          </a>
+        `).join('')}
+      </div>
+    ` : '';
+  }
+
   const violation = checkCrossPageViolation(text, page.id);
   const endingViolation = !violation ? checkEndingViolation(text, page) : null;
   if (violation) {
