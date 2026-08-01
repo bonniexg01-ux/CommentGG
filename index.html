@@ -768,7 +768,16 @@ function pendingBadgeCount(){
 // (วาดวงกลมแดง+ตัวเลขทับมุมขวาล่างของไอคอน คล้ายตัวเลขแจ้งเตือนบนแท็บ Facebook/Gmail)
 function setFavicon(){
   let svg = iconForTheme().replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
-  const count = typeof ITEMS !== 'undefined' && state.auth.session ? pendingBadgeCount() : 0;
+  // ตอนสคริปต์เพิ่งโหลด (เรียก setFavicon() ครั้งแรกสุดด้านล่าง ก่อนตัวแปร state/ITEMS จะถูกประกาศ
+  // จริงด้วยซ้ำ) การอ้างถึงตัวแปรที่ประกาศด้วย let/const ที่ยังไม่ถึงบรรทัดประกาศจะโยน
+  // ReferenceError (temporal dead zone) ทันที ทำให้สคริปต์ทั้งไฟล์พังไปหมด — ครอบด้วย try/catch
+  // กันไว้ ถ้าอ่านไม่ได้ก็ถือว่ายังไม่มีตัวเลขแจ้งเตือน (0) ไปก่อน
+  let count = 0;
+  try {
+    count = state.auth.session ? pendingBadgeCount() : 0;
+  } catch (e) {
+    count = 0;
+  }
   if (count > 0) {
     const label = count > 99 ? '99+' : String(count);
     // ตัวเลขยิ่งยาว วงกลมยิ่งต้องกว้างขึ้นเป็นแคปซูล ไม่งั้น "99+" ล้นออกนอกวงกลม
