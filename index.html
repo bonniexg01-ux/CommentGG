@@ -758,10 +758,30 @@ function iconForTheme(){
   if (name === 'kuromiLavender') return ICONS.dog;
   return ICONS.bear;
 }
+// จำนวนคอมเมนต์ "ต้องตอบกลับ" จริงๆ (ยัง pending, อยู่ใน inbox, ไม่ได้ถูกบล็อกไว้) นับรวมทุกเพจ
+// ทุกแท็บ ไม่ผูกกับตัวกรอง/เพจที่กำลังดูอยู่ตอนนี้ — ใช้เกณฑ์เดียวกับป้าย "ต้องตอบกลับ" ใน tagFor()
+function pendingBadgeCount(){
+  return ITEMS.filter(it => it.folder === 'inbox' && it.status === 'pending' && !it.blocked).length;
+}
 // ไอคอนแท็บเบราว์เซอร์ (favicon) — ใช้มาสคอตของธีมที่เลือกอยู่แทนไอคอนโลกเริ่มต้นของเบราว์เซอร์
-// อัปเดตสดตามธีมที่เปลี่ยน (เรียกซ้ำได้จาก setThemeName ด้านบน)
+// อัปเดตสดตามธีมที่เปลี่ยน (เรียกซ้ำได้จาก setThemeName ด้านบน) และตามจำนวนคอมเมนต์ที่ต้องตอบกลับ
+// (วาดวงกลมแดง+ตัวเลขทับมุมขวาล่างของไอคอน คล้ายตัวเลขแจ้งเตือนบนแท็บ Facebook/Gmail)
 function setFavicon(){
-  const svg = iconForTheme().replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+  let svg = iconForTheme().replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+  const count = typeof ITEMS !== 'undefined' && state.auth.session ? pendingBadgeCount() : 0;
+  if (count > 0) {
+    const label = count > 99 ? '99+' : String(count);
+    // ตัวเลขยิ่งยาว วงกลมยิ่งต้องกว้างขึ้นเป็นแคปซูล ไม่งั้น "99+" ล้นออกนอกวงกลม
+    const badgeW = label.length > 2 ? 34 : label.length > 1 ? 28 : 22;
+    const fontSize = label.length > 2 ? 17 : 20;
+    const badge = `
+      <g>
+        <rect x="${64 - badgeW}" y="34" width="${badgeW}" height="24" rx="12" fill="#DC2626" stroke="#fff" stroke-width="2.5"/>
+        <text x="${64 - badgeW / 2}" y="52" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="700" fill="#fff" text-anchor="middle">${label}</text>
+      </g>
+    `;
+    svg = svg.replace('</svg>', badge + '</svg>');
+  }
   let link = document.getElementById('dynamicFavicon');
   if (!link) {
     link = document.createElement('link');
@@ -1823,6 +1843,7 @@ function render(){
   if (!state.auth.session) {
     app.innerHTML = renderLogin();
     bindLoginForm();
+    setFavicon(); // ล็อกเอาต์แล้วเอาตัวเลขแจ้งเตือนออกจากแท็บด้วย
     return;
   }
 
@@ -1842,6 +1863,7 @@ function render(){
   `;
   bindAllReplyBoxes();
   bindSearchInput();
+  setFavicon(); // อัปเดตตัวเลขแจ้งเตือนบนแท็บทุกครั้งที่ข้อมูล/สถานะเปลี่ยน
 }
 
 /* ============================================================
