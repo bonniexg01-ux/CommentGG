@@ -99,14 +99,16 @@ export default async function handler(request) {
     } catch {
       return json({ error: 'JSON ไม่ถูกต้อง' }, 400);
     }
-    const { itemId, text } = body || {};
-    if (!itemId || !text || !String(text).trim()) {
-      return json({ error: 'itemId และ text จำเป็นต้องมี' }, 400);
+    const { itemId, text, imageDataUrl } = body || {};
+    // อนุญาตให้ส่งแค่รูปอย่างเดียวได้ด้วย (ไม่บังคับต้องมี text แล้ว) ขอแค่มีอย่างใดอย่างหนึ่ง
+    if (!itemId || (!text || !String(text).trim()) && !imageDataUrl) {
+      return json({ error: 'itemId และ (text หรือ imageDataUrl) จำเป็นต้องมี' }, 400);
     }
     itemIdForCleanup = itemId;
 
     // ดึงรายการ + access_token ของเพจในคำเดียว (join ผ่าน PostgREST embed)
     // แทนที่จะยิง Supabase 2 รอบแยกกัน — ลดเวลาแฝงของปุ่ม "ส่ง" ลงหนึ่ง round trip
+    // (ดึง page_id ของเพจ (Facebook Page ID จริง) มาด้วย ใช้ตอนอัปโหลดรูปผ่าน /{page-id}/photos)
     const item = await fetchFeedItemWithPage(itemId);
     if (!item) return json({ error: 'ไม่พบรายการนี้ในระบบ' }, 404);
     if (item.status === 'replied') {
@@ -122,9 +124,17 @@ export default async function handler(request) {
     try {
       if (item.type === 'comment') {
         const commentId = deriveCommentId(item.fb_id, item.fb_post_id);
-        fbResult = await postCommentReply(commentId, text, page.access_token);
+        // ถ้าแนบรูปมาด้วย ต้องอัปโหลดรูปเป็น "unpublished photo" ของเพจก่อน (ไม่ขึ้นในอัลบั้ม/ฟีด
+        // เพจจริงๆ) ถึงจะได้ attachment_id มาผูกกับคอมเมนต์ได้ — Facebook ไม่รับไฟล์ดิบตรงๆ ที่
+        // endpoint ของคอมเมนต์ ต้องอ้อมผ่าน /{page-id}/photos เสมอ (วิธีมาตรฐานของ Graph API)
+        let attachmentId = null;
+        if (imageDataUrl) {
+          if (!page.page_id) throw new Error('ไม่พบ Facebook Page ID ของเพจนี้ในระบบ');
+          attachmentId = await uploadUnpublishedPhoto(page.page_id, page.access_token, imageDataUrl);
+        }
+        fbResult = await postCommentReply(commentId, text, page.access_token, attachmentId);
       } else if (item.type === 'message') {
-        fbResult = await postMessengerReply(item.author_fb_id, text, page.access_token);
+        fbResult = await sendMessengerReply(item.author_fb_id, text, page.access_token, imageDataUrl);
       } else {
         return json({ error: `ไม่รู้จักประเภทรายการ: ${item.type}` }, 400);
       }
@@ -161,7 +171,10 @@ export default async function handler(request) {
     // เพราะตอนนี้ทีมมีหลายคนใช้คนละไอดีกันแล้ว ใช้ชื่อจาก user_metadata ถ้าตั้งไว้ ไม่งั้น fallback
     // เป็นอีเมลของบัญชีนั้น
     const replierName = displayNameFromUser(user);
-    const updateFields = { status: 'replied', admin_reply: text, admin_reply_by: replierName };
+    // ถ้าตอบแค่รูปอย่างเดียวไม่มีข้อความ เก็บข้อความ placeholder ไว้แทน '' เปล่าๆ กัน "คำตอบที่ตอบไปแล้ว"
+    // ในแดชบอร์ดโชว์ว่างเปล่าดูเหมือนไม่ได้ตอบอะไรเลยทั้งที่จริงๆ ส่งรูปไปแล้ว
+    const replyText = (text && String(text).trim()) ? text : (imageDataUrl ? '[แนบรูป]' : '');
+    const updateFields = { status: 'replied', admin_reply: replyText, admin_reply_by: replierName };
     if (item.type === 'comment' && fbResult && fbResult.id) {
       updateFields.admin_reply_fb_id = fbResult.id;
     }
@@ -195,10 +208,11 @@ function deriveCommentId(fbId, fbPostId) {
   return fbId;
 }
 
-// ดึง feed_items แถวเดียว พร้อม access_token ของเพจเจ้าของในคำสั่งเดียว (PostgREST embed/join
-// ผ่าน foreign key feed_items.page_id -> pages.id) แทนการยิง 2 คำสั่งแยกกัน
+// ดึง feed_items แถวเดียว พร้อม access_token + page_id (Facebook Page ID จริง ใช้ตอนอัปโหลดรูป)
+// ของเพจเจ้าของในคำสั่งเดียว (PostgREST embed/join ผ่าน foreign key feed_items.page_id -> pages.id)
+// แทนการยิง 2 คำสั่งแยกกัน
 async function fetchFeedItemWithPage(id) {
-  const url = `${SUPABASE_URL}/rest/v1/feed_items?id=eq.${encodeURIComponent(id)}&select=id,page_id,type,fb_id,fb_post_id,author_fb_id,status,pages(access_token)`;
+  const url = `${SUPABASE_URL}/rest/v1/feed_items?id=eq.${encodeURIComponent(id)}&select=id,page_id,type,fb_id,fb_post_id,author_fb_id,status,pages(access_token,page_id)`;
   const r = await fetch(url, { headers: sbHeaders });
   if (!r.ok) return null;
   const rows = await r.json();
@@ -214,10 +228,47 @@ async function markFeedItem(id, fields) {
   });
 }
 
+// แกะ "data:image/jpeg;base64,xxxx" ออกเป็น mimeType + Blob ของไบต์จริง — ใช้ atob() ธรรมดา
+// (รองรับใน Edge Runtime) แทน Buffer ของ Node เพราะไฟล์นี้รันบน edge runtime ไม่มี Buffer ให้ใช้
+function dataUrlToBlob(dataUrl) {
+  const match = /^data:([^;]+);base64,(.*)$/.exec(dataUrl);
+  if (!match) throw new Error('รูปแบบ imageDataUrl ไม่ถูกต้อง');
+  const mimeType = match[1];
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}
+
+// อัปโหลดรูปเป็น "unpublished photo" ของเพจ (published=false เลยไม่ขึ้นในอัลบั้ม/ฟีดเพจจริง แค่ได้
+// photo id กลับมาไว้อ้างอิงต่อ) แล้วเอา id นั้นไปผูกเป็น attachment_id ตอนสร้างคอมเมนต์ — เป็นวิธี
+// มาตรฐานของ Facebook สำหรับแนบรูปกับคอมเมนต์ (ยิง binary ตรงๆ ที่ endpoint คอมเมนต์ไม่ได้)
+async function uploadUnpublishedPhoto(pageId, accessToken, imageDataUrl) {
+  const blob = dataUrlToBlob(imageDataUrl);
+  const form = new FormData();
+  form.append('source', blob, 'reply-image.jpg');
+  form.append('published', 'false');
+  form.append('access_token', accessToken);
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}/photos`;
+  const r = await fetchWithTimeout(url, { method: 'POST', body: form });
+  const data = await r.json();
+  if (data.error) {
+    const err = new Error(data.error.message || 'อัปโหลดรูปไป Facebook ไม่สำเร็จ');
+    err.fbError = data.error;
+    throw err;
+  }
+  return data.id;
+}
+
 // ตอบกลับคอมเมนต์: access_token และ message ส่งผ่าน body แบบ form-urlencoded เท่านั้น ไม่แตะ header
-async function postCommentReply(commentId, message, accessToken) {
+// message เป็นลิงก์ธรรมดาก็ส่งได้ตามปกติ (Facebook รับเป็นข้อความล้วน ไม่ต้องทำอะไรเพิ่ม) — ถ้ามี
+// attachmentId (จากการอัปโหลดรูปข้างบน) แนบไปพร้อมกันในคำขอเดียวได้เลย ไม่ต้องยิงสองรอบ
+async function postCommentReply(commentId, message, accessToken, attachmentId) {
   const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(commentId)}/comments`;
-  const params = new URLSearchParams({ message: String(message), access_token: accessToken });
+  const fields = { access_token: accessToken };
+  if (message && String(message).trim()) fields.message = String(message);
+  if (attachmentId) fields.attachment_id = attachmentId;
+  const params = new URLSearchParams(fields);
   const r = await fetchWithTimeout(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -226,8 +277,62 @@ async function postCommentReply(commentId, message, accessToken) {
   return r.json();
 }
 
-// ส่งข้อความ Messenger ตอบกลับ: access_token และข้อความอยู่ใน JSON body เท่านั้น
-async function postMessengerReply(recipientFbId, text, accessToken) {
+// ส่งข้อความ Messenger ตอบกลับ อาจมีทั้งข้อความและรูป หรืออย่างใดอย่างหนึ่ง — Facebook Send API
+// ไม่รับข้อความ+รูปในคำขอเดียวกัน (message object เลือกได้แค่ text หรือ attachment อย่างเดียว) เลย
+// ต้องส่งแยกเป็นสองคำขอถ้ามีทั้งคู่ (ข้อความก่อน แล้วค่อยรูป) ถ้าคำขอแรกสำเร็จแต่คำขอที่สองพัง จะยัง
+// ถือว่า "ตอบแล้ว" (มีอะไรส่งออกไปจริง) แต่โยน error ให้ผู้เรียกรู้ไว้เผื่ออยากแจ้งเตือนเพิ่ม
+async function sendMessengerReply(recipientFbId, text, accessToken, imageDataUrl) {
+  if (text && String(text).trim()) {
+    const textResult = await postMessengerText(recipientFbId, text, accessToken);
+    if (textResult.error) return textResult;
+  }
+  if (imageDataUrl) {
+    const attachmentId = await uploadMessengerAttachment(accessToken, imageDataUrl);
+    const imageResult = await postMessengerAttachment(recipientFbId, attachmentId, accessToken);
+    if (imageResult.error) return imageResult;
+    return imageResult;
+  }
+  return { ok: true };
+}
+
+// อัปโหลดรูปเข้าคลัง attachment ของ Messenger (is_reusable ไว้เผื่อใช้ซ้ำได้ แม้ตอนนี้เราจะส่งครั้งเดียว
+// ทิ้งก็ตาม) ได้ attachment_id กลับมาไว้อ้างอิงตอนส่งข้อความจริง
+async function uploadMessengerAttachment(accessToken, imageDataUrl) {
+  const blob = dataUrlToBlob(imageDataUrl);
+  const form = new FormData();
+  form.append('recipient', ''); // เผื่อบาง SDK ต้องการ ไม่ใส่ก็ได้ผลเหมือนกันสำหรับ /me/message_attachments
+  form.append('message', JSON.stringify({ attachment: { type: 'image', payload: { is_reusable: true } } }));
+  form.append('filedata', blob, 'reply-image.jpg');
+  form.append('access_token', accessToken);
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/me/message_attachments`;
+  const r = await fetchWithTimeout(url, { method: 'POST', body: form });
+  const data = await r.json();
+  if (data.error) {
+    const err = new Error(data.error.message || 'อัปโหลดรูปไป Messenger ไม่สำเร็จ');
+    err.fbError = data.error;
+    throw err;
+  }
+  return data.attachment_id;
+}
+
+async function postMessengerAttachment(recipientFbId, attachmentId, accessToken) {
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/me/messages`;
+  const payload = {
+    recipient: { id: recipientFbId },
+    messaging_type: 'RESPONSE',
+    message: { attachment: { type: 'image', payload: { attachment_id: attachmentId } } },
+    access_token: accessToken,
+  };
+  const r = await fetchWithTimeout(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return r.json();
+}
+
+// ส่งข้อความ Messenger ตอบกลับ (แค่ข้อความล้วน): access_token และข้อความอยู่ใน JSON body เท่านั้น
+async function postMessengerText(recipientFbId, text, accessToken) {
   const url = `https://graph.facebook.com/${GRAPH_VERSION}/me/messages`;
   const payload = {
     recipient: { id: recipientFbId },
