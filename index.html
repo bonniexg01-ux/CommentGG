@@ -261,6 +261,12 @@
     75%{ transform: rotate(7deg) scale(1.05); }
   }
   .user-menu-wrap{position:relative;}
+  .topbar-icon-btn{
+    width:34px; height:34px; border-radius:8px; background:var(--navy-2); color:#fff;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; flex:none; border:none;
+  }
+  .topbar-icon-btn:hover{filter:brightness(1.08);}
+  .topbar-icon-btn svg{width:16px; height:16px;}
   .topbar-user{
     display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:600; background:var(--navy-2);
     padding:6px 10px 6px 12px; border-radius:8px; cursor:pointer; border:none; color:#fff; font-family:inherit;
@@ -718,6 +724,8 @@ const ICONS = {
   logOut: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
   x: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
   image: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+  volumeOn: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`,
+  volumeOff: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`,
   // ดาว/สปาร์คสี่แฉก ใช้ตกแต่งพื้นหลังหน้า login
   sparkle: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 L14.2 9.8 L22 12 L14.2 14.2 L12 22 L9.8 14.2 L2 12 L9.8 9.8 Z"/></svg>`,
 };
@@ -751,6 +759,18 @@ function setThemeName(name){
   localStorage.setItem(THEME_NAME_KEY, name);
   document.documentElement.setAttribute('data-theme', name);
   setFavicon();
+}
+
+/* ============================================================
+   เสียงแจ้งเตือนคอมเมนต์ใหม่ — เก็บสถานะปิด/เปิดไว้ใน localStorage เหมือนธีม (แยกคนละเครื่อง)
+   ปิดได้ผ่านปุ่มลำโพงที่ topbar ค่าเริ่มต้นเปิดเสียงไว้ก่อน
+============================================================ */
+const SOUND_MUTED_KEY = 'commentgg_sound_muted';
+function getSoundMuted(){
+  return localStorage.getItem(SOUND_MUTED_KEY) === '1';
+}
+function setSoundMuted(muted){
+  localStorage.setItem(SOUND_MUTED_KEY, muted ? '1' : '0');
 }
 // ไอคอน CommentGG เปลี่ยนไปตามธีมที่เลือก (หมี ↔ แมว ธีมเดิม)
 function iconForTheme(){
@@ -1114,6 +1134,50 @@ async function setCommentHidden(item, hidden){
   }
 }
 
+// เสียง "ป๊อก" สั้นๆ น่ารักๆ เวลามีคอมเมนต์ใหม่เข้ามา — สังเคราะห์เสียงเองผ่าน Web Audio API แทนการ
+// ฝังไฟล์เสียงจริง (ไม่ต้องมีไฟล์แนบ/โหลดจากที่ไหน เบาและเล่นได้ทันที) เป็นเสียงสองโน้ตไล่เสียงสูงขึ้น
+// สั้นๆ แบบฟองสบู่ผุด (bubble pop) ตามที่ขอ
+let audioCtx = null;
+function getAudioCtx(){
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    audioCtx = new AC();
+  }
+  return audioCtx;
+}
+function playBubbleNote(ctx, startTime, freqFrom, freqTo, duration, gainPeak){
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freqFrom, startTime);
+  osc.frequency.exponentialRampToValueAtTime(freqTo, startTime + duration);
+  gain.gain.setValueAtTime(0.0001, startTime);
+  gain.gain.exponentialRampToValueAtTime(gainPeak, startTime + duration * 0.3);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.03);
+}
+function playNotificationSound(){
+  if (state.soundMuted) return;
+  try {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume();
+    const now = ctx.currentTime;
+    playBubbleNote(ctx, now, 620, 900, 0.09, 0.12);
+    playBubbleNote(ctx, now + 0.1, 900, 1300, 0.07, 0.09);
+  } catch (err) {
+    console.error('เล่นเสียงแจ้งเตือนไม่สำเร็จ:', err);
+  }
+}
+
+// เก็บ id ของรายการที่เคยเห็นแล้วไว้เทียบรอบถัดไป — เจอ id ใหม่ที่ไม่เคยเห็นมาก่อน (และไม่ใช่รอบโหลด
+// ครั้งแรกตอนเพิ่งเปิดหน้า) แปลว่ามีคอมเมนต์/ข้อความใหม่เข้ามาจริงๆ ระหว่างที่เปิดแดชบอร์ดค้างไว้
+// ถึงเล่นเสียงแจ้งเตือน (ไม่เล่นตอนโหลดครั้งแรกที่มีของเก่าอยู่แล้วเต็มไปหมด)
+let knownItemIds = null;
 async function loadData(){
   // ยังไม่ล็อกอิน ไม่ต้องดึงข้อมูล (RLS ฝั่ง Supabase จะปฏิเสธอยู่แล้ว แต่กันไว้ตั้งแต่ต้นเลย)
   if (!state.auth.session) return;
@@ -1129,6 +1193,17 @@ async function loadData(){
     if (!pagesRes.ok || !itemsRes.ok) throw new Error('โหลดข้อมูลไม่สำเร็จ');
     PAGES = (await pagesRes.json()).map(mapPage);
     const freshItems = (await itemsRes.json()).map(mapItem);
+
+    const freshIds = new Set(freshItems.map((it) => it.id));
+    if (knownItemIds !== null) {
+      let hasNew = false;
+      for (const id of freshIds) {
+        if (!knownItemIds.has(id)) { hasNew = true; break; }
+      }
+      if (hasNew) playNotificationSound();
+    }
+    knownItemIds = freshIds;
+
     if (hashtagsRes.ok) {
       const rows = await hashtagsRes.json();
       MY_HASHTAGS = {};
@@ -1175,6 +1250,7 @@ const state = {
   // รูปที่แนบไว้ในกล่องตอบกลับของแต่ละคอมเมนต์ (key = item.id) ก่อนกดส่งจริง — เก็บเป็น
   // { dataUrl, mimeType } ตัวเดียวต่อ 1 คอมเมนต์ (ยังไม่รองรับหลายรูปในคำตอบเดียว)
   replyImages: {},
+  soundMuted: getSoundMuted(), // อ่านค่าที่ปิด/เปิดไว้ล่าสุดจาก localStorage ตั้งแต่เริ่มโหลดหน้า
   bulkMenuOpen: false,
   page: 1, // หน้าปัจจุบันของรายการ (แบ่งหน้าละ PAGE_SIZE รายการ) รีเซ็ตเป็น 1 ทุกครั้งที่เปลี่ยนตัวกรอง
 
@@ -1356,6 +1432,9 @@ function renderTopbar(){
       <div class="topbar-brand">
         <div class="mark">${iconForTheme()}</div>
         CommentGG
+      </div>
+      <div class="topbar-icon-btn" data-action="toggle-sound-mute" title="${state.soundMuted ? 'เปิดเสียงแจ้งเตือน' : 'ปิดเสียงแจ้งเตือน'}" style="margin-left:auto; margin-right:10px;">
+        ${state.soundMuted ? ICONS.volumeOff : ICONS.volumeOn}
       </div>
       <div class="user-menu-wrap">
         <button class="topbar-user" data-action="toggle-user-menu">
@@ -2300,6 +2379,16 @@ document.getElementById('app').addEventListener('click', (e) => {
 
   switch (action) {
     case 'stop-propagation':
+      break;
+
+    case 'toggle-sound-mute':
+      state.soundMuted = !state.soundMuted;
+      setSoundMuted(state.soundMuted);
+      // ปลดล็อก AudioContext ตอนกดปุ่มนี้ไปในตัว (นับเป็น user gesture) เผื่อเบราว์เซอร์ยัง
+      // ไม่เคยมี interaction ใดๆ มาก่อนเลยตั้งแต่เปิดหน้า — เล่นเสียงสั้นๆ ให้ฟังทันทีตอนเปิดเสียง
+      // กลับมา จะได้รู้ว่าเปิดจริง
+      if (!state.soundMuted) playNotificationSound();
+      render();
       break;
 
     case 'toggle-user-menu':
