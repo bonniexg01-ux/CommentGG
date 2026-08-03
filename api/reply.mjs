@@ -140,10 +140,19 @@ export default async function handler(request) {
       }
     } catch (fbErr) {
       const isTimeout = fbErr && fbErr.name === 'AbortError';
-      console.error('reply error: เรียก Facebook Graph API ไม่สำเร็จ', isTimeout ? 'timeout' : fbErr);
+      console.error('reply error: เรียก Facebook Graph API ไม่สำเร็จ', isTimeout ? 'timeout' : fbErr, fbErr && fbErr.fbError);
       await markFeedItem(itemId, { status: 'failed' });
+      // เดิมถ้าอัปโหลดรูป (uploadUnpublishedPhoto/uploadMessengerAttachment) โยน error ที่มีข้อความ
+      // จริงจาก Facebook ติดมาด้วย (fbErr.message / fbErr.fbError) ข้อความนั้นจะหายไปเลย เหลือแค่
+      // ข้อความกลางๆ "เชื่อมต่อ Facebook ไม่สำเร็จ" ทำให้ debug ไม่ได้ว่าจริงๆ แล้ว Facebook ปฏิเสธ
+      // เพราะอะไร (เช่น ไฟล์รูปใหญ่เกิน/ฟอร์แมตไม่รองรับ/สิทธิ์ไม่พอ) — ตอนนี้ส่งข้อความจริงกลับไปด้วย
+      const detail = !isTimeout && fbErr && fbErr.message ? fbErr.message : null;
       return json(
-        { error: isTimeout ? 'Facebook ไม่ตอบสนอง (หมดเวลา) ลองใหม่อีกครั้ง' : 'เชื่อมต่อ Facebook ไม่สำเร็จ ลองใหม่อีกครั้ง' },
+        {
+          error: isTimeout
+            ? 'Facebook ไม่ตอบสนอง (หมดเวลา) ลองใหม่อีกครั้ง'
+            : `เชื่อมต่อ Facebook ไม่สำเร็จ${detail ? `: ${detail}` : ''} ลองใหม่อีกครั้ง`,
+        },
         502
       );
     }

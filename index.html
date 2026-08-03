@@ -1000,33 +1000,47 @@ function sendReply(item, text, archiveAfter){
     patchFeedItem(item.id, { folder: 'archive' });
   }
 
-  fetch('/api/reply', {
-    method: 'POST',
-    headers: apiAuthHeaders(),
-    body: JSON.stringify({
-      itemId: item.id,
-      text,
-      imageDataUrl: image ? image.dataUrl : null,
-    }),
-    // keepalive: บอกเบราว์เซอร์ให้ส่ง request นี้ให้จบแม้ผู้ใช้จะปิดแท็บ/หน้าเพจไปแล้วทันที
-    // หลังกดส่ง (ปกติปิดแท็บจะตัด request ที่ค้างอยู่ทิ้งเลย) เซิร์ฟเวอร์จะยิงไป Facebook ต่อจนจบ
-    keepalive: true,
-  })
-    .then(async (res) => {
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) { revertFailedReply(item.id, data.error); return; }
-      // เก็บ comment id + ชื่อคนตอบที่เซิร์ฟเวอร์ส่งกลับมาไว้ทันที (เดิมต้องรอ poll รอบถัดไป/กด F5
-      // ถึงจะเห็นปุ่มแก้ไข/ลบคำตอบและบรรทัด "ตอบโดย: ..." เพราะทั้งคู่ยังไม่เคยถูกตั้งค่าในฝั่ง
-      // client เลยหลังส่งสำเร็จ — ตั้งไว้แค่ฝั่ง Supabase เท่านั้น)
-      if (data.fbId) item.adminReplyFbId = data.fbId;
-      if (data.replyBy) item.adminReplyBy = data.replyBy;
-      state.pendingActionIds.delete(item.id);
-      render();
+  // ⚠️ fetch() เองสามารถ throw แบบ synchronous ได้ทันที (ไม่ใช่แค่ reject promise) ถ้า body ที่ตั้ง
+  // keepalive:true ไว้เกิน 64KB ตามสเปคเบราว์เซอร์ — ถ้า throw ตรงนี้แบบ sync มันจะไม่โดน .catch()
+  // ท้าย chain ดักจับเลย (เพราะ .catch ยังไม่ทันถูกแนบกับ promise เนื่องจาก fetch() ยังไม่ return
+  // ค่ากลับมาด้วยซ้ำ) ต้องครอบ try/catch ทั้งก้อนไว้กันบั๊กแบบเงียบๆ นี้ไปเลย ถึงแม้ตอนนี้จะปิด
+  // keepalive เวลามีรูปแนบแล้วก็ตาม (กันไว้สองชั้น เผื่อกรณีอื่นในอนาคตที่ body ใหญ่โดยไม่มีรูป)
+  try {
+    fetch('/api/reply', {
+      method: 'POST',
+      headers: apiAuthHeaders(),
+      body: JSON.stringify({
+        itemId: item.id,
+        text,
+        imageDataUrl: image ? image.dataUrl : null,
+      }),
+      // keepalive: บอกเบราว์เซอร์ให้ส่ง request นี้ให้จบแม้ผู้ใช้จะปิดแท็บ/หน้าเพจไปแล้วทันที
+      // หลังกดส่ง (ปกติปิดแท็บจะตัด request ที่ค้างอยู่ทิ้งเลย) เซิร์ฟเวอร์จะยิงไป Facebook ต่อจนจบ
+      // ⚠️ ข้อจำกัดเบราว์เซอร์: request ที่ตั้ง keepalive:true ห้ามมี body เกิน 64KB เด็ดขาด
+      // ถ้าเกิน เบราว์เซอร์จะ throw ทันทีแบบไม่ยิง network เลย (เงียบ ไม่มี log ฝั่งเซิร์ฟเวอร์) — นี่คือ
+      // สาเหตุจริงที่ตอบกลับพร้อมรูปแนบส่งไม่ออกเลย เพราะรูป (แม้บีบอัดแล้ว) เกือบทุกครั้งเกิน 64KB
+      // จึงต้องปิด keepalive ทุกครั้งที่มีรูปแนบ (ยอมแลกกับเสี่ยง request ขาดถ้าปิดแท็บทันทีหลังกดส่ง)
+      keepalive: !image,
     })
-    .catch((err) => {
-      console.error('ส่งข้อความไม่สำเร็จ:', err);
-      revertFailedReply(item.id, 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
-    });
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { revertFailedReply(item.id, data.error); return; }
+        // เก็บ comment id + ชื่อคนตอบที่เซิร์ฟเวอร์ส่งกลับมาไว้ทันที (เดิมต้องรอ poll รอบถัดไป/กด F5
+        // ถึงจะเห็นปุ่มแก้ไข/ลบคำตอบและบรรทัด "ตอบโดย: ..." เพราะทั้งคู่ยังไม่เคยถูกตั้งค่าในฝั่ง
+        // client เลยหลังส่งสำเร็จ — ตั้งไว้แค่ฝั่ง Supabase เท่านั้น)
+        if (data.fbId) item.adminReplyFbId = data.fbId;
+        if (data.replyBy) item.adminReplyBy = data.replyBy;
+        state.pendingActionIds.delete(item.id);
+        render();
+      })
+      .catch((err) => {
+        console.error('ส่งข้อความไม่สำเร็จ:', err);
+        revertFailedReply(item.id, 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
+      });
+  } catch (err) {
+    console.error('ส่งข้อความไม่สำเร็จ (sync throw):', err);
+    revertFailedReply(item.id, 'ไฟล์รูปใหญ่เกินไป ลองแนบรูปที่เล็กลง');
+  }
 }
 
 // เรียกเมื่อรู้ทีหลังว่า Facebook ปฏิเสธ/ส่งไม่สำเร็จ หลังจากที่ UI มาร์ค "ตอบแล้ว" ไปก่อนแล้ว (optimistic)
