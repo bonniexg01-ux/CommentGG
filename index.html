@@ -1389,13 +1389,25 @@ function showToast(msg, type){
 // เข้าระบบจริง (เลยยังไม่มีใน PAGES ให้ลูปด้านล่างเช็คได้) — ตอนนี้เพิ่ม Cabal : Infinite Combo และ
 // Cabal : Ultimate Combo เข้าระบบจริงแล้ว (สรรพนาม "แอดมิน" ทั้งคู่) เอารายการสำรองนั้นออกได้ตามที่
 // เคยตั้งใจไว้ ลูปเช็คปกติด้านล่างครอบคลุมแทนอัตโนมัติแล้ว
+// บางเพจตั้งใจใช้สรรพนาม/แฮชแท็กเดียวกันจริงๆ (เช่น Cabal : Infinite Combo กับ Cabal : Ultimate Combo
+// ใช้สรรพนาม "แอดมิน" เหมือนกันทั้งคู่ และบางคนในทีมตั้งแฮชแท็กของตัวเองซ้ำกันไว้สำหรับทั้งสองเพจนี้
+// โดยตั้งใจ) — ถ้าคำที่เจอ "ก็เป็นของเพจปัจจุบันที่กำลังตอบอยู่ด้วย" ไม่ถือว่าตอบผิดเพจ ข้ามไปเลย
+// ไม่งั้นจะบล็อกการส่งข้อความที่ถูกต้องอยู่แล้วโดยไม่จำเป็น
 function checkCrossPageViolation(text, currentPageId){
+  const currentPage = pageById(currentPageId);
+  const myOwnTag = myHashtagFor(currentPageId);
   const others = PAGES.filter(p => p.id !== currentPageId);
   for (const p of others) {
-    if (text.includes(p.pronoun)) return { term: p.pronoun, type: 'สรรพนาม', page: p };
+    const pronounSharedWithCurrentPage = currentPage && p.pronoun === currentPage.pronoun;
+    if (!pronounSharedWithCurrentPage && text.includes(p.pronoun)) {
+      return { term: p.pronoun, type: 'สรรพนาม', page: p };
+    }
     // แฮชแท็กเป็นของ "ฉัน" แยกตามเพจ — เช็คว่าเผลอใส่แฮชแท็กที่ตัวเองตั้งไว้สำหรับเพจอื่นหรือเปล่า
     const otherTag = myHashtagFor(p.id);
-    if (otherTag && text.includes(otherTag)) return { term: otherTag, type: 'แฮชแท็ก', page: p };
+    const tagSharedWithCurrentPage = otherTag && otherTag === myOwnTag;
+    if (!tagSharedWithCurrentPage && otherTag && text.includes(otherTag)) {
+      return { term: otherTag, type: 'แฮชแท็ก', page: p };
+    }
   }
   return null;
 }
