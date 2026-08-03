@@ -1174,6 +1174,26 @@ function playNotificationSound(){
   }
 }
 
+// เบราว์เซอร์ล็อกไม่ให้เล่นเสียงเองอัตโนมัติ (autoplay policy) จนกว่าจะมีการคลิก/แตะ/กดคีย์บอร์ด
+// อะไรสักอย่างบนหน้าเว็บนี้มาก่อนอย่างน้อยหนึ่งครั้ง — ปัญหาที่เจอ (ทีมงานไม่ได้ยินเสียง) เกิดจากตรงนี้:
+// เสียงแจ้งเตือนคอมเมนต์ใหม่มาจาก setInterval ที่ poll ทุก 20 วิ (ไม่ใช่การคลิกโดยตรง) ถ้าใครเปิด
+// แดชบอร์ดทิ้งไว้เฉยๆ รอดูคอมเมนต์ ไม่ได้คลิกอะไรเลยสักครั้ง เบราว์เซอร์จะบล็อกเสียงไปเรื่อยๆ
+// แก้โดยดักการคลิก/แตะ/กดคีย์บอร์ดครั้งแรกสุดของทั้งหน้า (ไม่ว่าจะคลิกตรงไหนก็ตาม เช่น คลิกแท็บเพจ
+// หรือแม้แต่ตอนกดล็อกอิน) มาปลดล็อก AudioContext ไว้ล่วงหน้าทันที ก่อนที่คอมเมนต์ใหม่จะเข้ามาจริง
+function primeAudioOnFirstInteraction(){
+  const unlock = () => {
+    const ctx = getAudioCtx();
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+    document.removeEventListener('click', unlock);
+    document.removeEventListener('keydown', unlock);
+    document.removeEventListener('touchstart', unlock);
+  };
+  document.addEventListener('click', unlock);
+  document.addEventListener('keydown', unlock);
+  document.addEventListener('touchstart', unlock);
+}
+primeAudioOnFirstInteraction();
+
 // เก็บ id ของรายการที่เคยเห็นแล้วไว้เทียบรอบถัดไป — เจอ id ใหม่ที่ไม่เคยเห็นมาก่อน (และไม่ใช่รอบโหลด
 // ครั้งแรกตอนเพิ่งเปิดหน้า) แปลว่ามีคอมเมนต์/ข้อความใหม่เข้ามาจริงๆ ระหว่างที่เปิดแดชบอร์ดค้างไว้
 // ถึงเล่นเสียงแจ้งเตือน (ไม่เล่นตอนโหลดครั้งแรกที่มีของเก่าอยู่แล้วเต็มไปหมด)
