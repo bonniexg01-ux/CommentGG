@@ -728,7 +728,18 @@ const ICONS = {
   volumeOff: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`,
   // ดาว/สปาร์คสี่แฉก ใช้ตกแต่งพื้นหลังหน้า login
   sparkle: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 L14.2 9.8 L22 12 L14.2 14.2 L12 22 L9.8 14.2 L2 12 L9.8 9.8 Z"/></svg>`,
+  // หน้ายิ้ม ใช้เป็นไอคอนปุ่มเปิดแผงเลือกอิโมจิในกล่องตอบกลับ
+  smile: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>`,
 };
+
+// รายการอิโมจิที่ใช้บ่อยตอนตอบกลับคอมเมนต์ลูกเพจ (คัดมาเฉพาะที่เจอบ่อยๆ ในคอมเมนต์เกม/ซัพพอร์ต
+// ไม่ใช่ full emoji picker ทุกตัว กันรายการยาวเกินจนหายาก)
+const EMOJI_LIST = [
+  '😀', '😁', '😂', '🤣', '😊', '😍', '🥰', '😘',
+  '😉', '😅', '😢', '😭', '😡', '🙏', '👍', '👏',
+  '🙌', '💪', '🎉', '🎁', '❤️', '💯', '🔥', '✨',
+  '⭐', '✅', '❌', '👀', '😴', '🤔', '😱', '🥳',
+];
 
 /* ============================================================
    ธีม (สว่าง/มืด + เลือกธีมสี) — เก็บไว้ใน localStorage ของเบราว์เซอร์ (แยกคนละเครื่อง ไม่ผูกกับ
@@ -1284,6 +1295,8 @@ const state = {
   // รูปที่แนบไว้ในกล่องตอบกลับของแต่ละคอมเมนต์ (key = item.id) ก่อนกดส่งจริง — เก็บเป็น
   // { dataUrl, mimeType } ตัวเดียวต่อ 1 คอมเมนต์ (ยังไม่รองรับหลายรูปในคำตอบเดียว)
   replyImages: {},
+  // item.id ของคอมเมนต์ที่กำลังเปิดแผงเลือกอิโมจิอยู่ (เปิดได้ทีละอันเท่านั้น) null = ปิดหมด
+  openEmojiPicker: null,
   soundMuted: getSoundMuted(), // อ่านค่าที่ปิด/เปิดไว้ล่าสุดจาก localStorage ตั้งแต่เริ่มโหลดหน้า
   bulkMenuOpen: false,
   page: 1, // หน้าปัจจุบันของรายการ (แบ่งหน้าละ PAGE_SIZE รายการ) รีเซ็ตเป็น 1 ทุกครั้งที่เปลี่ยนตัวกรอง
@@ -1861,10 +1874,16 @@ function renderExpandPanel(item){
       <div class="composer-label" style="display:flex; align-items:center; justify-content:space-between;">
         <span>ตอบกลับในนามเพจ ${page.emoji} ${page.name}</span>
         <span style="display:flex; gap:6px;">
+          <span class="btn" style="padding:4px 9px; font-size:11px;" data-action="toggle-emoji-picker" data-id="${item.id}">${ICONS.smile} อิโมจิ</span>
           <span class="btn" style="padding:4px 9px; font-size:11px;" data-action="pick-image" data-id="${item.id}">${ICONS.image} แนบรูป</span>
           <span class="btn" style="padding:4px 9px; font-size:11px;" data-action="insert-signature" data-id="${item.id}">${ICONS.copy} แทรกลายเซ็น</span>
         </span>
       </div>
+      ${state.openEmojiPicker === item.id ? `
+        <div class="emoji-picker" style="display:flex; flex-wrap:wrap; gap:2px; padding:8px; margin-bottom:8px; border:1px solid var(--border); border-radius:8px; background:var(--surface);">
+          ${EMOJI_LIST.map(em => `<span data-action="insert-emoji" data-id="${item.id}" data-emoji="${em}" style="cursor:pointer; font-size:19px; padding:4px; border-radius:6px; line-height:1;" onmouseover="this.style.background='var(--hover-bg)'" onmouseout="this.style.background='transparent'">${em}</span>`).join('')}
+        </div>
+      ` : ''}
       <textarea id="replyBox-${item.id}" placeholder="พิมพ์ข้อความตอบกลับ... (ต้องใช้สรรพนาม “${page.pronoun}” สำหรับเพจนี้ — วางลิงก์ในนี้ได้เลย ส่งเป็นข้อความปกติ, วางรูปด้วย Ctrl+V ได้เหมือนกัน)">${state.replyDrafts[item.id] !== undefined ? state.replyDrafts[item.id] : signatureFor(page)}</textarea>
       <input type="file" id="imageInput-${item.id}" accept="image/*" style="display:none;" />
       <div id="composerLinkZone-${item.id}"></div>
@@ -2738,6 +2757,28 @@ document.getElementById('app').addEventListener('click', (e) => {
       box.value = box.value.slice(0, pos) + sig + box.value.slice(pos);
       box.focus();
       box.setSelectionRange(pos + sig.length, pos + sig.length);
+      updateComposerState(item, box, page);
+      break;
+    }
+
+    // เปิด/ปิดแผงเลือกอิโมจิของคอมเมนต์นี้ — เปิดได้ทีละอันเท่านั้น (openEmojiPicker เก็บแค่ id เดียว)
+    case 'toggle-emoji-picker':
+      state.openEmojiPicker = state.openEmojiPicker === id ? null : id;
+      render();
+      // render() วาด textarea ใหม่ทั้งก้อน ค่าที่พิมพ์ค้างไว้ยังอยู่ (มาจาก state.replyDrafts) แต่โฟกัส
+      // จะหลุด ไม่ต้องแก้อะไรเพิ่ม เพราะกดปุ่มอิโมจินี้ไม่ได้ตั้งใจพิมพ์ต่อทันทีอยู่แล้ว
+      break;
+
+    // แทรกอิโมจิที่กดตรงตำแหน่ง cursor ในกล่องข้อความ (แพทเทิร์นเดียวกับ insert-signature) แต่ไม่ปิด
+    // แผงอิโมจิหลังแทรก เผื่ออยากกดเพิ่มหลายตัวติดกัน (แบบเดียวกับ emoji picker ทั่วไป)
+    case 'insert-emoji': {
+      const page = pageById(item.pageId);
+      const box = document.getElementById('replyBox-' + id);
+      const emoji = el.dataset.emoji;
+      const pos = box.selectionStart ?? box.value.length;
+      box.value = box.value.slice(0, pos) + emoji + box.value.slice(pos);
+      box.focus();
+      box.setSelectionRange(pos + emoji.length, pos + emoji.length);
       updateComposerState(item, box, page);
       break;
     }
