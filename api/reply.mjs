@@ -183,7 +183,10 @@ export default async function handler(request) {
     // ถ้าตอบแค่รูปอย่างเดียวไม่มีข้อความ เก็บข้อความ placeholder ไว้แทน '' เปล่าๆ กัน "คำตอบที่ตอบไปแล้ว"
     // ในแดชบอร์ดโชว์ว่างเปล่าดูเหมือนไม่ได้ตอบอะไรเลยทั้งที่จริงๆ ส่งรูปไปแล้ว
     const replyText = (text && String(text).trim()) ? text : (imageDataUrl ? '[แนบรูป]' : '');
-    const updateFields = { status: 'replied', admin_reply: replyText, admin_reply_by: replierName };
+    // replied_at: เวลาที่ตอบสำเร็จจริง (แยกจาก created_at ของคอมเมนต์เดิม) ใช้คำนวณ "ตอบไปกี่ครั้ง
+    // ต่อวัน/ต่อคน" ในหน้ารายงานสถิติให้แม่นยำ — เดิมไม่มีคอลัมน์นี้ ต้องเดาจาก created_at ของคอมเมนต์
+    // ซึ่งผิดเพี้ยนถ้าตอบข้ามวันจากที่คอมเมนต์เข้ามา
+    const updateFields = { status: 'replied', admin_reply: replyText, admin_reply_by: replierName, replied_at: new Date().toISOString() };
     if (item.type === 'comment' && fbResult && fbResult.id) {
       updateFields.admin_reply_fb_id = fbResult.id;
     }

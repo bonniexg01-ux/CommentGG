@@ -641,6 +641,9 @@
 
 <!-- Supabase Auth: ใช้จัดการล็อกอินของทีม (คนละไอดีกันเข้า) แทนการเปิดหน้าเว็บแบบไม่ต้องล็อกอิน -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- ใช้เฉพาะหน้า "รายงานสถิติ" (analytics): Chart.js วาดกราฟ, SheetJS (xlsx) สร้างไฟล์ Excel ให้โหลด -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 /* ============================================================
    ICONS
@@ -911,6 +914,61 @@ function timeAgo(iso){
   return `${Math.floor(hr / 24)} วันที่แล้ว`;
 }
 
+/* ============================================================
+   วันที่ล้วนๆ สำหรับหน้ารายงานสถิติ (analytics) — ทำงานกับสตริง 'YYYY-MM-DD' ผ่าน UTC เท่านั้น
+   (ไม่ใช้ Date ธรรมดาบวก/ลบวันแล้วค่อยแปลงกลับ เพราะโซนเวลาเครื่องผู้ใช้แต่ละคนไม่เท่ากัน จะทำให้
+   วันที่คลาดเคลื่อนไปวันนึงได้ถ้าดันไปตัดกลางคืนพอดี) ส่วนแปลง timestamp ของคอมเมนต์จริงให้เป็นวันที่
+   ใช้ timeZone: 'Asia/Bangkok' ตรงๆ เพื่อให้ตรงกับวันที่ตามเวลาไทยเสมอ ไม่ว่าเครื่องผู้ใช้จะตั้งโซนเวลาไว้ยังไง
+============================================================ */
+function todayThaiStr(){
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }); // 'sv-SE' locale ให้ฟอร์แมต YYYY-MM-DD ตรงตัว
+}
+function toThaiDateStr(iso){
+  try {
+    return new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+  } catch (e) {
+    return (iso || '').slice(0, 10);
+  }
+}
+function addDaysStr(dateStr, days){
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+function dateRangeArray(start, end){
+  const out = [];
+  let cur = start;
+  let guard = 0; // กันลูปไม่รู้จบถ้า start > end หลุดมาจากไหนสักที่
+  while (cur <= end && guard < 400) {
+    out.push(cur);
+    cur = addDaysStr(cur, 1);
+    guard++;
+  }
+  return out;
+}
+
+/* ============================================================
+   จัดหมวดหมู่คอมเมนต์แบบ heuristic ด้วยคำสำคัญภาษาไทย (ไม่ได้เรียก AI ใดๆ — ยังไม่มี AI provider
+   ต่อไว้ในระบบนี้) ใช้กับหน้ารายงานสถิติเท่านั้น เพื่อดูภาพรวมคร่าวๆ ว่าคอมเมนต์ที่เข้ามาส่วนใหญ่เป็น
+   คำถาม/คำชม/คำร้องเรียน/แจ้งบั๊ก/สแปม หรือทั่วไป — ความแม่นยำระดับ "ดูแนวโน้มคร่าวๆ" ไม่ใช่วิเคราะห์
+   ความหมายจริงจัง ถ้าอยากแม่นขึ้นในอนาคตค่อยเปลี่ยนไปเรียก AI จริงแทน
+============================================================ */
+const ANALYTICS_CATEGORIES = ['แจ้งบั๊ก', 'ร้องเรียน', 'ชมเชย', 'คำถาม', 'สแปม', 'ทั่วไป'];
+const BUG_KEYWORDS = ['บั๊ก', 'บัค', 'error', 'เข้าเกมไม่ได้', 'เข้าไม่ได้', 'ค้าง', 'แครช', 'crash', 'ผิดพลาด', 'ล่ม', 'โหลดไม่ขึ้น', 'ล็อกอินไม่ได้', 'ล็อคอินไม่ได้', 'เด้งออก', 'หลุดตลอด', 'disconnect', 'กระตุก'];
+const COMPLAINT_KEYWORDS = ['แย่', 'ห่วย', 'โกง', 'หลอก', 'ไม่พอใจ', 'ทำไมไม่', 'ทำไมยัง', 'รอนานมาก', 'ผิดหวัง', 'เอาเปรียบ', 'ขี้โกง', 'ไม่คุ้ม', 'เงินหาย', 'จ่ายแล้วไม่ได้', 'แจ้งไปหลายรอบ'];
+const PRAISE_KEYWORDS = ['ดีมาก', 'เก่งมาก', 'ชอบมาก', 'สนุกมาก', 'ขอบคุณ', 'เยี่ยม', 'สุดยอด', 'รักเลย', 'ปังมาก', 'เจ๋งมาก', 'โคตรดี', 'ดีจัง', 'น่ารักมาก', 'ดีงาม'];
+const QUESTION_KEYWORDS = ['ไหม', 'หรือเปล่า', 'เมื่อไหร่', 'เมื่อไร', 'ยังไง', 'อย่างไร', 'ทำไม', 'กี่โมง', 'ที่ไหน', 'คืออะไร', 'เท่าไหร่', 'เท่าไร', 'มั้ย', 'รึเปล่า', '?'];
+function categorizeComment(item){
+  if (item.status === 'spam_hidden') return 'สแปม';
+  const t = item.text || '';
+  if (BUG_KEYWORDS.some(k => t.includes(k))) return 'แจ้งบั๊ก';
+  if (COMPLAINT_KEYWORDS.some(k => t.includes(k))) return 'ร้องเรียน';
+  if (PRAISE_KEYWORDS.some(k => t.includes(k))) return 'ชมเชย';
+  if (QUESTION_KEYWORDS.some(k => t.includes(k))) return 'คำถาม';
+  return 'ทั่วไป';
+}
+
 function mapPage(row){
   return { id: row.id, name: row.page_name, tag: row.tag || '', color: row.color_hex || '#2563eb',
     emoji: row.emoji || '🙂', pronoun: row.pronoun || '', ending: row.ending || 'ค่ะ', hashtag: row.hashtag || '' };
@@ -923,6 +981,7 @@ function mapItem(row){
     status: row.status, folder: row.folder,
     postExcerpt: row.post_excerpt || null, aiReason: row.ai_reason || null, adminReply: row.admin_reply || null,
     adminReplyFbId: row.admin_reply_fb_id || null, adminReplyBy: row.admin_reply_by || null,
+    repliedAt: row.replied_at || null, // เวลาตอบสำเร็จจริง (ใช้ในหน้ารายงานสถิติ) — คอมเมนต์เก่าก่อนมีคอลัมน์นี้ fallback เป็น createdAt เอาตอนคำนวณ
     liked: !!row.liked, blocked: !!row.blocked,
   };
 }
@@ -1281,6 +1340,10 @@ async function loadData(){
 const PAGE_SIZE = 25;
 
 const state = {
+  // 'inbox' = หน้าแดชบอร์ดหลัก (รายการคอมเมนต์/ข้อความ), 'analytics' = หน้ารายงานสถิติ
+  view: 'inbox',
+  // ตัวกรองของหน้ารายงานสถิติ — ค่าเริ่มต้น 30 วันล่าสุด (ตามเวลาไทย), pageIds: null = เลือกทุกเกม
+  analytics: { startDate: addDaysStr(todayThaiStr(), -29), endDate: todayThaiStr(), pageIds: null },
   pageFilter: 'all',
   tab: 'comment',
   folder: 'inbox',
@@ -1492,7 +1555,10 @@ function renderTopbar(){
         <div class="mark">${iconForTheme()}</div>
         CommentGG
       </div>
-      <div class="topbar-icon-btn" data-action="toggle-sound-mute" title="${state.soundMuted ? 'เปิดเสียงแจ้งเตือน' : 'ปิดเสียงแจ้งเตือน'}" style="margin-left:auto; margin-right:10px;">
+      <div class="topbar-icon-btn" data-action="open-analytics" title="รายงานสถิติ" style="margin-left:auto; margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
+        📊 <span style="font-size:12.5px;">รายงาน</span>
+      </div>
+      <div class="topbar-icon-btn" data-action="toggle-sound-mute" title="${state.soundMuted ? 'เปิดเสียงแจ้งเตือน' : 'ปิดเสียงแจ้งเตือน'}" style="margin-right:10px;">
         ${state.soundMuted ? ICONS.volumeOff : ICONS.volumeOn}
       </div>
       <div class="user-menu-wrap">
@@ -1983,6 +2049,317 @@ function renderPagination(totalPages){
 }
 
 /* ============================================================
+   หน้ารายงานสถิติ (analytics) — คำนวณ/วาดกราฟ/สร้างตาราง/export Excel
+   อ่านข้อมูลจาก ITEMS ที่โหลดไว้แล้วในเครื่อง (ตัวเดียวกับที่ inbox ใช้) ไม่ยิง query เพิ่ม
+============================================================ */
+
+// รวมข้อมูลดิบ (ITEMS) ตามช่วงวันที่ + เกมที่เลือกไว้ใน state.analytics ให้พร้อมใช้ทั้งวาดกราฟ/
+// สร้างตาราง/export Excel จากจุดเดียวกัน กันคำนวณซ้ำหลายที่แล้วตัวเลขไม่ตรงกัน
+function computeAnalyticsData(){
+  const { startDate, endDate } = state.analytics;
+  const allPageIds = PAGES.map(p => p.id);
+  const selectedIds = state.analytics.pageIds && state.analytics.pageIds.length ? new Set(state.analytics.pageIds) : new Set(allPageIds);
+  const pagesInScope = PAGES.filter(p => selectedIds.has(p.id));
+  const inScopeSet = new Set(pagesInScope.map(p => p.id));
+  const days = dateRangeArray(startDate, endDate);
+
+  const commentsInMap = {}; // `${date}|${pageId}` -> count (นับตาม created_at)
+  const repliedMap = {};    // `${date}|${pageId}` -> count (นับตาม replied_at ถ้ามี ไม่งั้น fallback created_at)
+  const categoryMap = {};   // `${pageId}|${category}` -> count
+  const personMap = {};     // `${pageId}|${person}` -> count
+
+  ITEMS.forEach((it) => {
+    if (!inScopeSet.has(it.pageId)) return;
+
+    const createdDate = toThaiDateStr(it.createdAt);
+    if (createdDate >= startDate && createdDate <= endDate) {
+      commentsInMap[`${createdDate}|${it.pageId}`] = (commentsInMap[`${createdDate}|${it.pageId}`] || 0) + 1;
+      if (it.type === 'comment') {
+        const cat = categorizeComment(it);
+        categoryMap[`${it.pageId}|${cat}`] = (categoryMap[`${it.pageId}|${cat}`] || 0) + 1;
+      }
+    }
+
+    if (it.status === 'replied') {
+      const repliedDate = toThaiDateStr(it.repliedAt || it.createdAt);
+      if (repliedDate >= startDate && repliedDate <= endDate) {
+        repliedMap[`${repliedDate}|${it.pageId}`] = (repliedMap[`${repliedDate}|${it.pageId}`] || 0) + 1;
+        const person = it.adminReplyBy || 'ไม่ทราบผู้ตอบ';
+        personMap[`${it.pageId}|${person}`] = (personMap[`${it.pageId}|${person}`] || 0) + 1;
+      }
+    }
+  });
+
+  const dailyRows = [];
+  days.forEach((date) => {
+    pagesInScope.forEach((p) => {
+      const commentsIn = commentsInMap[`${date}|${p.id}`] || 0;
+      const replied = repliedMap[`${date}|${p.id}`] || 0;
+      dailyRows.push({ date, pageId: p.id, pageName: p.name, commentsIn, replied });
+    });
+  });
+
+  const categoryRows = [];
+  pagesInScope.forEach((p) => {
+    ANALYTICS_CATEGORIES.forEach((cat) => {
+      categoryRows.push({ pageId: p.id, pageName: p.name, category: cat, count: categoryMap[`${p.id}|${cat}`] || 0 });
+    });
+  });
+
+  const personRows = Object.keys(personMap).map((k) => {
+    const sep = k.indexOf('|');
+    const pageId = k.slice(0, sep);
+    const person = k.slice(sep + 1);
+    const page = pagesInScope.find((p) => p.id === pageId);
+    return page ? { pageId, pageName: page.name, person, count: personMap[k] } : null;
+  }).filter(Boolean).sort((a, b) => b.count - a.count);
+
+  const totalsByPage = pagesInScope.map((p) => {
+    const commentsIn = days.reduce((s, d) => s + (commentsInMap[`${d}|${p.id}`] || 0), 0);
+    const replied = days.reduce((s, d) => s + (repliedMap[`${d}|${p.id}`] || 0), 0);
+    return { pageId: p.id, pageName: p.name, color: p.color, emoji: p.emoji, commentsIn, replied, replyRate: commentsIn ? Math.round((replied / commentsIn) * 100) : 0 };
+  });
+
+  return { startDate, endDate, days, pagesInScope, dailyRows, categoryRows, personRows, totalsByPage };
+}
+
+function renderAnalyticsView(data){
+  const { startDate, endDate, pagesInScope, dailyRows, personRows, totalsByPage } = data;
+  const allPageIds = PAGES.map(p => p.id);
+  const selectedSet = state.analytics.pageIds && state.analytics.pageIds.length ? new Set(state.analytics.pageIds) : new Set(allPageIds);
+
+  if (!pagesInScope.length) {
+    return `
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+        <h1 style="margin:0;">📊 รายงานสถิติคอมเมนต์</h1>
+        <button class="btn" data-action="close-analytics">${ICONS.x} ปิดรายงาน</button>
+      </div>
+      <div class="analytics-filters" style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
+        ${PAGES.map(p => `
+          <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer;">
+            <input type="checkbox" data-action="analytics-toggle-page" data-page-id="${p.id}" ${selectedSet.has(p.id) ? 'checked' : ''} />
+            <span class="dot" style="width:8px;height:8px;border-radius:50%;background:${p.color};display:inline-block;"></span>${p.emoji} ${p.name}
+          </label>
+        `).join('')}
+      </div>
+      <div style="color:var(--text-dim); padding:24px; text-align:center;">ยังไม่ได้เลือกเกมเลย ติ๊กอย่างน้อย 1 เกมด้านบนก่อนนะคะ</div>
+    `;
+  }
+
+  return `
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+      <h1 style="margin:0;">📊 รายงานสถิติคอมเมนต์</h1>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button class="btn primary" data-action="download-analytics-excel">${ICONS.archive} ดาวน์โหลด Excel</button>
+        <button class="btn" data-action="close-analytics">${ICONS.x} ปิดรายงาน</button>
+      </div>
+    </div>
+
+    <div class="analytics-filters" style="display:flex; flex-wrap:wrap; gap:20px; align-items:flex-end; margin-bottom:20px; padding:14px; border:1px solid var(--border); border-radius:10px; background:var(--surface);">
+      <div>
+        <label style="display:block; font-size:11.5px; color:var(--text-dim); margin-bottom:4px;">จากวันที่</label>
+        <input type="date" value="${startDate}" data-action="analytics-set-range" data-key="startDate" max="${endDate}" />
+      </div>
+      <div>
+        <label style="display:block; font-size:11.5px; color:var(--text-dim); margin-bottom:4px;">ถึงวันที่</label>
+        <input type="date" value="${endDate}" data-action="analytics-set-range" data-key="endDate" min="${startDate}" />
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:12px;">
+        ${PAGES.map(p => `
+          <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer;">
+            <input type="checkbox" data-action="analytics-toggle-page" data-page-id="${p.id}" ${selectedSet.has(p.id) ? 'checked' : ''} />
+            <span class="dot" style="width:8px;height:8px;border-radius:50%;background:${p.color};display:inline-block;"></span>${p.emoji} ${p.name}
+          </label>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="analytics-summary" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:12px; margin-bottom:20px;">
+      ${totalsByPage.map(t => `
+        <div style="border:1px solid var(--border); border-radius:10px; padding:14px; background:var(--surface);">
+          <div style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-dim); margin-bottom:8px;">
+            <span class="dot" style="width:8px;height:8px;border-radius:50%;background:${t.color};display:inline-block;"></span>${t.emoji} ${t.pageName}
+          </div>
+          <div style="font-size:22px; font-weight:700; color:var(--text);">${t.commentsIn}</div>
+          <div style="font-size:11.5px; color:var(--text-dim);">คอมเมนต์/ข้อความเข้ามา &middot; ตอบแล้ว ${t.replied} (${t.replyRate}%)</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
+      <div style="border:1px solid var(--border); border-radius:10px; padding:14px; background:var(--surface);">
+        <div style="font-size:13px; font-weight:600; margin-bottom:10px;">คอมเมนต์เข้ามารายวัน (แยกเกม)</div>
+        <canvas id="analyticsDailyChart" height="220"></canvas>
+      </div>
+      <div style="border:1px solid var(--border); border-radius:10px; padding:14px; background:var(--surface);">
+        <div style="font-size:13px; font-weight:600; margin-bottom:10px;">หมวดหมู่คอมเมนต์ (แยกเกม)</div>
+        <canvas id="analyticsCategoryChart" height="220"></canvas>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1.3fr 1fr; gap:16px;">
+      <div style="border:1px solid var(--border); border-radius:10px; padding:14px; background:var(--surface);">
+        <div style="font-size:13px; font-weight:600; margin-bottom:10px;">ตารางรายวันแยกเกม</div>
+        <div style="max-height:340px; overflow:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+            <thead>
+              <tr style="text-align:left; color:var(--text-dim); border-bottom:1px solid var(--border);">
+                <th style="padding:6px 8px; position:sticky; top:0; background:var(--surface);">วันที่</th>
+                <th style="padding:6px 8px; position:sticky; top:0; background:var(--surface);">เกม</th>
+                <th style="padding:6px 8px; position:sticky; top:0; background:var(--surface);">เข้ามา</th>
+                <th style="padding:6px 8px; position:sticky; top:0; background:var(--surface);">ตอบแล้ว</th>
+                <th style="padding:6px 8px; position:sticky; top:0; background:var(--surface);">%ตอบ</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${dailyRows.slice().reverse().map(r => `
+                <tr style="border-bottom:1px solid var(--border);">
+                  <td style="padding:6px 8px;">${r.date}</td>
+                  <td style="padding:6px 8px;">${r.pageName}</td>
+                  <td style="padding:6px 8px;">${r.commentsIn}</td>
+                  <td style="padding:6px 8px;">${r.replied}</td>
+                  <td style="padding:6px 8px;">${r.commentsIn ? Math.round((r.replied / r.commentsIn) * 100) : 0}%</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div style="border:1px solid var(--border); border-radius:10px; padding:14px; background:var(--surface);">
+        <div style="font-size:13px; font-weight:600; margin-bottom:10px;">สรุปจำนวนที่แต่ละคนตอบ</div>
+        <div style="max-height:340px; overflow:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+            <thead>
+              <tr style="text-align:left; color:var(--text-dim); border-bottom:1px solid var(--border);">
+                <th style="padding:6px 8px; position:sticky; top:0; background:var(--surface);">ผู้ตอบ</th>
+                <th style="padding:6px 8px; position:sticky; top:0; background:var(--surface);">เกม</th>
+                <th style="padding:6px 8px; position:sticky; top:0; background:var(--surface);">จำนวนที่ตอบ</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${personRows.length ? personRows.map(r => `
+                <tr style="border-bottom:1px solid var(--border);">
+                  <td style="padding:6px 8px;">${r.person}</td>
+                  <td style="padding:6px 8px;">${r.pageName}</td>
+                  <td style="padding:6px 8px;">${r.count}</td>
+                </tr>
+              `).join('') : `<tr><td colspan="3" style="padding:12px 8px; color:var(--text-dim);">ยังไม่มีการตอบกลับในช่วงนี้</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// เก็บ instance ของ Chart.js ไว้ระดับโมดูล กันชนกัน — ทุกครั้งที่ render() วาด DOM ใหม่ (innerHTML)
+// canvas เดิมจะถูกทำลายทิ้งไปด้วย ต้อง destroy() chart เก่าก่อนสร้างอันใหม่บน canvas ใหม่เสมอ ไม่งั้น
+// Chart.js จะ error "Canvas is already in use" (ผูก chart ซ้ำบน canvas ที่ id ซ้ำเดิม)
+let analyticsDailyChartInstance = null;
+let analyticsCategoryChartInstance = null;
+function drawAnalyticsCharts(data){
+  if (typeof Chart === 'undefined') return; // เผื่อ CDN โหลดไม่ทัน/ถูกบล็อก ไม่ให้ทั้งหน้าพัง
+  const { days, pagesInScope, dailyRows, categoryRows } = data;
+  if (!pagesInScope.length) return;
+
+  const dailyCanvas = document.getElementById('analyticsDailyChart');
+  if (dailyCanvas) {
+    if (analyticsDailyChartInstance) analyticsDailyChartInstance.destroy();
+    const datasets = pagesInScope.map((p) => ({
+      label: p.name,
+      data: days.map((d) => {
+        const row = dailyRows.find((r) => r.date === d && r.pageId === p.id);
+        return row ? row.commentsIn : 0;
+      }),
+      borderColor: p.color,
+      backgroundColor: p.color,
+      tension: 0.25,
+      fill: false,
+    }));
+    analyticsDailyChartInstance = new Chart(dailyCanvas, {
+      type: 'line',
+      data: { labels: days, datasets },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { ticks: { font: { size: 10 } } } },
+      },
+    });
+  }
+
+  const categoryCanvas = document.getElementById('analyticsCategoryChart');
+  if (categoryCanvas) {
+    if (analyticsCategoryChartInstance) analyticsCategoryChartInstance.destroy();
+    const datasets = pagesInScope.map((p) => ({
+      label: p.name,
+      data: ANALYTICS_CATEGORIES.map((cat) => {
+        const row = categoryRows.find((r) => r.category === cat && r.pageId === p.id);
+        return row ? row.count : 0;
+      }),
+      backgroundColor: p.color,
+    }));
+    analyticsCategoryChartInstance = new Chart(categoryCanvas, {
+      type: 'bar',
+      data: { labels: ANALYTICS_CATEGORIES, datasets },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { ticks: { font: { size: 10 } } } },
+      },
+    });
+  }
+}
+
+// สร้างไฟล์ Excel (.xlsx) หลายชีทจากข้อมูลชุดเดียวกับที่ใช้วาดกราฟ/ตารางบนหน้าเว็บ ใช้ SheetJS
+// (window.XLSX) ทำงานฝั่ง browser ล้วนๆ ไม่ต้องยิง request ไปเซิร์ฟเวอร์เพิ่ม
+function downloadAnalyticsExcel(data){
+  if (typeof XLSX === 'undefined') {
+    showToast('โหลดตัวสร้างไฟล์ Excel ไม่สำเร็จ ลองรีเฟรชหน้าแล้วลองใหม่', 'error');
+    return;
+  }
+  if (!data.pagesInScope.length) {
+    showToast('ยังไม่ได้เลือกเกมเลย ติ๊กอย่างน้อย 1 เกมก่อนดาวน์โหลด', 'error');
+    return;
+  }
+
+  const dailySheetData = data.dailyRows.map((r) => ({
+    'วันที่': r.date,
+    'เกม': r.pageName,
+    'คอมเมนต์/ข้อความเข้ามา': r.commentsIn,
+    'ตอบแล้ว': r.replied,
+    '% ตอบแล้ว': r.commentsIn ? Math.round((r.replied / r.commentsIn) * 100) : 0,
+  }));
+
+  const categorySheetData = data.categoryRows.map((r) => ({
+    'เกม': r.pageName,
+    'หมวดหมู่': r.category,
+    'จำนวน': r.count,
+  }));
+
+  const personSheetData = data.personRows.length ? data.personRows.map((r) => ({
+    'ผู้ตอบ': r.person,
+    'เกม': r.pageName,
+    'จำนวนที่ตอบ': r.count,
+  })) : [{ 'ผู้ตอบ': '(ยังไม่มีการตอบกลับในช่วงนี้)', 'เกม': '', 'จำนวนที่ตอบ': 0 }];
+
+  const summarySheetData = data.totalsByPage.map((t) => ({
+    'เกม': t.pageName,
+    'คอมเมนต์/ข้อความเข้ามา (รวม)': t.commentsIn,
+    'ตอบแล้ว (รวม)': t.replied,
+    '% ตอบแล้ว': t.replyRate,
+  }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summarySheetData), 'สรุปรวม');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailySheetData), 'รายวันแยกเกม');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(categorySheetData), 'หมวดหมู่คอมเมนต์');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(personSheetData), 'สรุปคนตอบ');
+
+  XLSX.writeFile(wb, `CommentGG-รายงาน-${data.startDate}_ถึง_${data.endDate}.xlsx`);
+  showToast('ดาวน์โหลดไฟล์ Excel แล้ว', 'success');
+}
+
+/* ============================================================
    ROOT RENDER
 ============================================================ */
 function render(){
@@ -2001,6 +2378,23 @@ function render(){
     bindLoginForm();
     setFavicon();
     updateTabTitle(); // ล็อกเอาต์แล้วเอาตัวเลขแจ้งเตือนออกจากแท็บด้วย
+    return;
+  }
+
+  // หน้ารายงานสถิติ — แยก layout ออกจาก inbox ทั้งหมด (ไม่มี chips/tabs/toolbar ของ inbox)
+  if (state.view === 'analytics') {
+    const analyticsData = computeAnalyticsData();
+    app.innerHTML = `
+      ${renderTopbar()}
+      <div class="main">
+        <div class="content-card">
+          ${renderAnalyticsView(analyticsData)}
+        </div>
+      </div>
+    `;
+    drawAnalyticsCharts(analyticsData);
+    setFavicon();
+    updateTabTitle();
     return;
   }
 
@@ -2420,11 +2814,41 @@ document.getElementById('app').addEventListener('mousedown', (e) => {
 // ทั้งหมด) เลยแยก listener ต่างหาก แต่ยังใช้ data-action="set-filter" + data-key ตัวเดียวกันเพื่อให้
 // อ่านง่ายสอดคล้องกับแพทเทิร์นเดิม
 document.getElementById('app').addEventListener('change', (e) => {
-  const el = e.target.closest('[data-action="set-filter"]');
-  if (!el) return;
-  state.filters[el.dataset.key] = el.value;
-  state.page = 1;
-  render();
+  const filterEl = e.target.closest('[data-action="set-filter"]');
+  if (filterEl) {
+    state.filters[filterEl.dataset.key] = filterEl.value;
+    state.page = 1;
+    render();
+    return;
+  }
+  // input[type=date] จากวันที่/ถึงวันที่ ในหน้ารายงานสถิติ — เก็บ pattern เดียวกับ set-filter ด้านบน
+  const rangeEl = e.target.closest('[data-action="analytics-set-range"]');
+  if (rangeEl) {
+    state.analytics[rangeEl.dataset.key] = rangeEl.value;
+    // กันเลือกช่วงกลับหัว (จากวันที่ > ถึงวันที่) ถ้าเผลอเลือกสลับกัน สลับให้อัตโนมัติ
+    if (state.analytics.startDate > state.analytics.endDate) {
+      [state.analytics.startDate, state.analytics.endDate] = [state.analytics.endDate, state.analytics.startDate];
+    }
+    render();
+    return;
+  }
+  // checkbox เลือกเกมในหน้ารายงานสถิติ
+  const pageToggleEl = e.target.closest('[data-action="analytics-toggle-page"]');
+  if (pageToggleEl) {
+    const pid = pageToggleEl.dataset.pageId;
+    const all = PAGES.map(p => p.id);
+    let current = state.analytics.pageIds && state.analytics.pageIds.length ? state.analytics.pageIds.slice() : all.slice();
+    if (current.includes(pid)) {
+      current = current.filter(x => x !== pid);
+    } else {
+      current.push(pid);
+    }
+    // ถ้าติ๊กครบทุกเกมอีกครั้ง กลับไปเป็น null (= "ทุกเกม") แทนเก็บ list ครบทุกตัว ความหมายเดียวกัน
+    // แต่ทำให้เช็คว่า "เลือกทุกเกมอยู่ไหม" ที่อื่นง่ายกว่า
+    state.analytics.pageIds = current.length === all.length ? null : current;
+    render();
+    return;
+  }
 });
 
 const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu', 'close-filters']);
@@ -2444,6 +2868,20 @@ document.getElementById('app').addEventListener('click', (e) => {
 
   switch (action) {
     case 'stop-propagation':
+      break;
+
+    case 'open-analytics':
+      state.view = 'analytics';
+      render();
+      break;
+
+    case 'close-analytics':
+      state.view = 'inbox';
+      render();
+      break;
+
+    case 'download-analytics-excel':
+      downloadAnalyticsExcel(computeAnalyticsData());
       break;
 
     case 'toggle-sound-mute':
