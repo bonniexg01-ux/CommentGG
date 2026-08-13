@@ -904,6 +904,16 @@ let MY_HASHTAGS = {};
 const pageById = id => PAGES.find(p => p.id === id);
 const myHashtagFor = pageId => MY_HASHTAGS[pageId] || '';
 
+// สิทธิ์เข้าหน้ารายงานสถิติ — เก็บไว้ใน app_metadata ของบัญชี Supabase Auth (ไม่ใช่ user_metadata)
+// เพราะ app_metadata แก้ได้จากฝั่งเซิร์ฟเวอร์เท่านั้น (ผ่าน service role/SQL โดยตรง) ผู้ใช้เอง
+// แก้เองจากหน้าเว็บ/console ไม่ได้ ต่างจาก user_metadata ที่ใครก็เรียก supabase.auth.updateUser()
+// แก้ค่าตัวเองได้เลย — ให้สิทธิ์เพิ่มคนอื่นทีหลังทำได้โดยรัน SQL ตั้ง can_view_analytics: true
+// ให้บัญชีนั้นเพิ่ม (ไม่มีหน้า UI ให้ตั้งเองในเว็บ ตั้งใจให้ควบคุมจากฝั่งแอดมิน/เราเท่านั้น)
+function canViewAnalytics(){
+  const user = state.auth.session && state.auth.session.user;
+  return !!(user && user.app_metadata && user.app_metadata.can_view_analytics);
+}
+
 function timeAgo(iso){
   const diffMs = Date.now() - new Date(iso).getTime();
   const min = Math.floor(diffMs / 60000);
@@ -1555,10 +1565,12 @@ function renderTopbar(){
         <div class="mark">${iconForTheme()}</div>
         CommentGG
       </div>
-      <div class="topbar-icon-btn" data-action="open-analytics" title="รายงานสถิติ" style="margin-left:auto; margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
-        📊 <span style="font-size:12.5px;">รายงาน</span>
-      </div>
-      <div class="topbar-icon-btn" data-action="toggle-sound-mute" title="${state.soundMuted ? 'เปิดเสียงแจ้งเตือน' : 'ปิดเสียงแจ้งเตือน'}" style="margin-right:10px;">
+      ${canViewAnalytics() ? `
+        <div class="topbar-icon-btn" data-action="open-analytics" title="รายงานสถิติ" style="margin-left:auto; margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
+          📊 <span style="font-size:12.5px;">รายงาน</span>
+        </div>
+      ` : ''}
+      <div class="topbar-icon-btn" data-action="toggle-sound-mute" title="${state.soundMuted ? 'เปิดเสียงแจ้งเตือน' : 'ปิดเสียงแจ้งเตือน'}" style="${canViewAnalytics() ? '' : 'margin-left:auto;'} margin-right:10px;">
         ${state.soundMuted ? ICONS.volumeOff : ICONS.volumeOn}
       </div>
       <div class="user-menu-wrap">
@@ -2431,6 +2443,12 @@ function render(){
     return;
   }
 
+  // เผื่อมีคนพยายามสั่ง state.view = 'analytics' เองตรงๆ ผ่าน console (ปุ่มถูกซ่อนไปแล้วถ้าไม่มีสิทธิ์
+  // แต่กันไว้อีกชั้นตรงนี้ด้วย ไม่ให้เข้าหน้ารายงานได้แม้จะรู้ชื่อ state ก็ตาม) เด้งกลับ inbox ทันที
+  if (state.view === 'analytics' && !canViewAnalytics()) {
+    state.view = 'inbox';
+  }
+
   // หน้ารายงานสถิติ — แยก layout ออกจาก inbox ทั้งหมด (ไม่มี chips/tabs/toolbar ของ inbox)
   if (state.view === 'analytics') {
     const analyticsData = computeAnalyticsData();
@@ -2921,6 +2939,7 @@ document.getElementById('app').addEventListener('click', (e) => {
       break;
 
     case 'open-analytics':
+      if (!canViewAnalytics()) { showToast('คุณไม่มีสิทธิ์เข้าหน้านี้', 'error'); break; }
       state.view = 'analytics';
       render();
       break;
@@ -2931,6 +2950,7 @@ document.getElementById('app').addEventListener('click', (e) => {
       break;
 
     case 'download-analytics-excel':
+      if (!canViewAnalytics()) { showToast('คุณไม่มีสิทธิ์เข้าหน้านี้', 'error'); break; }
       downloadAnalyticsExcel(computeAnalyticsData());
       break;
 
