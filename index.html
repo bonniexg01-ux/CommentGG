@@ -2312,6 +2312,45 @@ function drawAnalyticsCharts(data){
 
 // สร้างไฟล์ Excel (.xlsx) หลายชีทจากข้อมูลชุดเดียวกับที่ใช้วาดกราฟ/ตารางบนหน้าเว็บ ใช้ SheetJS
 // (window.XLSX) ทำงานฝั่ง browser ล้วนๆ ไม่ต้องยิง request ไปเซิร์ฟเวอร์เพิ่ม
+// ใส่ความกว้างคอลัมน์ให้เหมาะกับเนื้อหาจริง (ยาวสุดของหัวตาราง/ข้อมูลในคอลัมน์นั้น บวก padding
+// นิดหน่อย) กันปัญหาเดิมที่ทุกคอลัมน์แคบเท่ากันหมดจนตัวอักษรโดนตัด (เช่น "Cabal : Inf...") ต้องรีไซซ์
+// เองทุกครั้งที่เปิดไฟล์ — คำนวณจากความยาวสตริงเป็นตัวอักษร ไม่รองรับ font เฉพาะทาง แต่พอเพียงสำหรับ
+// ตัวเลข/ชื่อเกม/ชื่อคนทั่วไป
+function autoSizeColumns(rows, headers){
+  return headers.map((h) => {
+    const maxLen = rows.reduce((max, row) => {
+      const val = row[h];
+      const len = val == null ? 0 : String(val).length;
+      return Math.max(max, len);
+    }, h.length);
+    return { wch: Math.min(Math.max(maxLen + 2, 8), 40) };
+  });
+}
+
+// เพิ่ม autofilter (ปุ่มกรอง/เรียงข้อมูลที่หัวตาราง — ฟีเจอร์พื้นฐานของ Excel ที่ SheetJS รุ่นฟรี
+// รองรับเต็มที่ ไม่เหมือนสีพื้น/ตัวหนา ซึ่งรุ่นฟรีเขียนไม่ได้ ต้องใช้เวอร์ชัน Pro ที่เสียเงินถึงจะติดสี/
+// ตัวหนาลงไฟล์ .xlsx ได้จริง — เลยเลือกเน้นความกว้างคอลัมน์ + ตัวกรอง + format ตัวเลข/% แทน ได้ผล
+// ลัพธ์ที่อ่านง่ายขึ้นชัดเจนโดยไม่ต้องพึ่งฟีเจอร์ที่เขียนไม่ได้จริง)
+function sheetFromRows(rows, headers){
+  const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
+  ws['!cols'] = autoSizeColumns(rows, headers);
+  const lastRow = rows.length + 1;
+  const lastCol = XLSX.utils.encode_col(headers.length - 1);
+  ws['!autofilter'] = { ref: `A1:${lastCol}${lastRow}` };
+  return ws;
+}
+
+// ตั้ง number format เป็น '0%' ให้คอลัมน์ % จริงๆ (ต้องเก็บค่าเป็นเศษส่วน 0-1 ไม่ใช่ 0-100 คู่กับ
+// format นี้ ไม่งั้น Excel จะโชว์ผิดเป็น 400% แทน 4%) แทนที่จะเก็บเป็นตัวเลขเปล่าๆ แล้วเติมข้อความ "%"
+// เอง — วิธีนี้ Excel จัดชิดขวา/เรียงตัวเลขได้ถูกต้องจริง เหมือนเปิดเป็นคอลัมน์เปอร์เซ็นต์ปกติ
+function applyPercentFormat(ws, rowCount, colIndex0based){
+  const col = XLSX.utils.encode_col(colIndex0based);
+  for (let r = 2; r <= rowCount + 1; r++) {
+    const ref = `${col}${r}`;
+    if (ws[ref]) ws[ref].z = '0%';
+  }
+}
+
 function downloadAnalyticsExcel(data){
   if (typeof XLSX === 'undefined') {
     showToast('โหลดตัวสร้างไฟล์ Excel ไม่สำเร็จ ลองรีเฟรชหน้าแล้วลองใหม่', 'error');
@@ -2322,38 +2361,49 @@ function downloadAnalyticsExcel(data){
     return;
   }
 
+  const dailyHeaders = ['วันที่', 'เกม', 'คอมเมนต์/ข้อความเข้ามา', 'ตอบแล้ว', '% ตอบแล้ว'];
   const dailySheetData = data.dailyRows.map((r) => ({
     'วันที่': r.date,
     'เกม': r.pageName,
     'คอมเมนต์/ข้อความเข้ามา': r.commentsIn,
     'ตอบแล้ว': r.replied,
-    '% ตอบแล้ว': r.commentsIn ? Math.round((r.replied / r.commentsIn) * 100) : 0,
+    '% ตอบแล้ว': r.commentsIn ? r.replied / r.commentsIn : 0, // เก็บเป็นเศษส่วน คู่กับ format '0%' ด้านล่าง
   }));
 
+  const categoryHeaders = ['เกม', 'หมวดหมู่', 'จำนวน'];
   const categorySheetData = data.categoryRows.map((r) => ({
     'เกม': r.pageName,
     'หมวดหมู่': r.category,
     'จำนวน': r.count,
   }));
 
+  const personHeaders = ['ผู้ตอบ', 'เกม', 'จำนวนที่ตอบ'];
   const personSheetData = data.personRows.length ? data.personRows.map((r) => ({
     'ผู้ตอบ': r.person,
     'เกม': r.pageName,
     'จำนวนที่ตอบ': r.count,
   })) : [{ 'ผู้ตอบ': '(ยังไม่มีการตอบกลับในช่วงนี้)', 'เกม': '', 'จำนวนที่ตอบ': 0 }];
 
+  const summaryHeaders = ['เกม', 'คอมเมนต์/ข้อความเข้ามา (รวม)', 'ตอบแล้ว (รวม)', '% ตอบแล้ว'];
   const summarySheetData = data.totalsByPage.map((t) => ({
     'เกม': t.pageName,
     'คอมเมนต์/ข้อความเข้ามา (รวม)': t.commentsIn,
     'ตอบแล้ว (รวม)': t.replied,
-    '% ตอบแล้ว': t.replyRate,
+    '% ตอบแล้ว': t.commentsIn ? t.replied / t.commentsIn : 0,
   }));
 
+  const summaryWs = sheetFromRows(summarySheetData, summaryHeaders);
+  applyPercentFormat(summaryWs, summarySheetData.length, 3);
+  const dailyWs = sheetFromRows(dailySheetData, dailyHeaders);
+  applyPercentFormat(dailyWs, dailySheetData.length, 4);
+  const categoryWs = sheetFromRows(categorySheetData, categoryHeaders);
+  const personWs = sheetFromRows(personSheetData, personHeaders);
+
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summarySheetData), 'สรุปรวม');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailySheetData), 'รายวันแยกเกม');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(categorySheetData), 'หมวดหมู่คอมเมนต์');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(personSheetData), 'สรุปคนตอบ');
+  XLSX.utils.book_append_sheet(wb, summaryWs, 'สรุปรวม');
+  XLSX.utils.book_append_sheet(wb, dailyWs, 'รายวันแยกเกม');
+  XLSX.utils.book_append_sheet(wb, categoryWs, 'หมวดหมู่คอมเมนต์');
+  XLSX.utils.book_append_sheet(wb, personWs, 'สรุปคนตอบ');
 
   XLSX.writeFile(wb, `CommentGG-รายงาน-${data.startDate}_ถึง_${data.endDate}.xlsx`);
   showToast('ดาวน์โหลดไฟล์ Excel แล้ว', 'success');
