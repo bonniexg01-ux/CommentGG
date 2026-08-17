@@ -1553,6 +1553,19 @@ function checkEndingViolation(text, page){
   return null;
 }
 
+// ตรวจว่าแฮชแท็กที่พิมพ์อยู่ในข้อความ "ตรงกับแฮชแท็กของฉันเองสำหรับเพจนี้" ไหม — ต่างจาก
+// checkCrossPageViolation ด้านบน (เช็คเฉพาะกรณีดันไปใช้แฮชแท็กที่ตั้งไว้สำหรับ "เพจอื่น") อันนี้จับ
+// ทุกกรณีที่พิมพ์ #อะไรก็ตามที่ไม่ตรงกับของตัวเองเป๊ะๆ ไม่ว่าจะพิมพ์ผิด/สลับกับของคนอื่นในทีม/หรือ
+// เผลอพิมพ์มั่ว — ถ้ายังไม่เคยตั้งแฮชแท็กของตัวเองไว้เลย (ค่าว่าง) ไม่มีอะไรให้เทียบ เลยไม่เช็ค
+function checkOwnHashtagViolation(text, page){
+  const myTag = myHashtagFor(page.id);
+  if (!myTag) return null;
+  const found = text.match(/#[^\s#]+/g) || [];
+  const wrong = found.find((tag) => tag !== myTag);
+  if (wrong) return { term: wrong, expected: myTag };
+  return null;
+}
+
 // ไม่ใส่คำลงท้าย (ค่ะ/ครับ) อัตโนมัติแล้ว — ให้แอดมินพิมพ์เองตามที่เห็นในบรรทัด
 // "คำลงท้าย: ..." ด้านล่างกล่องพิมพ์ ใส่แฮชแท็ก "ของฉันเอง" สำหรับเพจนี้ให้อัตโนมัติ (ตั้งได้ที่
 // Profile > Account settings แยกต่อเพจ แต่ละคนในทีมใช้ของตัวเองได้)
@@ -3098,6 +3111,7 @@ function updateComposerState(item, box, page){
 
   const violation = checkCrossPageViolation(text, page.id);
   const endingViolation = !violation ? checkEndingViolation(text, page) : null;
+  const hashtagViolation = !violation && !endingViolation ? checkOwnHashtagViolation(text, page) : null;
   if (violation) {
     box.classList.add('violate');
     alertZone.innerHTML = `
@@ -3117,6 +3131,17 @@ function updateComposerState(item, box, page){
         ${ICONS.alert}
         <div>
           <b>⚠️ คำลงท้ายไม่ตรงกับเพจนี้</b> — เพจ ${page.emoji} ${page.name} ต้องใช้ “${page.ending}” แต่พบคำว่า “${endingViolation.term}” ในข้อความ กรุณาแก้ไขก่อนส่ง
+        </div>
+      </div>
+    `;
+    setDisabled(true);
+  } else if (hashtagViolation) {
+    box.classList.add('violate');
+    alertZone.innerHTML = `
+      <div class="composer-alert">
+        ${ICONS.alert}
+        <div>
+          <b>⚠️ แฮชแท็กไม่ตรงกับของคุณ</b> — แฮชแท็กของคุณสำหรับเพจนี้คือ “${hashtagViolation.expected}” แต่พบ “${hashtagViolation.term}” ในข้อความ กรุณาแก้ไขก่อนส่ง
         </div>
       </div>
     `;
@@ -3607,6 +3632,8 @@ document.getElementById('app').addEventListener('click', (e) => {
       if (violation) { showToast(`ส่งไม่สำเร็จ: พบคำของเพจอื่น ("${violation.term}") กรุณาแก้ไขก่อนส่ง`, 'error'); return; }
       const endingViolation = checkEndingViolation(text, page);
       if (endingViolation) { showToast(`ส่งไม่สำเร็จ: เพจนี้ต้องใช้คำลงท้าย "${page.ending}" ไม่ใช่ "${endingViolation.term}"`, 'error'); return; }
+      const hashtagViolation = checkOwnHashtagViolation(text, page);
+      if (hashtagViolation) { showToast(`ส่งไม่สำเร็จ: แฮชแท็กของคุณคือ "${hashtagViolation.expected}" แต่พบ "${hashtagViolation.term}" กรุณาแก้ไขก่อนส่ง`, 'error'); return; }
       sendReply(item, text);
       break;
     }
@@ -3620,6 +3647,8 @@ document.getElementById('app').addEventListener('click', (e) => {
       if (violation) { showToast(`ส่งไม่สำเร็จ: พบคำของเพจอื่น ("${violation.term}") กรุณาแก้ไขก่อนส่ง`, 'error'); return; }
       const endingViolation = checkEndingViolation(text, page);
       if (endingViolation) { showToast(`ส่งไม่สำเร็จ: เพจนี้ต้องใช้คำลงท้าย "${page.ending}" ไม่ใช่ "${endingViolation.term}"`, 'error'); return; }
+      const hashtagViolation = checkOwnHashtagViolation(text, page);
+      if (hashtagViolation) { showToast(`ส่งไม่สำเร็จ: แฮชแท็กของคุณคือ "${hashtagViolation.expected}" แต่พบ "${hashtagViolation.term}" กรุณาแก้ไขก่อนส่ง`, 'error'); return; }
       sendReply(item, text, true);
       break;
     }
