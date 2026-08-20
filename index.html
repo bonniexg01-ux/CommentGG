@@ -1001,6 +1001,9 @@ function mapItem(row){
     postExcerpt: row.post_excerpt || null, aiReason: row.ai_reason || null, adminReply: row.admin_reply || null,
     adminReplyFbId: row.admin_reply_fb_id || null, adminReplyBy: row.admin_reply_by || null,
     repliedAt: row.replied_at || null, // เวลาตอบสำเร็จจริง (ใช้ในหน้ารายงานสถิติ) — คอมเมนต์เก่าก่อนมีคอลัมน์นี้ fallback เป็น createdAt เอาตอนคำนวณ
+    // รูปที่แนบมากับคอมเมนต์ (ถ้ามี) — เก็บไว้ตั้งแต่ตอน webhook รับคอมเมนต์เข้ามาใหม่ (ดู
+    // api/webhook.js) คอมเมนต์เก่าก่อนมีฟีเจอร์นี้จะเป็น null ไปเลย (ยังกดแว่นขยายดูได้ตามปกติ)
+    attachmentImageUrl: row.attachment_image_url || null,
     liked: !!row.liked, blocked: !!row.blocked,
   };
 }
@@ -2033,6 +2036,11 @@ function renderRow(item){
         </div>
         <div class="row-content">
           <div class="row-text">${item.text}${tagFor(item)}</div>
+          ${item.attachmentImageUrl ? `
+            <img src="${item.attachmentImageUrl}" alt="รูปที่แนบมากับคอมเมนต์" loading="lazy"
+              data-action="view-post" data-id="${item.id}" title="คลิกเพื่อดูขนาดเต็ม"
+              style="max-width:120px; max-height:120px; border-radius:8px; border:1px solid var(--border); display:block; margin-top:6px; cursor:pointer; object-fit:cover;" />
+          ` : ''}
           <div class="copy-link" data-action="copy" data-id="${item.id}">${ICONS.copy} Copy to clipboard</div>
           ${item.status === 'replied' && item.adminReply ? renderReplyQuote(item) : ''}
         </div>

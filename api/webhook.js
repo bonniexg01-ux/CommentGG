@@ -28,6 +28,8 @@ const sbHeaders = {
   'Content-Type': 'application/json',
 };
 
+const GRAPH_VERSION = 'v23.0';
+
 module.exports = async (req, res) => {
   if (req.method === 'GET') {
     return handleVerify(req, res);
@@ -201,6 +203,15 @@ async function markRepliedExternally(pageUuid, parentFbId, replyMessage, replyFb
 }
 
 async function insertComment(pageUuid, value) {
+  // เช็ครูปที่แนบมากับคอมเมนต์ (ถ้ามี) ตั้งแต่ตอนรับเข้ามาครั้งแรกเลย เก็บ URL ไว้ให้แดชบอร์ดโชว์
+  // เป็น thumbnail ในแถวรายการได้ทันที ไม่ต้องรอกดแว่นขยายเปิดดูทีหลัง (เดิม post-detail.mjs ดึงตอน
+  // กดแว่นขยายเท่านั้น — ตอนนี้ยิงคำขอเดียวกันแบบนี้ล่วงหน้าไปเลย ครั้งเดียวตอนคอมเมนต์เข้าใหม่)
+  // ทำ best-effort เท่านั้น — ถ้าดึงไม่สำเร็จ (เช่น token ปัญหา/หมดเวลา) ก็แค่ไม่มี thumbnail ให้
+  // ไม่ทำให้การบันทึกคอมเมนต์หลักล้มเหลวไปด้วย
+  const attachmentImageUrl = await fetchCommentAttachmentImage(pageUuid, value.comment_id).catch((err) => {
+    console.error('webhook warning: ดึงรูปแนบคอมเมนต์ไม่สำเร็จ (ไม่กระทบการบันทึกคอมเมนต์หลัก)', err);
+    return null;
+  });
   const record = {
     page_id: pageUuid,
     type: 'comment',
@@ -211,8 +222,39 @@ async function insertComment(pageUuid, value) {
     message: value.message,
     status: 'pending',
     folder: 'inbox',
+    attachment_image_url: attachmentImageUrl,
   };
   await insertFeedItem(record);
+}
+
+// ดึง access_token ของเพจตรงจากตาราง pages จริง (ไม่ใช่ pages_public) — webhook.js ใช้ service role
+// key อยู่แล้วเลยข้าม RLS อ่านคอลัมน์ access_token ได้โดยตรง (แพทเทิร์นเดียวกับ api/reply.mjs)
+async function fetchPageAccessToken(pageUuid) {
+  const url = `${SUPABASE_URL}/rest/v1/pages?id=eq.${encodeURIComponent(pageUuid)}&select=access_token`;
+  const r = await fetch(url, { headers: sbHeaders });
+  if (!r.ok) return null;
+  const rows = await r.json();
+  return rows[0] ? rows[0].access_token : null;
+}
+
+// ยิง Graph API ดึง attachment ของคอมเมนต์นี้ (รูปเดี่ยวหรือ album หลายรูปก็ได้ เอาแค่รูปแรก) —
+// เอาเฉพาะ field attachment เท่านั้น (เบากว่า fetchComment เต็มรูปแบบใน post-detail.mjs ที่ดึง
+// message/from/permalink ด้วย เพราะตรงนี้แค่ต้องการรูปอย่างเดียว)
+async function fetchCommentAttachmentImage(pageUuid, commentId) {
+  const accessToken = await fetchPageAccessToken(pageUuid);
+  if (!accessToken) return null;
+  const fields = 'attachment{media,type,subattachments}';
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(commentId)}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(accessToken)}`;
+  const r = await fetch(url);
+  const data = await r.json();
+  if (data.error) return null;
+  const att = data.attachment;
+  if (att && att.media && att.media.image && att.media.image.src) return att.media.image.src;
+  if (att && att.subattachments && Array.isArray(att.subattachments.data) && att.subattachments.data[0]) {
+    const sub = att.subattachments.data[0];
+    if (sub.media && sub.media.image && sub.media.image.src) return sub.media.image.src;
+  }
+  return null;
 }
 
 // ลูกค้า/Facebook ลบคอมเมนต์ทิ้ง — ลบแถวที่ตรงกันออกจาก feed_items ไปเลย (ไม่ใช่แค่ย้ายเข้าถัง)
