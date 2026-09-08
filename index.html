@@ -2705,7 +2705,7 @@ function renderPagesAdminForm(){
   const tr = state.pagesAdmin.testResult;
   return `
     <div class="modal-backdrop" data-action="pages-admin-close-form">
-      <div class="modal-card" data-action="stop-propagation" style="max-width:560px;">
+      <div class="modal-card" data-action="stop-propagation" style="max-width:680px; max-height:94vh;">
         <div class="modal-head">
           <h2>${editing ? 'แก้ไขเพจ: ' + editing.page_name : 'เพิ่มเพจใหม่'}</h2>
           <div class="modal-close" data-action="pages-admin-close-form">${ICONS.x}</div>
