@@ -635,6 +635,68 @@
   }
   .login-btn:hover{filter:brightness(1.06);}
   .login-btn:disabled{opacity:.6; cursor:default;}
+
+  /* ================================================================
+     MOBILE — เน้นให้ใช้หน้าหลัก (inbox + ตอบคอมเมนต์) ได้ครบบนจอมือถือ
+     เป็นหลัก ส่วนหน้ารายงาน/จัดการเพจ (เปิดได้น้อยกว่ามาก) ไม่ได้ทำ
+     layout พิเศษเพิ่มให้ — จะยังพอใช้ได้ (เลื่อนดูได้) แค่ไม่ได้จัดสวย
+     เท่าหน้าหลัก ตามที่ตกลงกันไว้ ================================== */
+  @media (max-width: 760px){
+    .topbar{ height:auto; min-height:60px; padding:8px 12px; flex-wrap:wrap; row-gap:8px; }
+    .topbar-brand{ font-size:17px; gap:8px; }
+    .topbar-brand .mark{ width:36px; height:36px; border-radius:10px; }
+    .topbar-brand .mark svg{ width:24px; height:24px; }
+    /* "รายงาน"/"จัดการเพจ" — เหลือแค่อีโมจิ ซ่อนข้อความตัวหนังสือทิ้ง ประหยัดที่บนแถบแคบๆ */
+    [data-action="open-analytics"], [data-action="open-pages-admin"]{
+      padding:0 9px !important; margin-right:6px !important; margin-left:0 !important;
+    }
+    [data-action="open-analytics"] span, [data-action="open-pages-admin"] span{ display:none; }
+    .topbar-user-name{ display:none; } /* เหลือแค่ไอคอนคน + ลูกศร ชื่อยาวๆ กินที่บนจอแคบเกินไป */
+    .topbar-user{ padding:6px 8px; }
+
+    .main{ padding:14px 10px 32px; }
+    .content-card{ padding:14px 12px 6px; border-radius:16px; }
+    h1{ font-size:22px; margin-bottom:12px; }
+    .page-chips{ gap:6px; margin-bottom:14px; }
+    .page-chip{ font-size:12px; padding:5px 10px; }
+    .toprow-tabs{ gap:18px; }
+    .subnav{ gap:16px; overflow-x:auto; }
+
+    /* toolbar (checkbox/filter/sort/search/refresh) — ห่อบรรทัดได้ถ้าแคบไป ไม่ตัดล้นจอ */
+    .toolbar{ flex-wrap:wrap; row-gap:8px; }
+    .search-box input{ width:120px; }
+    .filters-panel{ width:calc(100vw - 56px); max-width:260px; }
+
+    /* แถวคอมเมนต์ — จากเดิม checkbox/ชื่อ-เวลา-เพจ/เนื้อหา/ปุ่ม เรียงเป็นแถวเดียวกันหมด (ทำให้ข้อความ
+       เหลือพื้นที่แคบมากบนจอมือถือ) เปลี่ยนเป็นจัดด้วย CSS grid แทน: ให้ checkbox กับชื่อ/เวลา/เพจ
+       อยู่แถวบนคู่กัน แล้วเนื้อหาคอมเมนต์กับปุ่ม action มากางเต็มความกว้างแถวถัดๆ ไป — ไม่ต้องแก้ HTML
+       เลย แค่วาง grid-area ให้แต่ละส่วนใหม่ */
+    .row{
+      display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:8px;
+      grid-template-areas: "check meta" "content content" "actions actions";
+      padding:13px 10px;
+    }
+    .row-check{ grid-area:check; padding-top:2px; }
+    .row-meta{ grid-area:meta; width:auto; }
+    .row-content{ grid-area:content; }
+    .row-actions{ grid-area:actions; justify-content:flex-end; flex-wrap:wrap; }
+    .expand-panel{ margin:0 0 12px; }
+
+    .modal-backdrop{ padding:0; align-items:flex-end; }
+    .modal-card{ max-width:100%; width:100%; border-radius:18px 18px 0 0; max-height:92vh; }
+    .modal-head{ padding:16px 16px 0; }
+    .modal-body{ padding:16px 16px 8px; }
+    .modal-tabs{ padding:14px 16px 0; gap:16px; }
+    .modal-foot{ padding:14px 16px 18px; }
+
+    .composer-foot{ flex-wrap:wrap; gap:8px; }
+    .composer-rules{ flex-basis:100%; }
+    .composer-actions{ flex-wrap:wrap; }
+
+    .post-panel{ width:100%; max-width:100%; }
+
+    .login-card{ padding:36px 24px 32px; border-radius:22px; }
+  }
 </style>
 </head>
 <body>
@@ -1627,7 +1689,7 @@ function renderTopbar(){
       </div>
       <div class="user-menu-wrap">
         <button class="topbar-user" data-action="toggle-user-menu">
-          ${ICONS.users} ${displayName}
+          ${ICONS.users} <span class="topbar-user-name">${displayName}</span>
           <span class="chev ${state.userMenuOpen ? 'open' : ''}">${ICONS.chevronDown}</span>
         </button>
         ${state.userMenuOpen ? renderUserDropdown() : ''}
