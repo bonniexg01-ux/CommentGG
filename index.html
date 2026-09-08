@@ -1471,7 +1471,13 @@ async function loadData(){
           const totalCount = (prev ? prev.count : 0) + count;
           const surge = totalCount >= CHIP_SURGE_THRESHOLD;
           const alreadyToasted = !!(prev && prev.toastShown);
-          state.pageFlash[pid] = { surge, count: totalCount, toastShown: alreadyToasted || surge };
+          // เก็บเวลาที่เจอ "ใหม่" ครั้งแรกไว้ (ไม่อัปเดตซ้ำถ้ามีของเดิมค้างอยู่แล้ว) เผื่อเปิดแท็บทิ้งไว้
+          // นานๆ ไม่ได้ reload หน้าเว็บเต็มรูปแบบเลย พอกลับมาโหลดข้อมูลรอบแรกหลังจากนั้น ระบบจะเจอ
+          // คอมเมนต์เก่าที่สะสมมาหลายชั่วโมงพร้อมกันเป็นก้อนใหญ่ ดูเหมือน "ใหม่" ทั้งหมดทั้งที่จริงๆ
+          // ไม่ใช่ — auto หมดอายุหลัง 5 นาทีกันไฟค้างงงว่าเพจไหนกระพริบเพราะอะไร (ยังเคลียร์ทันทีได้
+          // เหมือนเดิมถ้ากดเข้าไปดู/จัดการคอมเมนต์เพจนั้นจริงๆ อยู่แล้ว)
+          const since = prev ? prev.since : Date.now();
+          state.pageFlash[pid] = { surge, count: totalCount, toastShown: alreadyToasted || surge, since };
           if (surge && !alreadyToasted) {
             const pageName = (PAGES.find((p) => p.id === pid) || {}).name || 'เพจนี้';
             showToast(`🔥 คอมเมนต์ถล่มเข้ามาที่ "${pageName}" ${totalCount} รายการรวด!`, 'error');
@@ -1531,6 +1537,9 @@ const PAGE_SIZE = 25;
 // เพจไหนมีคอมเมนต์ใหม่เข้ามา "สะสม" ตั้งแต่ครั้งล่าสุดที่เข้าไปดูเพจนั้น ตั้งแต่กี่รายการขึ้นไปถึงนับว่า
 // "โดนถล่ม" (surge) — ให้เตือนแรงกว่าคอมเมนต์เข้ามาเดี่ยวๆ ปกติ
 const CHIP_SURGE_THRESHOLD = 10;
+// ไฟกระพริบค้างไว้ได้นานสุดกี่มิลลิวินาทีถ้าไม่มีใครไปกดดูเพจนั้นเลย (กันเปิดแท็บทิ้งไว้ข้ามชั่วโมง
+// แล้วโหลดรอบแรกเจอของเก่าสะสมพร้อมกันเป็นก้อน ทำให้กระพริบเพจที่จริงๆ ไม่มีอะไรใหม่มานานแล้ว)
+const PAGE_FLASH_MAX_AGE_MS = 5 * 60 * 1000;
 
 const state = {
   // เพจไหนมีคอมเมนต์ใหม่ค้างอยู่ที่ยังไม่ได้เข้าไปดู (pageId -> {surge, count, toastShown}) — ใช้
@@ -1939,7 +1948,9 @@ function renderPageChips(){
         // case 'select-page') สีเรืองแสงใช้สีประจำเพจเอง ผ่าน --flash-rgb (r,g,b คั่นด้วยจุลภาค ใช้กับ
         // rgba() ใน CSS ได้ตรงๆ — เข้ากันได้กว้างกว่า color-mix() ที่เบราว์เซอร์บางตัวยังไม่รองรับ)
         const flash = state.pageFlash[p.id];
-        const flashClass = flash ? (flash.surge ? 'chip-surge' : 'chip-flash') : '';
+        const flashFresh = flash && (Date.now() - flash.since < PAGE_FLASH_MAX_AGE_MS);
+        if (flash && !flashFresh) delete state.pageFlash[p.id]; // หมดอายุแล้ว เก็บกวาดทิ้งไปเลย
+        const flashClass = flashFresh ? (flash.surge ? 'chip-surge' : 'chip-flash') : '';
         const flashRgb = hexToRgbTriplet(p.color);
         return `
         <div class="page-chip ${active ? 'active' : ''} ${flashClass}" data-action="select-page" data-page="${p.id}" style="${active ? `background:${p.color};` : ''} --flash-color:${p.color}; --flash-rgb:${flashRgb};">
