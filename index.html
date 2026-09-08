@@ -415,6 +415,20 @@
   .page-chip .dot{width:8px; height:8px; border-radius:50%;}
   .page-chip.active{border-color:transparent; background:var(--navy); color:#fff;}
   .page-chip.active .dot{outline:2px solid rgba(255,255,255,.5); background:#fff !important;}
+  /* คอมเมนต์ใหม่เข้าเพจนี้ — เรืองแสงรอบชิปด้วยสีของเพจเอง (--flash-color ตั้งไว้ inline ตอน render)
+     ให้รู้ทันทีว่าเพจไหนมีเข้ามาบ้างโดยไม่ต้องไล่เปิดดูทีละเพจ */
+  @keyframes chipFlash{
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--flash-color) 0%, transparent); }
+    50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--flash-color) 55%, transparent); }
+  }
+  .page-chip.chip-flash{ animation: chipFlash .9s ease-in-out 3; border-color: var(--flash-color); }
+  /* โดนถล่ม (คอมเมนต์เข้ารัวๆ หลายรายการในรอบเดียว) — กระพริบแรงกว่า ขยับขนาดเล็กน้อยด้วย ให้ต่างจาก
+     คอมเมนต์เข้าเดี่ยวๆ ปกติชัดเจน จะได้รู้ว่าเพจนี้ "โดนโถม" ไม่ใช่แค่มีคนทักมาคนเดียว */
+  @keyframes chipSurge{
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--flash-color) 0%, transparent); transform: scale(1); }
+    50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--flash-color) 70%, transparent); transform: scale(1.05); }
+  }
+  .page-chip.chip-surge{ animation: chipSurge .7s ease-in-out 8; border-color: var(--flash-color); border-width:2.5px; font-weight:800; }
 
   .toprow-tabs{display:flex; gap:26px; border-bottom:1px solid var(--border); margin-bottom:14px;}
   .toprow-tab{padding:10px 2px 12px; font-size:14.5px; font-weight:600; color:var(--text-faint); cursor:pointer; border-bottom:2.5px solid transparent; display:flex; gap:6px;}
@@ -1434,11 +1448,32 @@ async function loadData(){
 
     const freshIds = new Set(freshItems.map((it) => it.id));
     if (knownItemIds !== null) {
+      // นับคอมเมนต์ใหม่แยกตามเพจไปเลยในรอบเดียวกัน (ไม่ใช่แค่เช็คว่า "มีของใหม่ไหม" เฉยๆ) จะได้รู้ว่า
+      // เพจไหนมีเข้ามาบ้าง และเข้ามาเยอะแค่ไหนในรอบโหลดนี้ — ใช้ทำชิปเรืองแสง/กระพริบตอนมีคอมเมนต์ใหม่
+      const newCountByPage = {};
       let hasNew = false;
-      for (const id of freshIds) {
-        if (!knownItemIds.has(id)) { hasNew = true; break; }
+      for (const it of freshItems) {
+        if (!knownItemIds.has(it.id)) {
+          hasNew = true;
+          newCountByPage[it.pageId] = (newCountByPage[it.pageId] || 0) + 1;
+        }
       }
-      if (hasNew) playNotificationSound();
+      if (hasNew) {
+        playNotificationSound();
+        const now = Date.now();
+        for (const [pid, count] of Object.entries(newCountByPage)) {
+          const surge = count >= CHIP_SURGE_THRESHOLD;
+          state.pageFlash[pid] = { surge, expiresAt: now + (surge ? CHIP_SURGE_MS : CHIP_FLASH_MS) };
+          if (surge) {
+            const pageName = (PAGES.find((p) => p.id === pid) || {}).name || 'เพจนี้';
+            showToast(`🔥 คอมเมนต์ถล่มเข้ามาที่ "${pageName}" ${count} รายการรวด!`, 'error');
+          }
+        }
+        // ตั้งเวลาสั่ง render ซ้ำหลังจากเรืองแสงหมดเวลา เพื่อลบ class เรืองแสงออกจากชิป (render()
+        // ปกติจะไม่ถูกเรียกอีกจนกว่าจะ poll รอบถัดไป ถ้าไม่ตั้งเวลานี้ไว้ ชิปจะติดเรืองแสงค้างจนกว่า
+        // จะมีคอมเมนต์ใหม่เข้ามาอีกรอบ หรือผู้ใช้ไปคลิกอะไรสักอย่างที่ทำให้ render() ทำงาน)
+        setTimeout(() => render(), CHIP_SURGE_MS + 200);
+      }
     }
     knownItemIds = freshIds;
 
@@ -1489,7 +1524,16 @@ async function manualRefresh(){
 // จำนวนคอมเมนต์ต่อหน้า — เกินนี้ปัดไปหน้าถัดไปแทนที่จะโชว์รวดยาวหน้าเดียว
 const PAGE_SIZE = 25;
 
+// เพจไหนมีคอมเมนต์ใหม่เข้ามา "ในรอบโหลดเดียว" (ทุก 20 วิ หรือกดรีเฟรชเอง) ตั้งแต่กี่รายการขึ้นไป
+// ถึงนับว่า "โดนถล่ม" (surge) — ให้เตือนแรงกว่าคอมเมนต์เข้ามาเดี่ยวๆ ปกติ
+const CHIP_SURGE_THRESHOLD = 3;
+const CHIP_FLASH_MS = 3000; // คอมเมนต์เข้าปกติ — ชิปเรืองแสงกี่มิลลิวินาที
+const CHIP_SURGE_MS = 7000; // โดนถล่ม — เรืองแสง/สั่นแรงกว่า และอยู่นานกว่า
+
 const state = {
+  // เพจไหนเพิ่งมีคอมเมนต์ใหม่เข้ามา (pageId -> {surge:boolean, expiresAt:number}) — ใช้เรืองแสง/
+  // กระพริบชิปเพจใน renderPageChips() ให้รู้ทันทีว่าเพจไหนมีคอมเมนต์เข้ามาบ้างโดยไม่ต้องไล่เช็คเอง
+  pageFlash: {},
   // 'inbox' = หน้าแดชบอร์ดหลัก (รายการคอมเมนต์/ข้อความ), 'analytics' = หน้ารายงานสถิติ
   view: 'inbox',
   // ตัวกรองของหน้ารายงานสถิติ — ค่าเริ่มต้น 30 วันล่าสุด (ตามเวลาไทย), pageIds: null = เลือกทุกเกม
@@ -1877,8 +1921,14 @@ function renderPageChips(){
       </div>
       ${PAGES.map(p => {
         const active = state.pageFilter === p.id;
+        // เพิ่งมีคอมเมนต์ใหม่เข้าเพจนี้ในรอบโหลดล่าสุด (ยังไม่หมดเวลาเรืองแสง) — ใส่ class ให้เรืองแสง/
+        // กระพริบตาม CSS @keyframes chipFlash/chipSurge ด้านบน (สีเรืองแสงใช้สีประจำเพจเอง ผ่าน
+        // CSS variable --flash-color เพื่อให้ยังรู้ได้ทันทีว่าเป็นเพจไหนแม้กำลังกระพริบอยู่)
+        const flash = state.pageFlash[p.id];
+        const flashActive = flash && flash.expiresAt > Date.now();
+        const flashClass = flashActive ? (flash.surge ? 'chip-surge' : 'chip-flash') : '';
         return `
-        <div class="page-chip ${active ? 'active' : ''}" data-action="select-page" data-page="${p.id}" ${active ? `style="background:${p.color}"` : ''}>
+        <div class="page-chip ${active ? 'active' : ''} ${flashClass}" data-action="select-page" data-page="${p.id}" style="${active ? `background:${p.color};` : ''} --flash-color:${p.color};">
           <span class="dot" style="background:${active ? '#fff' : p.color}"></span> ${p.emoji} ${p.name}
         </div>
       `;
