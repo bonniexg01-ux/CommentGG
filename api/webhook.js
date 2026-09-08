@@ -68,16 +68,9 @@ async function handleEvent(req, res) {
   try {
     const rawBody = await readRawBody(req);
 
-    // เช็คลายเซ็นกับ secret ของทั้งสองแอป (แอปเดิม + แอปสำรอง V.2) — ผ่านแค่ตัวใดตัวหนึ่งก็พอ
-    // เพราะตอนนี้รับ webhook จริงจากได้ทั้งคู่พร้อมกัน (คนละเพจกัน)
-    if (APP_SECRET || BACKUP_APP_SECRET) {
-      const validAgainstMain = APP_SECRET && verifySignature(req, rawBody, APP_SECRET);
-      const validAgainstBackup = BACKUP_APP_SECRET && verifySignature(req, rawBody, BACKUP_APP_SECRET);
-      if (!validAgainstMain && !validAgainstBackup) {
-        return res.status(401).send('Invalid signature');
-      }
-    }
-
+    // ต้องรู้ก่อนว่า event นี้พูดถึงเพจไหนบ้าง ถึงจะไปหา app_secret เฉพาะของเพจนั้นมาเช็คลายเซ็นได้
+    // (ระบบ "ผูก Webhook" self-service ทำให้แต่ละเพจผูกกับแอป Facebook คนละตัวกันได้) — parse body
+    // ก่อนตรวจลายเซ็น แต่ยังไม่เชื่อเนื้อหาอะไรในนั้นจนกว่าจะเช็คลายเซ็นผ่านจริง
     let body;
     try {
       body = JSON.parse(rawBody.toString('utf-8'));
@@ -89,9 +82,26 @@ async function handleEvent(req, res) {
       return res.status(200).send('EVENT_RECEIVED');
     }
 
+    const fbPageIds = (body.entry || []).map((e) => String(e.id));
+    const pagesInfo = await fetchPagesByFbIds(fbPageIds);
+
+    // เช็คลายเซ็นกับ secret ทุกตัวที่เป็นไปได้: แอปเดิม (env) + แอปสำรอง V.2 (hardcode) + app_secret
+    // เฉพาะของแต่ละเพจที่ผูก Webhook ไว้เอง (คอลัมน์ pages.app_secret) — ผ่านแค่ตัวใดตัวหนึ่งก็พอ
+    const pageSecrets = pagesInfo.map((p) => p.app_secret).filter(Boolean);
+    const candidateSecrets = [APP_SECRET, BACKUP_APP_SECRET, ...pageSecrets].filter(Boolean);
+    if (candidateSecrets.length) {
+      const validAny = candidateSecrets.some((secret) => verifySignature(req, rawBody, secret));
+      if (!validAny) {
+        return res.status(401).send('Invalid signature');
+      }
+    }
+
+    const pageUuidByFbId = {};
+    for (const p of pagesInfo) pageUuidByFbId[String(p.page_id)] = p.id;
+
     for (const entry of body.entry || []) {
       const fbPageId = String(entry.id);
-      const pageUuid = await lookupPageUuid(fbPageId);
+      const pageUuid = pageUuidByFbId[fbPageId];
       if (!pageUuid) continue; // เพจนี้ยังไม่ได้ลงทะเบียนในระบบ
 
       if (entry.changes) {
@@ -154,15 +164,20 @@ function verifySignature(req, rawBody, appSecret) {
   return crypto.timingSafeEqual(sigBuffer, expectedBuffer);
 }
 
-async function lookupPageUuid(fbPageId) {
-  const url = `${SUPABASE_URL}/rest/v1/pages_public?page_id=eq.${encodeURIComponent(fbPageId)}&select=id`;
+// ดึง id (uuid ภายใน) + app_secret เฉพาะของเพจ (ถ้าผูก Webhook แบบ self-service ไว้) จากตาราง pages
+// จริง (ไม่ใช่ pages_public) ด้วย service role key — ใช้ทั้งหาเพจปลายทางของ event และหา secret มา
+// ตรวจลายเซ็นในคำเดียวกัน กันยิง query ซ้ำสองรอบ
+async function fetchPagesByFbIds(fbPageIds) {
+  const ids = fbPageIds.filter(Boolean);
+  if (!ids.length) return [];
+  const idList = ids.map((id) => `"${id}"`).join(',');
+  const url = `${SUPABASE_URL}/rest/v1/pages?page_id=in.(${idList})&select=id,page_id,app_secret`;
   const r = await fetch(url, { headers: sbHeaders });
   if (!r.ok) {
-    console.error('webhook error: lookupPageUuid ล้มเหลว', r.status, await r.text().catch(() => ''));
-    return null;
+    console.error('webhook error: fetchPagesByFbIds ล้มเหลว', r.status, await r.text().catch(() => ''));
+    return [];
   }
-  const rows = await r.json();
-  return rows[0] ? rows[0].id : null;
+  return await r.json();
 }
 
 // ถ้า rawId มี post_id ต่อท้ายอยู่แล้ว (บาง reply ที่ซ้อนลึกๆ Facebook ส่งมาเป็นรูปแบบผสมเลย)

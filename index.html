@@ -1487,7 +1487,7 @@ const state = {
   analytics: { startDate: addDaysStr(todayThaiStr(), -29), endDate: todayThaiStr(), pageIds: null },
   // หน้า "จัดการเพจ" — loaded/loading คุมสถานะโหลดรายชื่อเพจจาก /api/manage-pages (ไม่ได้อยู่ใน ITEMS/
   // PAGES ที่โหลดตอน login ปกติ เพราะต้องดึงผ่าน endpoint ที่เช็คสิทธิ์ can_manage_pages โดยเฉพาะ)
-  pagesAdmin: { loaded: false, loading: false, items: [], formOpen: false, editingId: null, testResult: null, testing: false, saving: false },
+  pagesAdmin: { loaded: false, loading: false, items: [], formOpen: false, editingId: null, testResult: null, testing: false, saving: false, webhookSubscribing: false, webhookResult: null },
   pageFilter: 'all',
   tab: 'comment',
   folder: 'inbox',
@@ -2670,6 +2670,36 @@ async function savePageAdmin(){
   render();
 }
 
+async function subscribeWebhookAdmin(){
+  const editingId = state.pagesAdmin.editingId;
+  if (!editingId) return; // ต้องบันทึกเพจนี้ก่อน ถึงจะมี Access Token ให้ผูก Webhook ได้
+  const appId = document.getElementById('pa-appId').value.trim();
+  const appSecret = document.getElementById('pa-appSecret').value.trim();
+  if (!appId) { showToast('ใส่ App ID ก่อนถึงจะผูก Webhook ได้', 'error'); return; }
+  if (!appSecret) { showToast('ใส่ App Secret ก่อนถึงจะผูก Webhook ได้', 'error'); return; }
+  state.pagesAdmin.webhookSubscribing = true;
+  state.pagesAdmin.webhookResult = null;
+  render();
+  try {
+    const res = await fetch('/api/manage-pages', {
+      method: 'POST',
+      headers: apiAuthHeaders(),
+      body: JSON.stringify({ action: 'subscribe-webhook', id: editingId, appId, appSecret }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || 'ผูก Webhook ไม่สำเร็จ');
+    state.pagesAdmin.webhookResult = { ok: true };
+    showToast('ผูก Webhook สำเร็จ — เพจนี้พร้อมรับคอมเมนต์แบบเรียลไทม์แล้ว', 'success');
+    state.pagesAdmin.loaded = false; // บังคับโหลดรายชื่อใหม่ ให้เห็นสถานะ Webhook ล่าสุด
+    await loadPagesAdmin();
+  } catch (err) {
+    state.pagesAdmin.webhookResult = { ok: false, error: err.message || 'ผูก Webhook ไม่สำเร็จ' };
+    showToast(err.message || 'ผูก Webhook ไม่สำเร็จ', 'error');
+  }
+  state.pagesAdmin.webhookSubscribing = false;
+  render();
+}
+
 function renderPagesAdminForm(){
   const editing = state.pagesAdmin.editingId ? state.pagesAdmin.items.find(p => p.id === state.pagesAdmin.editingId) : null;
   const tr = state.pagesAdmin.testResult;
@@ -2735,6 +2765,20 @@ function renderPagesAdminForm(){
             ) : ''}
           </div>
         </div>
+        ${editing && editing.has_token ? `
+        <div class="form-row" style="border-top:1px solid var(--border); padding-top:14px; margin-top:4px;">
+          <label>ผูก Webhook (รับคอมเมนต์แบบเรียลไทม์) ${editing.has_webhook ? '<span style="color:var(--green-text); font-size:12px;">' + ICONS.checkCircle + ' ผูกอยู่แล้ว</span>' : '<span class="opt">(ยังไม่ได้ผูก — ใส่ App ID + App Secret ของแอป Facebook ที่จะใช้)</span>'}</label>
+          <input id="pa-appId" type="text" placeholder="App ID เช่น 1114919626939183" style="margin-bottom:6px;" />
+          <input id="pa-appSecret" type="text" placeholder="App Secret" style="font-family:monospace; font-size:11.5px;" />
+          <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+            <button class="btn" type="button" data-action="pages-admin-subscribe-webhook" ${state.pagesAdmin.webhookSubscribing ? 'disabled' : ''}>${state.pagesAdmin.webhookSubscribing ? 'กำลังผูก...' : '🔗 ผูก Webhook'}</button>
+            ${state.pagesAdmin.webhookResult ? (state.pagesAdmin.webhookResult.ok
+              ? `<span style="color:var(--green-text); font-size:12.5px; display:flex; align-items:center; gap:4px;">${ICONS.checkCircle} ผูกสำเร็จ</span>`
+              : `<span style="color:var(--red-text); font-size:12.5px;">✕ ${state.pagesAdmin.webhookResult.error}</span>`
+            ) : ''}
+          </div>
+        </div>
+        ` : ''}
         <div class="form-row" style="display:flex; gap:16px;">
           <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
             <input id="pa-isActive" type="checkbox" ${!editing || editing.is_active ? 'checked' : ''} /> เปิดใช้งานเพจนี้
@@ -2781,6 +2825,7 @@ function renderPagesAdminView(){
             <th style="padding:10px 12px;">Page ID</th>
             <th style="padding:10px 12px;">สรรพนาม/คำลงท้าย</th>
             <th style="padding:10px 12px;">Token</th>
+            <th style="padding:10px 12px;">Webhook</th>
             <th style="padding:10px 12px;">สถานะ</th>
             <th style="padding:10px 12px;"></th>
           </tr>
@@ -2795,10 +2840,11 @@ function renderPagesAdminView(){
               <td style="padding:10px 12px; font-family:monospace; font-size:11px;">${p.page_id}</td>
               <td style="padding:10px 12px;">${p.pronoun || '-'} / ${p.ending || '-'}</td>
               <td style="padding:10px 12px;">${p.has_token ? `<span style="color:var(--green-text);">${ICONS.checkCircle} มี Token</span>` : `<span style="color:var(--red-text);">✕ ยังไม่มี</span>`}</td>
+              <td style="padding:10px 12px;">${p.has_webhook ? `<span style="color:var(--green-text);">${ICONS.checkCircle} ผูกแล้ว</span>` : `<span style="color:var(--text-dim);">- ยังไม่ผูก</span>`}</td>
               <td style="padding:10px 12px;">${p.is_active ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}${p.needs_polling ? ' · polling' : ''}</td>
               <td style="padding:10px 12px; text-align:right;"><button class="btn" type="button" data-action="pages-admin-edit" data-id="${p.id}">${ICONS.pencil} แก้ไข</button></td>
             </tr>
-          `).join('') : `<tr><td colspan="6" style="padding:20px 12px; text-align:center; color:var(--text-dim);">ยังไม่มีเพจในระบบ กด "เพิ่มเพจใหม่" ด้านบน</td></tr>`}
+          `).join('') : `<tr><td colspan="7" style="padding:20px 12px; text-align:center; color:var(--text-dim);">ยังไม่มีเพจในระบบ กด "เพิ่มเพจใหม่" ด้านบน</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -3388,6 +3434,7 @@ document.getElementById('app').addEventListener('click', (e) => {
     case 'pages-admin-add':
       state.pagesAdmin.editingId = null;
       state.pagesAdmin.testResult = null;
+      state.pagesAdmin.webhookResult = null;
       state.pagesAdmin.formOpen = true;
       render();
       break;
@@ -3395,6 +3442,7 @@ document.getElementById('app').addEventListener('click', (e) => {
     case 'pages-admin-edit':
       state.pagesAdmin.editingId = id;
       state.pagesAdmin.testResult = null;
+      state.pagesAdmin.webhookResult = null;
       state.pagesAdmin.formOpen = true;
       render();
       break;
@@ -3403,6 +3451,7 @@ document.getElementById('app').addEventListener('click', (e) => {
       state.pagesAdmin.formOpen = false;
       state.pagesAdmin.editingId = null;
       state.pagesAdmin.testResult = null;
+      state.pagesAdmin.webhookResult = null;
       render();
       break;
 
@@ -3412,6 +3461,10 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'pages-admin-save':
       savePageAdmin();
+      break;
+
+    case 'pages-admin-subscribe-webhook':
+      subscribeWebhookAdmin();
       break;
 
     case 'manual-refresh':

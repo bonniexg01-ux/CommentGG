@@ -85,15 +85,80 @@ async function testFacebookToken(pageId, accessToken) {
 }
 
 async function listPages() {
-  const url = `${SUPABASE_URL}/rest/v1/pages?select=id,page_id,page_name,game_name,color_hex,emoji,tag,pronoun,ending,hashtag,is_active,needs_polling,created_at,access_token&order=page_name.asc`;
+  const url = `${SUPABASE_URL}/rest/v1/pages?select=id,page_id,page_name,game_name,color_hex,emoji,tag,pronoun,ending,hashtag,is_active,needs_polling,created_at,access_token,app_id,app_secret&order=page_name.asc`;
   const r = await fetch(url, { headers: sbHeaders });
   if (!r.ok) throw new Error('โหลดรายชื่อเพจไม่สำเร็จ');
   const rows = await r.json();
-  // ตัด access_token ตัวจริงทิ้งก่อนส่งกลับไปฝั่ง client เสมอ เหลือไว้แค่ boolean ว่ามีหรือยัง
+  // ตัด access_token/app_secret ตัวจริงทิ้งก่อนส่งกลับไปฝั่ง client เสมอ เหลือไว้แค่ boolean ว่ามีตั้งไว้หรือยัง
   return rows.map((row) => {
-    const { access_token, ...rest } = row;
-    return { ...rest, has_token: !!access_token };
+    const { access_token, app_secret, ...rest } = row;
+    return { ...rest, has_token: !!access_token, has_webhook: !!app_secret };
   });
+}
+
+// ตั้งค่า Webhook ให้ apps อัตโนมัติผ่าน Graph API ล้วนๆ (ไม่ต้องเข้า App Dashboard เอง) — 2 ขั้นตอน:
+// 1) POST /{app-id}/subscriptions ผูก callback_url + verify_token ให้แอปนี้ (ทำ handshake กับ
+//    callback_url ของเราเองในตัว) 2) POST /{page-id}/subscribed_apps ให้เพจนี้ "สมัครรับ" event
+//    จากแอปนี้จริงๆ (ต้องใช้ access_token ของเพจเอง ไม่ใช่ของแอป)
+const WEBHOOK_CALLBACK_URL = 'https://commentgg-live.vercel.app/api/webhook';
+const WEBHOOK_VERIFY_TOKEN = 'commentgg_self_service_webhook_v1';
+
+async function subscribeWebhook(pageDbId, pageFbId, pageAccessToken, appId, appSecret) {
+  // ขั้น 1: ผูก Webhooks product ของแอปนี้เข้ากับ callback_url ของเรา
+  const subUrl = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(appId)}/subscriptions`;
+  const subParams = new URLSearchParams({
+    object: 'page',
+    callback_url: WEBHOOK_CALLBACK_URL,
+    fields: 'feed',
+    verify_token: WEBHOOK_VERIFY_TOKEN,
+    access_token: `${appId}|${appSecret}`,
+  });
+  let r;
+  try {
+    r = await fetchWithTimeout(subUrl, { method: 'POST', body: subParams });
+  } catch (err) {
+    const isTimeout = err && err.name === 'AbortError';
+    return { ok: false, error: isTimeout ? 'Facebook ไม่ตอบสนอง (หมดเวลา) ตอนตั้งค่า Webhooks ลองใหม่อีกครั้ง' : `เชื่อมต่อ Facebook ไม่สำเร็จ: ${err.message || err}` };
+  }
+  const subData = await r.json().catch(() => ({}));
+  if (subData.error) {
+    return { ok: false, error: `ตั้งค่า Webhooks ของแอปไม่สำเร็จ: ${subData.error.message || 'App ID หรือ App Secret ไม่ถูกต้อง'}` };
+  }
+
+  // ขั้น 2: ให้เพจนี้สมัครรับ event ผ่านแอปนี้จริง (ใช้ access_token ของเพจเอง)
+  const pageSubUrl = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageFbId)}/subscribed_apps`;
+  const pageSubParams = new URLSearchParams({
+    subscribed_fields: 'feed',
+    access_token: pageAccessToken,
+  });
+  let r2;
+  try {
+    r2 = await fetchWithTimeout(pageSubUrl, { method: 'POST', body: pageSubParams });
+  } catch (err) {
+    const isTimeout = err && err.name === 'AbortError';
+    return { ok: false, error: isTimeout ? 'Facebook ไม่ตอบสนอง (หมดเวลา) ตอนผูกเพจกับแอป ลองใหม่อีกครั้ง' : `เชื่อมต่อ Facebook ไม่สำเร็จ: ${err.message || err}` };
+  }
+  const pageSubData = await r2.json().catch(() => ({}));
+  if (pageSubData.error) {
+    return { ok: false, error: `ผูกเพจเข้ากับแอปไม่สำเร็จ: ${pageSubData.error.message || 'ตรวจสอบว่า Access Token ของเพจยังใช้ได้อยู่'}` };
+  }
+  if (!pageSubData.success) {
+    return { ok: false, error: 'Facebook ไม่ยืนยันว่าผูกสำเร็จ ลองใหม่อีกครั้ง' };
+  }
+
+  // สำเร็จ — บันทึก app_id/app_secret ลงเพจนี้ ให้ webhook.js เอาไปตรวจลายเซ็น event ที่เข้ามาต่อไป
+  const patchUrl = `${SUPABASE_URL}/rest/v1/pages?id=eq.${encodeURIComponent(pageDbId)}`;
+  const patchR = await fetch(patchUrl, {
+    method: 'PATCH',
+    headers: { ...sbHeaders, Prefer: 'return=minimal' },
+    body: JSON.stringify({ app_id: String(appId).trim(), app_secret: String(appSecret).trim() }),
+  });
+  if (!patchR.ok) {
+    console.error('manage-pages error: บันทึก app_id/app_secret ไม่สำเร็จ', patchR.status, await patchR.text().catch(() => ''));
+    return { ok: false, error: 'ผูก Webhook กับ Facebook สำเร็จ แต่บันทึกลงระบบไม่สำเร็จ ลองกดใหม่อีกครั้ง' };
+  }
+
+  return { ok: true };
 }
 
 export default async function handler(request) {
@@ -200,6 +265,24 @@ export default async function handler(request) {
 
       const rows = await r.json().catch(() => []);
       return json({ ok: true, page: rows[0] || null, fbCheckedName });
+    }
+
+    if (action === 'subscribe-webhook') {
+      const { id, appId, appSecret } = body || {};
+      if (!id) return json({ error: 'ต้องบันทึกเพจนี้ไว้ก่อน ถึงจะผูก Webhook ได้ (ต้องมี Page ID + Access Token อยู่แล้ว)' }, 400);
+      if (!appId || !String(appId).trim()) return json({ error: 'App ID จำเป็นต้องมี' }, 400);
+      if (!appSecret || !String(appSecret).trim()) return json({ error: 'App Secret จำเป็นต้องมี' }, 400);
+
+      const pageUrl = `${SUPABASE_URL}/rest/v1/pages?id=eq.${encodeURIComponent(id)}&select=page_id,access_token`;
+      const pageR = await fetch(pageUrl, { headers: sbHeaders });
+      if (!pageR.ok) return json({ error: 'โหลดข้อมูลเพจไม่สำเร็จ' }, 502);
+      const pageRows = await pageR.json();
+      const page = pageRows[0];
+      if (!page) return json({ error: 'ไม่พบเพจนี้ในระบบ' }, 404);
+      if (!page.access_token) return json({ error: 'เพจนี้ยังไม่มี Access Token — ใส่ Access Token แล้วบันทึกก่อน' }, 400);
+
+      const result = await subscribeWebhook(id, page.page_id, page.access_token, String(appId).trim(), String(appSecret).trim());
+      return json(result, result.ok ? 200 : 400);
     }
 
     return json({ error: `ไม่รู้จัก action: ${action}` }, 400);
