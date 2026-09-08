@@ -2303,12 +2303,29 @@ function renderPagination(totalPages){
   if (totalPages <= 1) return '';
   const prevDisabled = state.page <= 1;
   const nextDisabled = state.page >= totalPages;
+  // แสดงเลขหน้าแบบมีหน้าต่าง (window) ไม่เอาทุกหน้ามาเรียงยาวเป็นแถวเดียวแบบเดิม (บั๊กที่เจอ: พอมีหลาย
+  // สิบหน้า ตัวเลขล้นจนดูรก) — โชว์หน้าแรก/หน้าสุดท้ายเสมอ บวกหน้ารอบๆ หน้าปัจจุบันอีก WINDOW หน้าตรงกลาง
+  // ช่วงที่ข้ามไปใส่ "…" คั่นแทน ส่วนลูกศร ‹ › ยังกดขยับหน้าทีละ 1 ได้เหมือนเดิม
+  const WINDOW = 5;
+  let start = Math.max(1, state.page - Math.floor(WINDOW / 2));
+  let end = Math.min(totalPages, start + WINDOW - 1);
+  start = Math.max(1, end - WINDOW + 1);
+
+  const pageBtn = (p) => `<span class="btn ${p === state.page ? 'primary' : ''}" data-action="goto-page" data-page="${p}">${p}</span>`;
+  const ellipsis = `<span style="padding:0 4px; color:var(--text-dim);">…</span>`;
   let numbers = '';
-  for (let p = 1; p <= totalPages; p++) {
-    numbers += `<span class="btn ${p === state.page ? 'primary' : ''}" data-action="goto-page" data-page="${p}">${p}</span>`;
+  if (start > 1) {
+    numbers += pageBtn(1);
+    if (start > 2) numbers += ellipsis;
   }
+  for (let p = start; p <= end; p++) numbers += pageBtn(p);
+  if (end < totalPages) {
+    if (end < totalPages - 1) numbers += ellipsis;
+    numbers += pageBtn(totalPages);
+  }
+
   return `
-    <div class="pagination" style="display:flex; align-items:center; justify-content:center; gap:6px; padding:18px 0 6px;">
+    <div class="pagination" style="display:flex; align-items:center; justify-content:center; gap:6px; padding:18px 0 6px; flex-wrap:wrap;">
       <span class="btn${prevDisabled ? ' disabled' : ''}" data-action="goto-page" data-page="${state.page - 1}" style="${prevDisabled ? 'opacity:.4; pointer-events:none;' : ''}">‹</span>
       ${numbers}
       <span class="btn${nextDisabled ? ' disabled' : ''}" data-action="goto-page" data-page="${state.page + 1}" style="${nextDisabled ? 'opacity:.4; pointer-events:none;' : ''}">›</span>
