@@ -32,6 +32,11 @@ const APP_SECRET = process.env.META_APP_SECRET; // optional for now
 const BACKUP_APP_VERIFY_TOKEN = 'commentgg_cbcmt_v2_9f21ac';
 const BACKUP_APP_SECRET = '72e3883e813941fdc7990871124c1ff1';
 
+// verify token ที่ปุ่ม "ผูก Webhook" self-service (api/manage-pages.mjs) ใช้ตอนยิง
+// POST /{app-id}/subscriptions ให้แอปไหนก็ตามที่แอดมินผูกเอง — ต้องรับ token นี้ด้วยเสมอ
+// ไม่งั้น Facebook จะ handshake ไม่ผ่าน (403) ทุกครั้งที่มีคนกดปุ่มผูก Webhook เพจใหม่
+const SELF_SERVICE_VERIFY_TOKEN = 'commentgg_self_service_webhook_v1';
+
 const sbHeaders = {
   apikey: SUPABASE_KEY,
   Authorization: `Bearer ${SUPABASE_KEY}`,
@@ -56,7 +61,7 @@ function handleVerify(req, res) {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  const tokenOk = !VERIFY_TOKEN || token === VERIFY_TOKEN || token === BACKUP_APP_VERIFY_TOKEN;
+  const tokenOk = !VERIFY_TOKEN || token === VERIFY_TOKEN || token === BACKUP_APP_VERIFY_TOKEN || token === SELF_SERVICE_VERIFY_TOKEN;
   if (mode === 'subscribe' && tokenOk) {
     return res.status(200).send(challenge || '');
   }
