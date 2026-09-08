@@ -297,6 +297,16 @@
   .user-dropdown-item.danger:hover{background:var(--red-soft);}
   .user-dropdown-sep{height:1px; background:var(--border); margin:6px 4px;}
 
+  /* dropdown ปรับระดับเสียงเล็กๆ ที่เปิดจากปุ่มลำโพงบน topbar — ใช้โครงเดียวกับ .user-dropdown */
+  .sound-menu-wrap{position:relative;}
+  .sound-dropdown{
+    position:absolute; top:calc(100% + 8px); right:0; background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; box-shadow:0 12px 32px rgba(43,33,29,.18); width:210px; padding:14px 14px 10px; z-index:80;
+  }
+  .sound-dropdown-label{font-size:11.5px; font-weight:700; color:var(--text-dim); margin-bottom:6px;}
+  .sound-volume-range{width:100%; accent-color:var(--navy);}
+  .sound-volume-row{display:flex; justify-content:space-between; font-size:11px; color:var(--text-dim); margin-top:2px;}
+
   /* ---------------- Modal ---------------- */
   .modal-backdrop{
     position:fixed; inset:0; background:rgba(43,33,29,.45); z-index:90; display:flex; align-items:center;
@@ -356,6 +366,12 @@
   .theme-swatch.active{border-color:var(--green); box-shadow:0 0 0 2px var(--green-soft) inset;}
   .theme-swatch-dots{display:flex; gap:3px;}
   .theme-swatch-dots span{width:11px; height:11px; border-radius:50%; display:inline-block;}
+  .sound-preset-list{display:flex; flex-wrap:wrap; gap:8px;}
+  .sound-preset-btn{
+    padding:8px 14px; border-radius:10px; border:1.5px solid var(--border); background:var(--surface);
+    font-size:12.5px; font-weight:600; color:var(--text-dim); cursor:pointer;
+  }
+  .sound-preset-btn.active{border-color:var(--green); color:var(--green-text); background:var(--green-soft);}
 
   /* ---------------- Comment detail popover (compact card, anchored near the clicked row) ---------------- */
   .post-panel-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.12); z-index:95;}
@@ -885,6 +901,24 @@ function getSoundMuted(){
 function setSoundMuted(muted){
   localStorage.setItem(SOUND_MUTED_KEY, muted ? '1' : '0');
 }
+// ระดับเสียง 0-1 (เก็บเป็นเลขทศนิยม คูณเข้ากับ gainPeak ของแต่ละโน้ตตอนเล่นเสียงจริง) ค่าเริ่มต้น
+// 100% เหมือนพฤติกรรมเดิมก่อนมีตัวปรับ — กันเสียงเบี่ยงจากเดิมสำหรับคนที่ไม่เคยยุ่งกับตัวปรับนี้เลย
+const SOUND_VOLUME_KEY = 'commentgg_sound_volume';
+function getSoundVolume(){
+  const raw = parseFloat(localStorage.getItem(SOUND_VOLUME_KEY));
+  return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 1;
+}
+function setSoundVolume(v){
+  localStorage.setItem(SOUND_VOLUME_KEY, String(Math.max(0, Math.min(1, v))));
+}
+// แบบเสียงแจ้งเตือนที่เลือกไว้ (key ของ SOUND_PRESETS ด้านล่าง) ค่าเริ่มต้น 'bubble' คือเสียงเดิม
+const SOUND_TYPE_KEY = 'commentgg_sound_type';
+function getSoundType(){
+  return localStorage.getItem(SOUND_TYPE_KEY) || 'bubble';
+}
+function setSoundType(t){
+  localStorage.setItem(SOUND_TYPE_KEY, t);
+}
 // ไอคอน CommentGG เปลี่ยนไปตามธีมที่เลือก (หมี ↔ แมว ธีมเดิม)
 function iconForTheme(){
   const name = getThemeName();
@@ -1386,32 +1420,102 @@ function getAudioCtx(){
   }
   return audioCtx;
 }
-function playBubbleNote(ctx, startTime, freqFrom, freqTo, duration, gainPeak){
+function playBubbleNote(ctx, startTime, freqFrom, freqTo, duration, gainPeak, type){
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-  osc.type = 'sine';
+  osc.type = type || 'sine';
   osc.frequency.setValueAtTime(freqFrom, startTime);
-  osc.frequency.exponentialRampToValueAtTime(freqTo, startTime + duration);
+  if (freqTo !== freqFrom) osc.frequency.exponentialRampToValueAtTime(freqTo, startTime + duration);
   gain.gain.setValueAtTime(0.0001, startTime);
-  gain.gain.exponentialRampToValueAtTime(gainPeak, startTime + duration * 0.3);
+  gain.gain.exponentialRampToValueAtTime(Math.max(gainPeak, 0.0001), startTime + duration * 0.3);
   gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
   osc.connect(gain);
   gain.connect(ctx.destination);
   osc.start(startTime);
   osc.stop(startTime + duration + 0.03);
 }
+
+// เสียงแจ้งเตือนให้เลือกได้หลายแบบ (ยังสังเคราะห์เองผ่าน Web Audio API เหมือนเดิม ไม่ต้องมีไฟล์เสียง
+// แนบเพิ่ม) แต่ละแบบรับ ctx/startTime/volume (0-1, มาจาก state.soundVolume คูณเข้ากับ gainPeak ของ
+// ทุกโน้ต) — "bubble" คือเสียงเดิมที่ทำไว้ตอนแรก ที่เหลือเพิ่มมาให้เลือกตามที่ขอ
+const SOUND_PRESETS = {
+  bubble: {
+    label: '🫧 ฟองสบู่',
+    play(ctx, now, vol){
+      playBubbleNote(ctx, now, 620, 900, 0.09, 0.12 * vol);
+      playBubbleNote(ctx, now + 0.1, 900, 1300, 0.07, 0.09 * vol);
+    },
+  },
+  chime: {
+    label: '🔔 ระฆังหวาน',
+    play(ctx, now, vol){
+      playBubbleNote(ctx, now, 784, 784, 0.16, 0.11 * vol, 'triangle');
+      playBubbleNote(ctx, now + 0.09, 988, 988, 0.16, 0.10 * vol, 'triangle');
+      playBubbleNote(ctx, now + 0.18, 1318, 1318, 0.22, 0.09 * vol, 'triangle');
+    },
+  },
+  ding: {
+    label: '📯 ติ๊งเดียว',
+    play(ctx, now, vol){
+      playBubbleNote(ctx, now, 1046, 1046, 0.3, 0.14 * vol, 'sine');
+    },
+  },
+  pop: {
+    label: '🔵 ป็อบทุ้ม',
+    play(ctx, now, vol){
+      playBubbleNote(ctx, now, 220, 140, 0.1, 0.18 * vol, 'square');
+    },
+  },
+  marimba: {
+    label: '🎶 มาริมบา',
+    play(ctx, now, vol){
+      playBubbleNote(ctx, now, 523, 523, 0.12, 0.13 * vol, 'triangle');
+      playBubbleNote(ctx, now + 0.1, 659, 659, 0.12, 0.11 * vol, 'triangle');
+      playBubbleNote(ctx, now + 0.2, 784, 784, 0.18, 0.10 * vol, 'triangle');
+    },
+  },
+};
+
 function playNotificationSound(){
-  if (state.soundMuted) return;
+  if (state.soundMuted || state.soundVolume <= 0) return;
   try {
     const ctx = getAudioCtx();
     if (!ctx) return;
     if (ctx.state === 'suspended') ctx.resume();
-    const now = ctx.currentTime;
-    playBubbleNote(ctx, now, 620, 900, 0.09, 0.12);
-    playBubbleNote(ctx, now + 0.1, 900, 1300, 0.07, 0.09);
+    const preset = SOUND_PRESETS[state.soundType] || SOUND_PRESETS.bubble;
+    preset.play(ctx, ctx.currentTime, state.soundVolume);
   } catch (err) {
     console.error('เล่นเสียงแจ้งเตือนไม่สำเร็จ:', err);
   }
+}
+
+// เล่นตัวอย่างเสียง (หน้า Settings/dropdown ปุ่มลำโพง) — เล่นได้แม้ตอนปิดเสียงอยู่ เพราะเป็นการกดฟัง
+// ตัวอย่างโดยตั้งใจ ไม่ใช่การแจ้งเตือนอัตโนมัติ ควรได้ยินเสมอไม่ว่าจะปิดเสียงแจ้งเตือนไว้อยู่หรือไม่
+function previewSound(type){
+  try {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume();
+    const preset = SOUND_PRESETS[type] || SOUND_PRESETS.bubble;
+    preset.play(ctx, ctx.currentTime, state.soundVolume > 0 ? state.soundVolume : 1);
+  } catch (err) {
+    console.error('พรีวิวเสียงไม่สำเร็จ:', err);
+  }
+}
+
+// ปรับ slider ระดับเสียง (ทั้งใน dropdown ของปุ่มลำโพงบน topbar และในหน้า Settings ใช้ตัวเดียวกัน —
+// sync กันด้วย class .sound-volume-range/.sound-volume-label แทนที่จะ re-render เต็มหน้าทุกครั้งที่ลาก
+// slider ซึ่งจะกระตุกได้) บันทึกลง localStorage ทันทีทุกครั้งที่ลาก ส่วนเสียงตัวอย่างเล่นตอนปล่อยเมาส์
+// เท่านั้น (onchange) กันลากแล้วเสียงดังรัวถี่ยิบเกินไป
+function onSoundVolumeInput(value){
+  const v = Math.max(0, Math.min(100, Number(value))) / 100;
+  state.soundVolume = v;
+  setSoundVolume(v);
+  document.querySelectorAll('.sound-volume-label').forEach((el) => { el.textContent = Math.round(v * 100) + '%'; });
+  document.querySelectorAll('.sound-volume-range').forEach((el) => { el.value = Math.round(v * 100); });
+}
+function onSoundVolumeCommit(){
+  previewSound(state.soundType);
 }
 
 // เบราว์เซอร์ล็อกไม่ให้เล่นเสียงเองอัตโนมัติ (autoplay policy) จนกว่าจะมีการคลิก/แตะ/กดคีย์บอร์ด
@@ -1573,6 +1677,9 @@ const state = {
   // item.id ของคอมเมนต์ที่กำลังเปิดแผงเลือกอิโมจิอยู่ (เปิดได้ทีละอันเท่านั้น) null = ปิดหมด
   openEmojiPicker: null,
   soundMuted: getSoundMuted(), // อ่านค่าที่ปิด/เปิดไว้ล่าสุดจาก localStorage ตั้งแต่เริ่มโหลดหน้า
+  soundVolume: getSoundVolume(), // 0-1 อ่านค่าที่ปรับไว้ล่าสุด (ดีฟอลต์ 100% ถ้าไม่เคยปรับ)
+  soundType: getSoundType(), // แบบเสียงที่เลือกไว้ (key ของ SOUND_PRESETS)
+  soundMenuOpen: false, // dropdown ปรับเสียงเล็กๆ ที่เปิดจากปุ่มลำโพงบน topbar
   refreshing: false, // true ระหว่างกำลังโหลดข้อมูลจากปุ่มรีเฟรชคอมเมนต์ที่กดเอง (ให้ไอคอนหมุนเป็น feedback)
   bulkMenuOpen: false,
   page: 1, // หน้าปัจจุบันของรายการ (แบ่งหน้าละ PAGE_SIZE รายการ) รีเซ็ตเป็น 1 ทุกครั้งที่เปลี่ยนตัวกรอง
@@ -1791,8 +1898,11 @@ function renderTopbar(){
           ⚙️ <span style="font-size:12.5px;">จัดการเพจ</span>
         </div>
       ` : ''}
-      <div class="topbar-icon-btn" data-action="toggle-sound-mute" title="${state.soundMuted ? 'เปิดเสียงแจ้งเตือน' : 'ปิดเสียงแจ้งเตือน'}" style="${canViewAnalytics() || canManagePages() ? '' : 'margin-left:auto;'} margin-right:10px;">
-        ${state.soundMuted ? ICONS.volumeOff : ICONS.volumeOn}
+      <div class="sound-menu-wrap" style="${canViewAnalytics() || canManagePages() ? '' : 'margin-left:auto;'} margin-right:10px;">
+        <div class="topbar-icon-btn" data-action="toggle-sound-menu" title="ตั้งค่าเสียงแจ้งเตือน">
+          ${state.soundMuted || state.soundVolume <= 0 ? ICONS.volumeOff : ICONS.volumeOn}
+        </div>
+        ${state.soundMenuOpen ? renderSoundDropdown() : ''}
       </div>
       <div class="user-menu-wrap">
         <button class="topbar-user" data-action="toggle-user-menu">
@@ -1803,6 +1913,7 @@ function renderTopbar(){
       </div>
     </div>
     ${state.userMenuOpen ? `<div class="menu-backdrop" data-action="close-user-menu"></div>` : ''}
+    ${state.soundMenuOpen ? `<div class="menu-backdrop" data-action="close-sound-menu"></div>` : ''}
     ${state.profileOpen ? renderProfileModal() : ''}
   `;
 }
@@ -1817,6 +1928,27 @@ function renderUserDropdown(){
       <div class="user-dropdown-item" data-action="open-profile" data-tab="settings">${ICONS.gear} Settings</div>
       <div class="user-dropdown-sep"></div>
       <div class="user-dropdown-item danger" data-action="sign-out">${ICONS.logOut} Sign out</div>
+    </div>
+  `;
+}
+
+// dropdown เล็กๆ สำหรับปรับระดับเสียง/ปิดเสียงชั่วคราวแบบเร็วๆ จากปุ่มลำโพงบน topbar (ไม่ต้องเข้า
+// Settings) ส่วนเลือก "แบบเสียง" หลายๆ แบบพร้อมพรีวิวอยู่ในหน้า Settings เต็มๆ แทน (renderProfileModal)
+function renderSoundDropdown(){
+  const volPct = Math.round(state.soundVolume * 100);
+  return `
+    <div class="sound-dropdown" data-action="stop-propagation">
+      <div class="sound-dropdown-label">ระดับเสียงแจ้งเตือน</div>
+      <input type="range" class="sound-volume-range" min="0" max="100" step="5" value="${volPct}"
+        oninput="onSoundVolumeInput(this.value)" onchange="onSoundVolumeCommit()" />
+      <div class="sound-volume-row"><span>เบา</span><span class="sound-volume-label">${volPct}%</span><span>ดัง</span></div>
+      <div class="user-dropdown-sep" style="margin:10px 0 4px;"></div>
+      <div class="user-dropdown-item" data-action="toggle-sound-mute" style="padding-left:0;">
+        ${state.soundMuted ? ICONS.volumeOff : ICONS.volumeOn} ${state.soundMuted ? 'เปิดเสียง' : 'ปิดเสียงชั่วคราว'}
+      </div>
+      <div class="user-dropdown-item" data-action="open-profile" data-tab="settings" style="padding-left:0;">
+        ${ICONS.gear} เลือกแบบเสียง...
+      </div>
     </div>
   `;
 }
@@ -1896,6 +2028,23 @@ function renderProfileModal(){
         `).join('')}
       </div>
       <div class="form-hint">ธีมเพิ่มเติมจะเปิดให้เลือกเร็วๆ นี้</div>
+    </div>
+    <div class="form-row">
+      <label>เสียงแจ้งเตือน</label>
+      <div class="sound-preset-list">
+        ${Object.keys(SOUND_PRESETS).map(key => `
+          <div class="sound-preset-btn ${state.soundType === key ? 'active' : ''}" data-action="set-sound-type" data-sound="${key}">
+            ${SOUND_PRESETS[key].label}
+          </div>
+        `).join('')}
+      </div>
+      <div class="form-hint">กดเลือกเพื่อฟังตัวอย่างเสียงได้เลย</div>
+    </div>
+    <div class="form-row">
+      <label>ระดับเสียง</label>
+      <input type="range" class="sound-volume-range" min="0" max="100" step="5" value="${Math.round(state.soundVolume * 100)}"
+        oninput="onSoundVolumeInput(this.value)" onchange="onSoundVolumeCommit()" style="width:100%;" />
+      <div class="sound-volume-row"><span>เบา</span><span class="sound-volume-label">${Math.round(state.soundVolume * 100)}%</span><span>ดัง</span></div>
     </div>
   `;
 
@@ -3503,7 +3652,7 @@ document.getElementById('app').addEventListener('change', (e) => {
   }
 });
 
-const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu', 'close-filters', 'pages-admin-close-form']);
+const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu', 'close-sound-menu', 'close-filters', 'pages-admin-close-form']);
 
 // กดจัดการคอมเมนต์รายการนี้ (เปิดดู/ตอบ/ซ่อน/ย้ายถัง/เก็บ archive/กู้คืน/ลบถาวร) แปลว่า "เห็น/จัดการ
 // แล้ว" — เอาสถานะ "โดนถล่ม" (surge) ของเพจนั้นออกทันที (ไฟกระพริบพื้นฐานไม่ต้องเคลียร์ตรงนี้แล้ว
@@ -3610,8 +3759,20 @@ document.getElementById('app').addEventListener('click', (e) => {
       render();
       break;
 
+    case 'toggle-sound-menu':
+      state.soundMenuOpen = !state.soundMenuOpen;
+      state.userMenuOpen = false;
+      render();
+      break;
+
+    case 'close-sound-menu':
+      state.soundMenuOpen = false;
+      render();
+      break;
+
     case 'toggle-user-menu':
       state.userMenuOpen = !state.userMenuOpen;
+      state.soundMenuOpen = false;
       render(); break;
 
     case 'close-user-menu':
@@ -3630,6 +3791,7 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'open-profile':
       state.userMenuOpen = false;
+      state.soundMenuOpen = false;
       state.profileOpen = true;
       state.profileTab = el.dataset.tab || 'profile';
       render(); break;
@@ -3768,6 +3930,12 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'set-theme-name':
       setThemeName(el.dataset.theme);
+      render(); break;
+
+    case 'set-sound-type':
+      state.soundType = el.dataset.sound;
+      setSoundType(state.soundType);
+      previewSound(state.soundType); // เล่นให้ฟังทันทีที่เลือก จะได้รู้ว่าเลือกแบบไหนไปแล้ว
       render(); break;
 
     case 'select-all': {
