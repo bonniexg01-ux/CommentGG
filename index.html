@@ -305,6 +305,11 @@
   .modal-card{
     background:var(--surface); border-radius:18px; width:100%; max-width:640px; max-height:88vh; overflow-y:auto;
     box-shadow:0 24px 64px rgba(0,0,0,.28);
+    /* ฟอร์มยาวๆ (เช่นแก้ไขเพจ) จะมี scrollbar ขึ้นด้านขวาของการ์ดนี้ — ถ้าไม่กันที่ไว้ล่วงหน้า
+       เนื้อหาข้างในจะถูก scrollbar แย่งพื้นที่ไปแค่ฝั่งขวาฝั่งเดียว ทำให้ระยะขอบซ้าย/ขวาไม่เท่ากัน
+       (ฝั่งขวาห่างกว่าฝั่งซ้ายเห็นได้ชัด) scrollbar-gutter:stable both-edges กันที่ไว้ทั้งสองฝั่งเท่ากัน
+       ตั้งแต่แรก ต่อให้เนื้อหาสั้นพอไม่มี scrollbar ขึ้นจริงก็ยังกันที่ไว้เท่ากัน ระยะขอบเลยเท่ากันเสมอ */
+    scrollbar-gutter: stable both-edges;
   }
   .modal-head{display:flex; align-items:center; justify-content:space-between; padding:22px 24px 0;}
   .modal-head h2{font-size:20px; margin:0;}
