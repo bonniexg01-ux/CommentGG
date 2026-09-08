@@ -2823,7 +2823,6 @@ function renderPagesAdminView(){
           <tr style="text-align:left; color:var(--text-dim); border-bottom:1px solid var(--border);">
             <th style="padding:10px 12px;">เพจ</th>
             <th style="padding:10px 12px;">Page ID</th>
-            <th style="padding:10px 12px;">สรรพนาม/คำลงท้าย</th>
             <th style="padding:10px 12px;">Token</th>
             <th style="padding:10px 12px;">Webhook</th>
             <th style="padding:10px 12px;">สถานะ</th>
@@ -2838,13 +2837,12 @@ function renderPagesAdminView(){
                 ${p.game_name ? `<div style="color:var(--text-dim); font-size:11px;">${p.game_name}</div>` : ''}
               </td>
               <td style="padding:10px 12px; font-family:monospace; font-size:11px;">${p.page_id}</td>
-              <td style="padding:10px 12px;">${p.pronoun || '-'} / ${p.ending || '-'}</td>
               <td style="padding:10px 12px;">${p.has_token ? `<span style="color:var(--green-text);">${ICONS.checkCircle} มี Token</span>` : `<span style="color:var(--red-text);">✕ ยังไม่มี</span>`}</td>
               <td style="padding:10px 12px;">${p.has_webhook ? `<span style="color:var(--green-text);">${ICONS.checkCircle} ผูกแล้ว</span>` : `<span style="color:var(--text-dim);">- ยังไม่ผูก</span>`}</td>
               <td style="padding:10px 12px;">${p.is_active ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}${p.needs_polling ? ' · polling' : ''}</td>
               <td style="padding:10px 12px; text-align:right;"><button class="btn" type="button" data-action="pages-admin-edit" data-id="${p.id}">${ICONS.pencil} แก้ไข</button></td>
             </tr>
-          `).join('') : `<tr><td colspan="7" style="padding:20px 12px; text-align:center; color:var(--text-dim);">ยังไม่มีเพจในระบบ กด "เพิ่มเพจใหม่" ด้านบน</td></tr>`}
+          `).join('') : `<tr><td colspan="6" style="padding:20px 12px; text-align:center; color:var(--text-dim);">ยังไม่มีเพจในระบบ กด "เพิ่มเพจใหม่" ด้านบน</td></tr>`}
         </tbody>
       </table>
     </div>
