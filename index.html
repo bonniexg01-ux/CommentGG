@@ -303,15 +303,16 @@
     justify-content:center; padding:24px;
   }
   .modal-card{
-    background:var(--surface); border-radius:18px; width:100%; max-width:640px; max-height:88vh; overflow-y:auto;
+    background:var(--surface); border-radius:18px; width:100%; max-width:640px; max-height:88vh;
     box-shadow:0 24px 64px rgba(0,0,0,.28);
-    /* ฟอร์มยาวๆ (เช่นแก้ไขเพจ) จะมี scrollbar ขึ้นด้านขวาของการ์ดนี้ — ถ้าไม่กันที่ไว้ล่วงหน้า
-       เนื้อหาข้างในจะถูก scrollbar แย่งพื้นที่ไปแค่ฝั่งขวาฝั่งเดียว ทำให้ระยะขอบซ้าย/ขวาไม่เท่ากัน
-       (ฝั่งขวาห่างกว่าฝั่งซ้ายเห็นได้ชัด) scrollbar-gutter:stable both-edges กันที่ไว้ทั้งสองฝั่งเท่ากัน
-       ตั้งแต่แรก ต่อให้เนื้อหาสั้นพอไม่มี scrollbar ขึ้นจริงก็ยังกันที่ไว้เท่ากัน ระยะขอบเลยเท่ากันเสมอ */
-    scrollbar-gutter: stable both-edges;
+    /* เดิม overflow-y:auto อยู่ตรงนี้เอง (การ์ดที่มีมุมโค้ง border-radius) — ฟอร์มยาวๆ ที่ scrollbar
+       ขึ้น ทำให้ตัว scrollbar (เหลี่ยม ไม่มีมุมโค้ง) ไปคาบเกี่ยวมุมขวาบน/ขวาล่างของการ์ด มองเห็นเป็น
+       "มุมเหลี่ยม" ผิดจากมุมซ้ายที่โค้งปกติ — ย้าย overflow-y:auto ไปไว้ที่ .modal-scroll (ชั้นในสุด)
+       แทน แล้วให้การ์ดชั้นนอกนี้แค่ overflow:hidden เฉยๆ (ไม่ scroll เอง) มุมโค้งเลยตัด/ครอบ scrollbar
+       ที่โผล่ออกมาให้เนียนไปกับขอบการ์ดเสมอ ไม่มีทางเห็นมุมเหลี่ยมอีก */
+    overflow:hidden; display:flex; flex-direction:column;
   }
-  .modal-head{display:flex; align-items:center; justify-content:space-between; padding:22px 24px 0;}
+  .modal-head{display:flex; align-items:center; justify-content:space-between; padding:22px 24px 0; flex:none;}
   .modal-head h2{font-size:20px; margin:0;}
   .modal-close{
     width:32px; height:32px; border-radius:8px; border:1px solid var(--border); background:var(--surface);
@@ -319,9 +320,12 @@
   }
   .modal-close:hover{background:var(--hover-bg);}
   .modal-close svg{width:15px; height:15px;}
-  .modal-tabs{display:flex; gap:22px; padding:18px 24px 0; border-bottom:1px solid var(--border); margin-top:12px;}
+  .modal-tabs{display:flex; gap:22px; padding:18px 24px 0; border-bottom:1px solid var(--border); margin-top:12px; flex:none;}
   .modal-tab{padding-bottom:10px; font-size:13.5px; font-weight:600; color:var(--text-faint); cursor:pointer; border-bottom:2.5px solid transparent;}
   .modal-tab.active{color:var(--text); border-color:var(--green);}
+  /* ตัวที่ scroll จริงๆ (ย้ายมาจาก .modal-card) — scrollbar-gutter กันที่ไว้ทั้งสองฝั่งเท่ากัน กัน
+     ระยะขอบซ้าย/ขวาไม่เท่ากันตอนมี scrollbar ขึ้นด้วยอีกชั้น (นอกเหนือจากที่แก้เรื่องมุมเหลี่ยมไปแล้ว) */
+  .modal-scroll{overflow-y:auto; flex:1; min-height:0; scrollbar-gutter: stable both-edges;}
   .modal-body{padding:22px 24px 8px;}
   .modal-desc{font-size:13px; color:var(--text-dim); margin-bottom:20px; line-height:1.6;}
   .form-row{margin-bottom:16px;}
@@ -391,7 +395,7 @@
   .ppp-link:hover{text-decoration:underline;}
   .modal-foot{
     display:flex; justify-content:flex-end; gap:10px; padding:16px 24px 22px; border-top:1px solid var(--border);
-    margin-top:6px;
+    margin-top:6px; flex:none;
   }
 
   /* ---------------- Main ---------------- */
@@ -1847,8 +1851,10 @@ function renderProfileModal(){
           <div class="modal-tab ${tab === 'profile' ? 'active' : ''}" data-action="profile-tab" data-tab="profile">Profile</div>
           <div class="modal-tab ${tab === 'settings' ? 'active' : ''}" data-action="profile-tab" data-tab="settings">Settings</div>
         </div>
-        <div class="modal-body">
-          ${tab === 'profile' ? profileTabHtml : settingsTabHtml}
+        <div class="modal-scroll">
+          <div class="modal-body">
+            ${tab === 'profile' ? profileTabHtml : settingsTabHtml}
+          </div>
         </div>
         <div class="modal-foot">
           <button class="btn" data-action="close-profile">Cancel</button>
@@ -2715,6 +2721,7 @@ function renderPagesAdminForm(){
           <h2 style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${editing ? 'แก้ไขเพจ: ' + editing.page_name : 'เพิ่มเพจใหม่'}</h2>
           <div class="modal-close" data-action="pages-admin-close-form" style="flex:none;">${ICONS.x}</div>
         </div>
+        <div class="modal-scroll">
         <div class="modal-body">
         <div class="form-row">
           <label>Page ID (Facebook) <span class="opt">(ตัวเลขจาก Meta Business Suite/Graph API)</span></label>
@@ -2791,6 +2798,7 @@ function renderPagesAdminForm(){
           <label style="display:flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap; flex:none;" title="เปิดถ้าเพจนี้ไม่มี webhook ต้องให้ระบบ polling ดึงคอมเมนต์เองแทน">
             <input id="pa-needsPolling" type="checkbox" ${editing && editing.needs_polling ? 'checked' : ''} /> ต้อง polling (ไม่มี webhook)
           </label>
+        </div>
         </div>
         </div>
         <div class="modal-foot">
