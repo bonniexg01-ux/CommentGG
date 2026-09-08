@@ -22,16 +22,6 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN; // optional for now
 const APP_SECRET = process.env.META_APP_SECRET; // optional for now
 
-// แอปเดิม (CB-CMT) โดน Facebook ตัด API เพราะยังไม่ได้ทำ Data Use Checkup ประจำปี (แสดง error
-// "API access disrupted... complete Data Use Checkup") — ระหว่างรอแก้ ทีมงานตั้งแอปสำรอง "CB-CMT
-// API Connector V.2" ขึ้นมาแทนชั่วคราว อย่างน้อยเพจ Cabal: Ultimate Combo (2026-09-08) เพื่อให้
-// คอมเมนต์เพจนี้ยังไหลเข้าได้ระหว่างรอแอปเดิมกลับมาใช้ได้ปกติ — เก็บ verify token/app secret ของ
-// แอปสำรองไว้เป็นค่าที่สองในโค้ดนี้เลย (ไม่ผ่าน env var เพราะ endpoint เดียวรับ webhook จากได้
-// มากกว่า 1 แอปพร้อมกัน ต้องเช็คได้ทั้งคู่ ไม่ใช่แค่ค่าเดียวจาก env) พอแอปเดิมกลับมาใช้ได้แล้วค่อย
-// ลบสองบรรทัดนี้ทิ้งได้
-const BACKUP_APP_VERIFY_TOKEN = 'commentgg_cbcmt_v2_9f21ac';
-const BACKUP_APP_SECRET = '72e3883e813941fdc7990871124c1ff1';
-
 // verify token ที่ปุ่ม "ผูก Webhook" self-service (api/manage-pages.mjs) ใช้ตอนยิง
 // POST /{app-id}/subscriptions ให้แอปไหนก็ตามที่แอดมินผูกเอง — ต้องรับ token นี้ด้วยเสมอ
 // ไม่งั้น Facebook จะ handshake ไม่ผ่าน (403) ทุกครั้งที่มีคนกดปุ่มผูก Webhook เพจใหม่
@@ -61,7 +51,7 @@ function handleVerify(req, res) {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  const tokenOk = !VERIFY_TOKEN || token === VERIFY_TOKEN || token === BACKUP_APP_VERIFY_TOKEN || token === SELF_SERVICE_VERIFY_TOKEN;
+  const tokenOk = !VERIFY_TOKEN || token === VERIFY_TOKEN || token === SELF_SERVICE_VERIFY_TOKEN;
   if (mode === 'subscribe' && tokenOk) {
     return res.status(200).send(challenge || '');
   }
@@ -90,10 +80,11 @@ async function handleEvent(req, res) {
     const fbPageIds = (body.entry || []).map((e) => String(e.id));
     const pagesInfo = await fetchPagesByFbIds(fbPageIds);
 
-    // เช็คลายเซ็นกับ secret ทุกตัวที่เป็นไปได้: แอปเดิม (env) + แอปสำรอง V.2 (hardcode) + app_secret
-    // เฉพาะของแต่ละเพจที่ผูก Webhook ไว้เอง (คอลัมน์ pages.app_secret) — ผ่านแค่ตัวใดตัวหนึ่งก็พอ
+    // เช็คลายเซ็นกับ secret ทุกตัวที่เป็นไปได้: แอปเดิม (env, ไม่ hardcode ในโค้ด) + app_secret เฉพาะ
+    // ของแต่ละเพจที่ผูก Webhook ไว้เอง (คอลัมน์ pages.app_secret, เก็บในฐานข้อมูลเท่านั้น ไม่ใช่ในโค้ด
+    // ที่ push ขึ้น GitHub ตรงๆ — กัน Facebook App Secret หลุดไปอยู่ใน public repo) — ผ่านตัวใดตัวหนึ่งก็พอ
     const pageSecrets = pagesInfo.map((p) => p.app_secret).filter(Boolean);
-    const candidateSecrets = [APP_SECRET, BACKUP_APP_SECRET, ...pageSecrets].filter(Boolean);
+    const candidateSecrets = [APP_SECRET, ...pageSecrets].filter(Boolean);
     if (candidateSecrets.length) {
       const validAny = candidateSecrets.some((secret) => verifySignature(req, rawBody, secret));
       if (!validAny) {

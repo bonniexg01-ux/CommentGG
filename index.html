@@ -2704,13 +2704,13 @@ function renderPagesAdminForm(){
   const editing = state.pagesAdmin.editingId ? state.pagesAdmin.items.find(p => p.id === state.pagesAdmin.editingId) : null;
   const tr = state.pagesAdmin.testResult;
   return `
-    <div class="post-panel-backdrop" data-action="pages-admin-close-form"></div>
-    <div class="post-panel" data-action="stop-propagation" style="max-width:520px;">
-      <div class="post-panel-head">
-        <div style="font-weight:600;">${editing ? 'แก้ไขเพจ: ' + editing.page_name : 'เพิ่มเพจใหม่'}</div>
-        <div class="modal-close" data-action="pages-admin-close-form">${ICONS.x}</div>
-      </div>
-      <div class="post-panel-body" style="padding:16px;">
+    <div class="modal-backdrop" data-action="pages-admin-close-form">
+      <div class="modal-card" data-action="stop-propagation" style="max-width:560px;">
+        <div class="modal-head">
+          <h2>${editing ? 'แก้ไขเพจ: ' + editing.page_name : 'เพิ่มเพจใหม่'}</h2>
+          <div class="modal-close" data-action="pages-admin-close-form">${ICONS.x}</div>
+        </div>
+        <div class="modal-body">
         <div class="form-row">
           <label>Page ID (Facebook) <span class="opt">(ตัวเลขจาก Meta Business Suite/Graph API)</span></label>
           <input id="pa-pageId" type="text" value="${editing ? editing.page_id : ''}" placeholder="เช่น 1060422630485711" />
@@ -2787,7 +2787,8 @@ function renderPagesAdminForm(){
             <input id="pa-needsPolling" type="checkbox" ${editing && editing.needs_polling ? 'checked' : ''} /> ต้อง polling (ไม่มี webhook)
           </label>
         </div>
-        <div class="form-row" style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px;">
+        </div>
+        <div class="modal-foot">
           <button class="btn" type="button" data-action="pages-admin-close-form">ยกเลิก</button>
           <button class="btn primary" type="button" data-action="pages-admin-save" ${state.pagesAdmin.saving ? 'disabled' : ''}>${state.pagesAdmin.saving ? 'กำลังบันทึก...' : 'บันทึก'}</button>
         </div>
