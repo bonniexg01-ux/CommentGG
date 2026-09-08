@@ -415,10 +415,10 @@
   .page-chip .dot{width:8px; height:8px; border-radius:50%;}
   .page-chip.active{border-color:transparent; background:var(--navy); color:#fff;}
   .page-chip.active .dot{outline:2px solid rgba(255,255,255,.5); background:#fff !important;}
-  /* คอมเมนต์ใหม่เข้าเพจนี้ที่ยังไม่ได้เปิดดู — เรืองแสงรอบชิปด้วยสีของเพจเอง (--flash-rgb ตั้งไว้ inline
-     ตอน render, ใช้ rgba() ธรรมดาแทน color-mix() เพื่อให้แน่ใจว่าเห็นได้ในทุกเบราว์เซอร์) กระพริบวนไป
-     เรื่อยๆ ไม่หยุดเอง จนกว่าจะกดเข้าไปดูเพจนั้นจริง (เคลียร์ที่ case 'select-page') กันพลาดไม่ทันเห็น
-     ตอนกระพริบสั้นๆ แบบที่เคยทำไว้รอบแรก */
+  /* เพจนี้ยังมีคอมเมนต์ค้างตอบอยู่ (pending, ใน inbox, ไม่ถูกบล็อก) — เรืองแสงรอบชิปด้วยสีของเพจเอง
+     (--flash-rgb ตั้งไว้ inline ตอน render, ใช้ rgba() ธรรมดาแทน color-mix() เพื่อให้แน่ใจว่าเห็นได้ใน
+     ทุกเบราว์เซอร์) กระพริบวนไปเรื่อยๆ ไม่หยุดเอง — ยึดจากข้อมูลจริงของคอมเมนต์เพจนั้น ไม่ใช่สถานะ
+     เซสชัน ดังนั้นจะหายกระพริบเองทันทีที่คอมเมนต์นั้นถูกตอบ/ย้าย/ลบ (ไม่ว่าจะทำจากอุปกรณ์ไหนก็ตาม) */
   @keyframes chipFlash{
     0%, 100% { box-shadow: 0 0 0 0 rgba(var(--flash-rgb), 0); }
     50% { box-shadow: 0 0 0 5px rgba(var(--flash-rgb), .6); }
@@ -431,6 +431,12 @@
     50% { box-shadow: 0 0 0 9px rgba(var(--flash-rgb), .8); transform: scale(1.06); }
   }
   .page-chip.chip-surge{ animation: chipSurge .8s ease-in-out infinite; border-color: var(--flash-color); border-width:2.5px; font-weight:800; }
+  /* ตัวเลขจำนวนคอมเมนต์ที่ยังค้างตอบของเพจนั้น (แสดงเฉพาะตอน > 0) — ให้เห็นเลขคร่าวๆ โดยไม่ต้องกดเข้าไปดู */
+  .chip-pending-count{
+    display:inline-flex; align-items:center; justify-content:center; min-width:16px; height:16px; padding:0 4px;
+    border-radius:99px; background:rgba(0,0,0,.18); font-size:10.5px; font-weight:800; line-height:1;
+  }
+  .page-chip.active .chip-pending-count{ background:rgba(255,255,255,.3); }
 
   .toprow-tabs{display:flex; gap:26px; border-bottom:1px solid var(--border); margin-bottom:14px;}
   .toprow-tab{padding:10px 2px 12px; font-size:14.5px; font-weight:600; color:var(--text-faint); cursor:pointer; border-bottom:2.5px solid transparent; display:flex; gap:6px;}
@@ -1462,21 +1468,17 @@ async function loadData(){
       }
       if (hasNew) {
         playNotificationSound();
+        // หมายเหตุ: ไฟกระพริบพื้นฐานของชิป (chip-flash) ไม่ได้ผูกกับ state.pageFlash แล้ว — ย้ายไปยึด
+        // จากข้อมูลจริงใน renderPageChips() แทน (มีคอมเมนต์ค้างตอบใน inbox ของเพจนั้นหรือไม่) ตรงนี้
+        // เหลือหน้าที่แค่ตรวจจับ "โดนถล่ม" (คอมเมนต์เข้ารัวๆ ถึงเกณฑ์ในช่วงเวลาสั้นๆ) เพื่อขึ้น
+        // ลูกเล่นแรงกว่า (chip-surge) + toast เตือนเท่านั้น
         for (const [pid, count] of Object.entries(newCountByPage)) {
-          // ค้างไฟกระพริบไว้จนกว่าจะกด "เข้าไปดูเพจนั้น" จริงๆ (เคลียร์ตรง case 'select-page') —
-          // ไม่ตั้งเวลาหมดอายุแบบสั้นๆ แล้ว เพราะเจอปัญหาว่าถ้าไม่ได้จ้องหน้าจอพอดีตอนนั้นจะพลาดไฟ
-          // กระพริบไปเลย ดีกว่าให้มันค้างไว้เตือนจนกว่าจะเปิดเข้าไปดูจริง — ถ้าคอมเมนต์เข้าเพจเดิมซ้ำ
-          // อีกระหว่างที่ยังไม่ได้เคลียร์ ให้บวกยอดสะสมต่อ ไม่ใช่ทับค่าเดิม จะได้นับรวมถูกด้วย
           const prev = state.pageFlash[pid];
-          const totalCount = (prev ? prev.count : 0) + count;
+          const prevFresh = prev && (Date.now() - prev.since < PAGE_FLASH_MAX_AGE_MS);
+          const totalCount = (prevFresh ? prev.count : 0) + count;
           const surge = totalCount >= CHIP_SURGE_THRESHOLD;
-          const alreadyToasted = !!(prev && prev.toastShown);
-          // เก็บเวลาที่เจอ "ใหม่" ครั้งแรกไว้ (ไม่อัปเดตซ้ำถ้ามีของเดิมค้างอยู่แล้ว) เผื่อเปิดแท็บทิ้งไว้
-          // นานๆ ไม่ได้ reload หน้าเว็บเต็มรูปแบบเลย พอกลับมาโหลดข้อมูลรอบแรกหลังจากนั้น ระบบจะเจอ
-          // คอมเมนต์เก่าที่สะสมมาหลายชั่วโมงพร้อมกันเป็นก้อนใหญ่ ดูเหมือน "ใหม่" ทั้งหมดทั้งที่จริงๆ
-          // ไม่ใช่ — auto หมดอายุหลัง 5 นาทีกันไฟค้างงงว่าเพจไหนกระพริบเพราะอะไร (ยังเคลียร์ทันทีได้
-          // เหมือนเดิมถ้ากดเข้าไปดู/จัดการคอมเมนต์เพจนั้นจริงๆ อยู่แล้ว)
-          const since = prev ? prev.since : Date.now();
+          const alreadyToasted = !!(prevFresh && prev.toastShown);
+          const since = prevFresh ? prev.since : Date.now();
           state.pageFlash[pid] = { surge, count: totalCount, toastShown: alreadyToasted || surge, since };
           if (surge && !alreadyToasted) {
             const pageName = (PAGES.find((p) => p.id === pid) || {}).name || 'เพจนี้';
@@ -1542,9 +1544,10 @@ const CHIP_SURGE_THRESHOLD = 10;
 const PAGE_FLASH_MAX_AGE_MS = 5 * 60 * 1000;
 
 const state = {
-  // เพจไหนมีคอมเมนต์ใหม่ค้างอยู่ที่ยังไม่ได้เข้าไปดู (pageId -> {surge, count, toastShown}) — ใช้
-  // เรืองแสง/กระพริบชิปเพจใน renderPageChips() ค้างไว้จนกว่าจะกดเข้าไปดูเพจนั้นจริง (เคลียร์ที่
-  // case 'select-page') ไม่ใช่กระพริบสั้นๆ แล้วหายเอง กันพลาดไม่ทันเห็นตอนไม่ได้จ้องหน้าจอพอดี
+  // ใช้ติดตามเฉพาะสถานะ "โดนถล่ม" (surge) ของแต่ละเพจเท่านั้น (pageId -> {surge, count, toastShown,
+  // since}) — ไฟกระพริบพื้นฐานของชิปไม่ได้อยู่ในนี้แล้ว เพราะย้ายไปยึดจากข้อมูลจริง (มีคอมเมนต์ค้างตอบ
+  // ใน inbox ไหม) ใน renderPageChips() แทน ส่วนตรงนี้ auto หมดอายุตาม PAGE_FLASH_MAX_AGE_MS กันไฟ
+  // "โดนถล่ม" ค้างงงถ้าทิ้งแท็บไว้นานๆ
   pageFlash: {},
   // 'inbox' = หน้าแดชบอร์ดหลัก (รายการคอมเมนต์/ข้อความ), 'analytics' = หน้ารายงานสถิติ
   view: 'inbox',
@@ -1943,18 +1946,26 @@ function renderPageChips(){
       </div>
       ${PAGES.map(p => {
         const active = state.pageFilter === p.id;
-        // เพิ่งมีคอมเมนต์ใหม่เข้าเพจนี้ที่ยังไม่ได้เข้าไปดู — ใส่ class ให้เรืองแสง/กระพริบตาม CSS
-        // @keyframes chipFlash/chipSurge ด้านบน ค้างไว้จนกว่าจะกดเข้าไปดูเพจนั้นจริง (เคลียร์ที่
-        // case 'select-page') สีเรืองแสงใช้สีประจำเพจเอง ผ่าน --flash-rgb (r,g,b คั่นด้วยจุลภาค ใช้กับ
-        // rgba() ใน CSS ได้ตรงๆ — เข้ากันได้กว้างกว่า color-mix() ที่เบราว์เซอร์บางตัวยังไม่รองรับ)
-        const flash = state.pageFlash[p.id];
-        const flashFresh = flash && (Date.now() - flash.since < PAGE_FLASH_MAX_AGE_MS);
-        if (flash && !flashFresh) delete state.pageFlash[p.id]; // หมดอายุแล้ว เก็บกวาดทิ้งไปเลย
-        const flashClass = flashFresh ? (flash.surge ? 'chip-surge' : 'chip-flash') : '';
+        // กระพริบค้างไว้ "ตราบใดที่เพจนี้ยังมีคอมเมนต์ค้างตอบอยู่จริง" (ยัง pending, อยู่ใน inbox,
+        // ไม่ถูกบล็อก) — เกณฑ์เดียวกับป้าย "ต้องตอบกลับ" ใน tagFor()/pendingBadgeCount() ยึดข้อมูลจริง
+        // เป็นหลักแทนการจำสถานะไว้ในเซสชัน พอตอบ/ย้าย/ลบคอมเมนต์นั้นแล้วก็เลิกกระพริบเองทันทีตอน
+        // re-render ครั้งถัดไป ไม่ต้องคอยเคลียร์ state.pageFlash เองแบบเดิม (กันบั๊กแบบ "ลบคอมเมนต์แล้ว
+        // ไฟยังกระพริบค้าง")
+        const pendingCount = ITEMS.filter(it => it.pageId === p.id && it.folder === 'inbox' && it.status === 'pending' && !it.blocked).length;
+        // "โดนถล่ม" (surge) ยังคงใช้ state.pageFlash เดิม — เป็นตัวจับ "จังหวะที่เพิ่งมีคอมเมนต์เข้ามา
+        // รัวๆ ถึงเกณฑ์ CHIP_SURGE_THRESHOLD" (เหตุการณ์ชั่วคราว ไม่ใช่สถานะค้างตอบ) มี auto หมดอายุ
+        // กันไฟค้างงงถ้าทิ้งแท็บไว้นาน
+        const surgeInfo = state.pageFlash[p.id];
+        const surgeFresh = surgeInfo && (Date.now() - surgeInfo.since < PAGE_FLASH_MAX_AGE_MS);
+        if (surgeInfo && !surgeFresh) delete state.pageFlash[p.id]; // หมดอายุแล้ว เก็บกวาดทิ้งไปเลย
+        const isSurging = surgeFresh && surgeInfo.surge;
+        // สีเรืองแสงใช้สีประจำเพจเอง ผ่าน --flash-rgb (r,g,b คั่นด้วยจุลภาค ใช้กับ rgba() ใน CSS ได้
+        // ตรงๆ — เข้ากันได้กว้างกว่า color-mix() ที่เบราว์เซอร์บางตัวยังไม่รองรับ)
+        const flashClass = isSurging ? 'chip-surge' : (pendingCount > 0 ? 'chip-flash' : '');
         const flashRgb = hexToRgbTriplet(p.color);
         return `
         <div class="page-chip ${active ? 'active' : ''} ${flashClass}" data-action="select-page" data-page="${p.id}" style="${active ? `background:${p.color};` : ''} --flash-color:${p.color}; --flash-rgb:${flashRgb};">
-          <span class="dot" style="background:${active ? '#fff' : p.color}"></span> ${p.emoji} ${p.name}
+          <span class="dot" style="background:${active ? '#fff' : p.color}"></span> ${p.emoji} ${p.name}${pendingCount > 0 ? ` <span class="chip-pending-count">${pendingCount}</span>` : ''}
         </div>
       `;
       }).join('')}
@@ -3478,8 +3489,9 @@ document.getElementById('app').addEventListener('change', (e) => {
 const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu', 'close-filters', 'pages-admin-close-form']);
 
 // กดจัดการคอมเมนต์รายการนี้ (เปิดดู/ตอบ/ซ่อน/ย้ายถัง/เก็บ archive/กู้คืน/ลบถาวร) แปลว่า "เห็น/จัดการ
-// แล้ว" — เอาไฟกระพริบของเพจนั้นออกทันที ไม่ต้องรอไปกดที่ชิปเพจแยกต่างหากอีกที (บั๊กที่เจอ: ลบ/เก็บ
-// คอมเมนต์ไปแล้วไฟยังกระพริบค้างอยู่ เพราะเดิมเคลียร์เฉพาะตอนกดชิปเพจที่ case 'select-page' เท่านั้น)
+// แล้ว" — เอาสถานะ "โดนถล่ม" (surge) ของเพจนั้นออกทันที (ไฟกระพริบพื้นฐานไม่ต้องเคลียร์ตรงนี้แล้ว
+// เพราะย้ายไปยึดจากข้อมูลจริงใน renderPageChips() — พอ folder/status ของคอมเมนต์เปลี่ยนก็หายกระพริบเอง
+// ตอน re-render ถัดไปอยู่แล้ว ไม่ต้องเคลียร์ state แยก กันบั๊กแบบ "ลบ/เก็บคอมเมนต์แล้วไฟยังค้าง")
 const CLEAR_PAGE_FLASH_ACTIONS = new Set([
   'toggle-expand', 'hide', 'unhide', 'bin', 'restore', 'delete-forever', 'archive', 'unarchive', 'send', 'send-archive',
 ]);
@@ -3688,7 +3700,9 @@ document.getElementById('app').addEventListener('click', (e) => {
     case 'select-page':
       state.pageFilter = el.dataset.page;
       state.expandedId = null; state.selected.clear(); state.page = 1;
-      // ดูเพจนี้แล้ว (หรือกด "ทุกเพจ" ซึ่งเห็นทุกเพจไปด้วย) — เอาไฟกระพริบที่ค้างไว้ออก ถือว่ารับรู้แล้ว
+      // ดูเพจนี้แล้ว (หรือกด "ทุกเพจ" ซึ่งเห็นทุกเพจไปด้วย) — เอาสถานะ "โดนถล่ม" ที่ค้างไว้ออก (ไฟ
+      // กระพริบพื้นฐานไม่ได้เคลียร์ตรงนี้ เพราะยึดจากข้อมูลจริง ถ้ายังมีคอมเมนต์ค้างตอบอยู่จริงก็ยัง
+      // กระพริบต่อ ตามที่ขอ — "ถ้าไม่ตอบหรือยังมีคอมเมนต์อยู่หน้า inbox ก็กระพริบค้างได้ไหม")
       if (el.dataset.page === 'all') { state.pageFlash = {}; }
       else { delete state.pageFlash[el.dataset.page]; }
       render(); break;
