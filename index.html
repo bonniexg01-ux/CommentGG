@@ -1622,10 +1622,7 @@ function renderTopbar(){
           ⚙️ <span style="font-size:12.5px;">จัดการเพจ</span>
         </div>
       ` : ''}
-      <div class="topbar-icon-btn ${state.refreshing ? 'spin-icon' : ''}" data-action="manual-refresh" title="รีเฟรชคอมเมนต์" style="${canViewAnalytics() || canManagePages() ? '' : 'margin-left:auto;'} margin-right:10px; ${state.refreshing ? 'pointer-events:none; opacity:.6;' : ''}">
-        ${ICONS.refresh}
-      </div>
-      <div class="topbar-icon-btn" data-action="toggle-sound-mute" title="${state.soundMuted ? 'เปิดเสียงแจ้งเตือน' : 'ปิดเสียงแจ้งเตือน'}" style="margin-right:10px;">
+      <div class="topbar-icon-btn" data-action="toggle-sound-mute" title="${state.soundMuted ? 'เปิดเสียงแจ้งเตือน' : 'ปิดเสียงแจ้งเตือน'}" style="${canViewAnalytics() || canManagePages() ? '' : 'margin-left:auto;'} margin-right:10px;">
         ${state.soundMuted ? ICONS.volumeOff : ICONS.volumeOn}
       </div>
       <div class="user-menu-wrap">
@@ -1900,6 +1897,7 @@ function renderToolbar(){
         ? `<div class="search-box">${ICONS.search}<input id="searchInput" type="text" placeholder="ค้นหาชื่อหรือข้อความ..." value="${state.search}" /></div>`
         : `<div class="icon-btn" data-action="toggle-search" title="Search">${ICONS.search}</div>`
       }
+      <div class="icon-btn ${state.refreshing ? 'spin-icon' : ''}" data-action="manual-refresh" title="รีเฟรชคอมเมนต์" style="${state.refreshing ? 'pointer-events:none; opacity:.6;' : ''}">${ICONS.refresh}</div>
       <div class="spacer"></div>
       ${rightSide}
     </div>
