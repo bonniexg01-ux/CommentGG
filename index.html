@@ -2741,8 +2741,11 @@ function renderPagesAdminForm(){
             <input id="pa-emoji" type="text" value="${editing ? editing.emoji : '🎮'}" maxlength="4" />
           </div>
           <div style="flex:1;">
-            <label>สี (hex)</label>
-            <input id="pa-colorHex" type="text" value="${editing ? editing.color_hex : '#2563eb'}" placeholder="#2563eb" />
+            <label>สี</label>
+            <div style="display:flex; gap:8px;">
+              <input id="pa-colorPicker" type="color" value="${editing ? editing.color_hex : '#2563eb'}" oninput="document.getElementById('pa-colorHex').value=this.value;" style="width:42px; height:38px; padding:2px; border:1.5px solid var(--border); border-radius:9px; cursor:pointer; background:var(--surface); flex:none;" title="เลือกสีจากจานสี" />
+              <input id="pa-colorHex" type="text" value="${editing ? editing.color_hex : '#2563eb'}" placeholder="#2563eb" oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('pa-colorPicker').value=this.value;" style="flex:1;" />
+            </div>
           </div>
         </div>
         <div class="form-row" style="display:flex; gap:10px;">
