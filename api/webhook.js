@@ -22,6 +22,16 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN; // optional for now
 const APP_SECRET = process.env.META_APP_SECRET; // optional for now
 
+// แอปเดิม (CB-CMT) โดน Facebook ตัด API เพราะยังไม่ได้ทำ Data Use Checkup ประจำปี (แสดง error
+// "API access disrupted... complete Data Use Checkup") — ระหว่างรอแก้ ทีมงานตั้งแอปสำรอง "CB-CMT
+// API Connector V.2" ขึ้นมาแทนชั่วคราว อย่างน้อยเพจ Cabal: Ultimate Combo (2026-09-08) เพื่อให้
+// คอมเมนต์เพจนี้ยังไหลเข้าได้ระหว่างรอแอปเดิมกลับมาใช้ได้ปกติ — เก็บ verify token/app secret ของ
+// แอปสำรองไว้เป็นค่าที่สองในโค้ดนี้เลย (ไม่ผ่าน env var เพราะ endpoint เดียวรับ webhook จากได้
+// มากกว่า 1 แอปพร้อมกัน ต้องเช็คได้ทั้งคู่ ไม่ใช่แค่ค่าเดียวจาก env) พอแอปเดิมกลับมาใช้ได้แล้วค่อย
+// ลบสองบรรทัดนี้ทิ้งได้
+const BACKUP_APP_VERIFY_TOKEN = 'commentgg_cbcmt_v2_9f21ac';
+const BACKUP_APP_SECRET = '72e3883e813941fdc7990871124c1ff1';
+
 const sbHeaders = {
   apikey: SUPABASE_KEY,
   Authorization: `Bearer ${SUPABASE_KEY}`,
@@ -46,7 +56,8 @@ function handleVerify(req, res) {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  if (mode === 'subscribe' && (!VERIFY_TOKEN || token === VERIFY_TOKEN)) {
+  const tokenOk = !VERIFY_TOKEN || token === VERIFY_TOKEN || token === BACKUP_APP_VERIFY_TOKEN;
+  if (mode === 'subscribe' && tokenOk) {
     return res.status(200).send(challenge || '');
   }
   return res.status(403).send('Forbidden');
@@ -57,9 +68,12 @@ async function handleEvent(req, res) {
   try {
     const rawBody = await readRawBody(req);
 
-    if (APP_SECRET) {
-      const isValid = verifySignature(req, rawBody, APP_SECRET);
-      if (!isValid) {
+    // เช็คลายเซ็นกับ secret ของทั้งสองแอป (แอปเดิม + แอปสำรอง V.2) — ผ่านแค่ตัวใดตัวหนึ่งก็พอ
+    // เพราะตอนนี้รับ webhook จริงจากได้ทั้งคู่พร้อมกัน (คนละเพจกัน)
+    if (APP_SECRET || BACKUP_APP_SECRET) {
+      const validAgainstMain = APP_SECRET && verifySignature(req, rawBody, APP_SECRET);
+      const validAgainstBackup = BACKUP_APP_SECRET && verifySignature(req, rawBody, BACKUP_APP_SECRET);
+      if (!validAgainstMain && !validAgainstBackup) {
         return res.status(401).send('Invalid signature');
       }
     }
