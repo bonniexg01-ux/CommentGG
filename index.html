@@ -3466,12 +3466,22 @@ document.getElementById('app').addEventListener('change', (e) => {
 
 const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu', 'close-filters', 'pages-admin-close-form']);
 
+// กดจัดการคอมเมนต์รายการนี้ (เปิดดู/ตอบ/ซ่อน/ย้ายถัง/เก็บ archive/กู้คืน/ลบถาวร) แปลว่า "เห็น/จัดการ
+// แล้ว" — เอาไฟกระพริบของเพจนั้นออกทันที ไม่ต้องรอไปกดที่ชิปเพจแยกต่างหากอีกที (บั๊กที่เจอ: ลบ/เก็บ
+// คอมเมนต์ไปแล้วไฟยังกระพริบค้างอยู่ เพราะเดิมเคลียร์เฉพาะตอนกดชิปเพจที่ case 'select-page' เท่านั้น)
+const CLEAR_PAGE_FLASH_ACTIONS = new Set([
+  'toggle-expand', 'hide', 'unhide', 'bin', 'restore', 'delete-forever', 'archive', 'unarchive', 'send', 'send-archive',
+]);
+
 document.getElementById('app').addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const action = el.dataset.action;
   const id = el.dataset.id || null;
   const item = id ? ITEMS.find(i => i.id === id) : null;
+  if (item && CLEAR_PAGE_FLASH_ACTIONS.has(action)) {
+    delete state.pageFlash[item.pageId];
+  }
 
   // ปิด modal/dropdown จากการคลิกพื้นหลังได้ ก็ต่อเมื่อ mousedown กับ click จบที่จุดเดียวกันจริงๆ
   // (กันลากเลือกข้อความข้างในกล่องแล้วปล่อยเมาส์นอกกล่อง ไม่ให้นับเป็นการคลิกปิด)
@@ -3745,12 +3755,12 @@ document.getElementById('app').addEventListener('click', (e) => {
       render(); break;
 
     case 'bulk-archive':
-      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'archive'; protectedPatch(sid, { folder: 'archive' }); });
+      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) { it.folder = 'archive'; delete state.pageFlash[it.pageId]; protectedPatch(sid, { folder: 'archive' }); } });
       showToast(`ย้าย ${state.selected.size} รายการไป Archive แล้ว`, 'success');
       state.selected.clear(); state.bulkMenuOpen = false; render(); break;
 
     case 'bulk-bin':
-      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) it.folder = 'bin'; protectedPatch(sid, { folder: 'bin' }); });
+      state.selected.forEach(sid => { const it = ITEMS.find(i => i.id === sid); if (it) { it.folder = 'bin'; delete state.pageFlash[it.pageId]; protectedPatch(sid, { folder: 'bin' }); } });
       showToast(`ย้าย ${state.selected.size} รายการไปถังขยะแล้ว`, 'success');
       state.selected.clear(); state.bulkMenuOpen = false; render(); break;
 
