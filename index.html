@@ -260,6 +260,8 @@
     55%{ transform: rotate(-9deg) scale(1.05); }
     75%{ transform: rotate(7deg) scale(1.05); }
   }
+  @keyframes spinIcon{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
+  .spin-icon svg{ animation: spinIcon .7s linear infinite; }
   .user-menu-wrap{position:relative;}
   .topbar-icon-btn{
     width:34px; height:34px; border-radius:8px; background:var(--navy-2); color:#fff;
@@ -1355,6 +1357,22 @@ async function loadData(){
   render();
 }
 
+// ปุ่มรีเฟรชคอมเมนต์ที่กดเอง (topbar) — เรียก loadData() ตัวเดียวกับที่ poll อัตโนมัติทุก 20 วิใช้
+// ไม่ต้องรีโหลดหน้าเว็บทั้งหน้า แค่ทำไอคอนให้หมุนไว้เป็น feedback ระหว่างรอ กันกดซ้ำระหว่างที่ยังโหลด
+// ค้างอยู่ (state.refreshing) แล้วเด้ง toast บอกว่าเช็คล่าสุดให้แล้ว
+let manualRefreshInFlight = false;
+async function manualRefresh(){
+  if (manualRefreshInFlight) return;
+  manualRefreshInFlight = true;
+  state.refreshing = true;
+  render();
+  await loadData();
+  state.refreshing = false;
+  manualRefreshInFlight = false;
+  render();
+  showToast('เช็คคอมเมนต์ล่าสุดแล้ว', 'success');
+}
+
 /* ============================================================
    STATE
 ============================================================ */
@@ -1386,6 +1404,7 @@ const state = {
   // item.id ของคอมเมนต์ที่กำลังเปิดแผงเลือกอิโมจิอยู่ (เปิดได้ทีละอันเท่านั้น) null = ปิดหมด
   openEmojiPicker: null,
   soundMuted: getSoundMuted(), // อ่านค่าที่ปิด/เปิดไว้ล่าสุดจาก localStorage ตั้งแต่เริ่มโหลดหน้า
+  refreshing: false, // true ระหว่างกำลังโหลดข้อมูลจากปุ่มรีเฟรชคอมเมนต์ที่กดเอง (ให้ไอคอนหมุนเป็น feedback)
   bulkMenuOpen: false,
   page: 1, // หน้าปัจจุบันของรายการ (แบ่งหน้าละ PAGE_SIZE รายการ) รีเซ็ตเป็น 1 ทุกครั้งที่เปลี่ยนตัวกรอง
 
@@ -1603,7 +1622,10 @@ function renderTopbar(){
           ⚙️ <span style="font-size:12.5px;">จัดการเพจ</span>
         </div>
       ` : ''}
-      <div class="topbar-icon-btn" data-action="toggle-sound-mute" title="${state.soundMuted ? 'เปิดเสียงแจ้งเตือน' : 'ปิดเสียงแจ้งเตือน'}" style="${canViewAnalytics() || canManagePages() ? '' : 'margin-left:auto;'} margin-right:10px;">
+      <div class="topbar-icon-btn ${state.refreshing ? 'spin-icon' : ''}" data-action="manual-refresh" title="รีเฟรชคอมเมนต์" style="${canViewAnalytics() || canManagePages() ? '' : 'margin-left:auto;'} margin-right:10px; ${state.refreshing ? 'pointer-events:none; opacity:.6;' : ''}">
+        ${ICONS.refresh}
+      </div>
+      <div class="topbar-icon-btn" data-action="toggle-sound-mute" title="${state.soundMuted ? 'เปิดเสียงแจ้งเตือน' : 'ปิดเสียงแจ้งเตือน'}" style="margin-right:10px;">
         ${state.soundMuted ? ICONS.volumeOff : ICONS.volumeOn}
       </div>
       <div class="user-menu-wrap">
@@ -3291,6 +3313,10 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'pages-admin-save':
       savePageAdmin();
+      break;
+
+    case 'manual-refresh':
+      manualRefresh();
       break;
 
     case 'toggle-sound-mute':
