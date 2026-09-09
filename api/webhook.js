@@ -240,7 +240,13 @@ async function insertComment(pageUuid, value) {
   const record = {
     page_id: pageUuid,
     type: 'comment',
-    fb_id: `${value.post_id}_${value.comment_id}`,
+    // ใช้ toFbId() แทนการต่อสตริงตรงๆ — comment_id ของ reply ที่ซ้อนลึกๆ บางอันที่ Facebook ส่งมา
+    // มี post_id ติดมาเป็นส่วนหนึ่งของตัวมันเองอยู่แล้ว (เจอจริง: WarZ TH คอมเมนต์หนึ่งได้
+    // comment_id หน้าตาคล้าย post_id บางส่วน) ถ้าต่อ post_id ซ้ำเข้าไปอีกทีแบบเดิม จะได้ fb_id ที่มี
+    // ID ต่อกันผิดรูป (ยาวเกินจริง) แม้ deriveCommentId ฝั่งตอบกลับจะพอตัดกลับมาได้ถูกในเคสนี้ แต่ก็
+    // เป็นข้อมูลเปราะบาง เสี่ยงพังจุดอื่นที่พึ่งพา fb_id ตรงๆ (เช่น deleteComment ด้านล่าง) เลยแก้ให้
+    // ถูกต้องตั้งแต่ตอนบันทึกเลยดีกว่า
+    fb_id: toFbId(value.post_id, value.comment_id),
     fb_post_id: value.post_id,
     author_fb_id: value.from && value.from.id,
     author_name: value.from && value.from.name,
@@ -285,7 +291,7 @@ async function fetchCommentAttachmentImage(pageUuid, commentId) {
 // ลูกค้า/Facebook ลบคอมเมนต์ทิ้ง — ลบแถวที่ตรงกันออกจาก feed_items ไปเลย (ไม่ใช่แค่ย้ายเข้าถัง)
 // เพราะต้นทางไม่มีอยู่จริงแล้ว เก็บไว้ก็ตอบกลับไม่ได้ ให้หายไปจากแดชบอร์ดตรงๆ ตามที่ขอ
 async function deleteComment(value) {
-  const fbId = `${value.post_id}_${value.comment_id}`;
+  const fbId = toFbId(value.post_id, value.comment_id);
   const url = `${SUPABASE_URL}/rest/v1/feed_items?fb_id=eq.${encodeURIComponent(fbId)}`;
   const r = await fetch(url, { method: 'DELETE', headers: sbHeaders });
   if (!r.ok) {
