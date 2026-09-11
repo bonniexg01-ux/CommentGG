@@ -3303,24 +3303,24 @@ function renderTeamAdminForm(){
           <div class="form-row">
             <label>สิทธิ์การใช้งาน</label>
             <div style="display:flex; flex-direction:column; gap:8px;">
-              <label style="display:flex; align-items:center; gap:8px; font-weight:500;"><input id="ta-canViewAnalytics" type="checkbox" ${editing && editing.canViewAnalytics ? 'checked' : ''} /> ดูรายงานสถิติ</label>
-              <label style="display:flex; align-items:center; gap:8px; font-weight:500;"><input id="ta-canManagePages" type="checkbox" ${editing && editing.canManagePages ? 'checked' : ''} /> จัดการเพจ (ตั้งค่า Token/Webhook)</label>
-              <label style="display:flex; align-items:center; gap:8px; font-weight:500;"><input id="ta-canManageTeam" type="checkbox" ${editing && editing.canManageTeam ? 'checked' : ''} /> จัดการทีม (เพิ่ม/แก้/ลบสมาชิก หน้านี้)</label>
+              <label style="display:flex; align-items:center; gap:8px; font-weight:500;"><input id="ta-canViewAnalytics" type="checkbox" style="width:16px; height:16px; flex:none; padding:0; border:none;" ${editing && editing.canViewAnalytics ? 'checked' : ''} /> ดูรายงานสถิติ</label>
+              <label style="display:flex; align-items:center; gap:8px; font-weight:500;"><input id="ta-canManagePages" type="checkbox" style="width:16px; height:16px; flex:none; padding:0; border:none;" ${editing && editing.canManagePages ? 'checked' : ''} /> จัดการเพจ (ตั้งค่า Token/Webhook)</label>
+              <label style="display:flex; align-items:center; gap:8px; font-weight:500;"><input id="ta-canManageTeam" type="checkbox" style="width:16px; height:16px; flex:none; padding:0; border:none;" ${editing && editing.canManageTeam ? 'checked' : ''} /> จัดการทีม (เพิ่ม/แก้/ลบสมาชิก หน้านี้)</label>
             </div>
           </div>
           <div class="form-row">
             <label>เพจที่เห็นได้ใน Inbox/รายงาน</label>
             <div style="display:flex; flex-direction:column; gap:8px;">
               <label style="display:flex; align-items:center; gap:8px; font-weight:500;">
-                <input type="radio" name="ta-pageScope" value="all" ${seeAll ? 'checked' : ''} onchange="document.getElementById('ta-page-list').style.opacity='.4'; document.getElementById('ta-page-list').style.pointerEvents='none';" /> เห็นทุกเพจ
+                <input type="radio" name="ta-pageScope" value="all" style="width:16px; height:16px; flex:none; padding:0; border:none;" ${seeAll ? 'checked' : ''} onchange="document.getElementById('ta-page-list').style.opacity='.4'; document.getElementById('ta-page-list').style.pointerEvents='none';" /> เห็นทุกเพจ
               </label>
               <label style="display:flex; align-items:center; gap:8px; font-weight:500;">
-                <input type="radio" name="ta-pageScope" value="some" ${!seeAll ? 'checked' : ''} onchange="document.getElementById('ta-page-list').style.opacity='1'; document.getElementById('ta-page-list').style.pointerEvents='auto';" /> เลือกเอง
+                <input type="radio" name="ta-pageScope" value="some" style="width:16px; height:16px; flex:none; padding:0; border:none;" ${!seeAll ? 'checked' : ''} onchange="document.getElementById('ta-page-list').style.opacity='1'; document.getElementById('ta-page-list').style.pointerEvents='auto';" /> เลือกเอง
               </label>
               <div id="ta-page-list" style="display:flex; flex-direction:column; gap:6px; margin-left:24px; ${seeAll ? 'opacity:.4; pointer-events:none;' : ''}">
                 ${PAGES.map((p) => `
                   <label style="display:flex; align-items:center; gap:8px;">
-                    <input id="ta-page-${p.id}" type="checkbox" ${editing && !editing.canSeeAllPages && editing.pageIds.includes(p.id) ? 'checked' : ''} />
+                    <input id="ta-page-${p.id}" type="checkbox" style="width:16px; height:16px; flex:none; padding:0; border:none;" ${editing && !editing.canSeeAllPages && editing.pageIds.includes(p.id) ? 'checked' : ''} />
                     <span class="dot" style="width:7px;height:7px;border-radius:50%;background:${p.color};display:inline-block;"></span> ${p.emoji} ${p.name}
                   </label>
                 `).join('')}
