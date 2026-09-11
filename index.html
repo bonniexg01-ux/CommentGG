@@ -1055,6 +1055,13 @@ function canManagePages(){
   const user = state.auth.session && state.auth.session.user;
   return !!(user && user.app_metadata && user.app_metadata.can_manage_pages);
 }
+// สิทธิ์เข้าหน้า "จัดการทีม" (เพิ่ม/ลบสมาชิก + ตั้งสิทธิ์คนอื่น รวมถึงเพจที่แต่ละคนเห็นได้) —
+// แพทเทิร์นเดียวกับ canManagePages() ทุกอย่าง เก็บใน app_metadata แยก flag ต่างหาก เพราะคนที่จัดการ
+// เพจได้ไม่จำเป็นต้องจัดการทีมได้ (และกลับกัน) — ฝั่ง backend (api/manage-team.mjs) เช็คซ้ำเสมอ
+function canManageTeam(){
+  const user = state.auth.session && state.auth.session.user;
+  return !!(user && user.app_metadata && user.app_metadata.can_manage_team);
+}
 
 function timeAgo(iso){
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -1660,6 +1667,9 @@ const state = {
   // หน้า "จัดการเพจ" — loaded/loading คุมสถานะโหลดรายชื่อเพจจาก /api/manage-pages (ไม่ได้อยู่ใน ITEMS/
   // PAGES ที่โหลดตอน login ปกติ เพราะต้องดึงผ่าน endpoint ที่เช็คสิทธิ์ can_manage_pages โดยเฉพาะ)
   pagesAdmin: { loaded: false, loading: false, items: [], formOpen: false, editingId: null, testResult: null, testing: false, saving: false, webhookSubscribing: false, webhookResult: null },
+  // หน้า "จัดการทีม" — เพิ่ม/แก้/ลบสมาชิก + ตั้งสิทธิ์ (feature flags + เพจที่เห็นได้) ผ่าน
+  // /api/manage-team โครงเดียวกับ pagesAdmin ด้านบนทุกอย่าง
+  teamAdmin: { loaded: false, loading: false, items: [], selfId: null, formOpen: false, editingId: null, saving: false, deletingId: null },
   pageFilter: 'all',
   tab: 'comment',
   folder: 'inbox',
@@ -1898,7 +1908,12 @@ function renderTopbar(){
           ⚙️ <span style="font-size:12.5px;">จัดการเพจ</span>
         </div>
       ` : ''}
-      <div class="sound-menu-wrap" style="${canViewAnalytics() || canManagePages() ? '' : 'margin-left:auto;'} margin-right:10px;">
+      ${canManageTeam() ? `
+        <div class="topbar-icon-btn" data-action="open-team-admin" title="จัดการทีม" style="${canViewAnalytics() || canManagePages() ? '' : 'margin-left:auto;'} margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
+          👥 <span style="font-size:12.5px;">จัดการทีม</span>
+        </div>
+      ` : ''}
+      <div class="sound-menu-wrap" style="${canViewAnalytics() || canManagePages() || canManageTeam() ? '' : 'margin-left:auto;'} margin-right:10px;">
         <div class="topbar-icon-btn" data-action="toggle-sound-menu" title="ตั้งค่าเสียงแจ้งเตือน">
           ${state.soundMuted || state.soundVolume <= 0 ? ICONS.volumeOff : ICONS.volumeOn}
         </div>
@@ -3121,6 +3136,264 @@ function renderPagesAdminView(){
 }
 
 /* ============================================================
+   หน้า "จัดการทีม" — เพิ่ม/แก้/ลบสมาชิก + ตั้งสิทธิ์ (feature flags + เพจที่เห็นได้) ผ่าน
+   /api/manage-team (เช็คสิทธิ์ can_manage_team ที่ backend เสมอ ไม่ใช่แค่ซ่อนปุ่มฝั่งนี้ — การจำกัด
+   "เห็นบางเพจ" บังคับจริงที่ชั้นฐานข้อมูล (RLS) ด้วย ไม่ใช่แค่ซ่อนที่หน้าเว็บ)
+============================================================ */
+async function loadTeamAdmin(){
+  state.teamAdmin.loading = true;
+  render();
+  try {
+    const res = await fetch('/api/manage-team', {
+      method: 'POST',
+      headers: apiAuthHeaders(),
+      body: JSON.stringify({ action: 'list' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'โหลดรายชื่อทีมไม่สำเร็จ');
+    state.teamAdmin.items = data.team || [];
+    state.teamAdmin.selfId = data.selfId || null;
+    state.teamAdmin.loaded = true;
+  } catch (err) {
+    console.error('โหลดรายชื่อทีมไม่สำเร็จ:', err);
+    showToast(err.message || 'โหลดรายชื่อทีมไม่สำเร็จ', 'error');
+  }
+  state.teamAdmin.loading = false;
+  render();
+}
+
+async function saveTeamMember(){
+  const editingId = state.teamAdmin.editingId;
+  const firstName = document.getElementById('ta-firstName').value.trim();
+  const lastName = document.getElementById('ta-lastName').value.trim();
+  const email = document.getElementById('ta-email').value.trim();
+  const password = (document.getElementById('ta-password').value || '').trim();
+  const scopeEl = document.querySelector('input[name="ta-pageScope"]:checked');
+  const permissions = {
+    canViewAnalytics: document.getElementById('ta-canViewAnalytics').checked,
+    canManagePages: document.getElementById('ta-canManagePages').checked,
+    canManageTeam: document.getElementById('ta-canManageTeam').checked,
+    canSeeAllPages: !scopeEl || scopeEl.value === 'all',
+  };
+  const pageIds = permissions.canSeeAllPages ? [] : PAGES.filter((p) => {
+    const cb = document.getElementById('ta-page-' + p.id);
+    return cb && cb.checked;
+  }).map((p) => p.id);
+
+  if (!editingId) {
+    if (!email) { showToast('ใส่อีเมลก่อน', 'error'); return; }
+    if (!password || password.length < 6) { showToast('ตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษร', 'error'); return; }
+  }
+  // กันเผลอล็อกตัวเองออกจากหน้านี้โดยไม่ตั้งใจ — เตือนก่อนถ้ากำลังจะปิดสิทธิ์จัดการทีมของตัวเอง
+  if (editingId && editingId === state.teamAdmin.selfId && !permissions.canManageTeam) {
+    if (!window.confirm('คุณกำลังปิดสิทธิ์ "จัดการทีม" ของตัวเอง จะเข้าหน้านี้อีกไม่ได้จนกว่าจะมีคนอื่นเปิดให้ใหม่ ยืนยันไหม?')) return;
+  }
+
+  state.teamAdmin.saving = true;
+  render();
+  try {
+    if (editingId) {
+      const res = await fetch('/api/manage-team', {
+        method: 'POST',
+        headers: apiAuthHeaders(),
+        body: JSON.stringify({ action: 'update-permissions', id: editingId, permissions, newPassword: password || undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'บันทึกไม่สำเร็จ');
+
+      const res2 = await fetch('/api/manage-team', {
+        method: 'POST',
+        headers: apiAuthHeaders(),
+        body: JSON.stringify({ action: 'update-page-access', id: editingId, pageIds }),
+      });
+      const data2 = await res2.json().catch(() => ({}));
+      if (!res2.ok) throw new Error(data2.error || 'บันทึกสิทธิ์เพจไม่สำเร็จ');
+      showToast('แก้ไขสมาชิกแล้ว', 'success');
+    } else {
+      const res = await fetch('/api/manage-team', {
+        method: 'POST',
+        headers: apiAuthHeaders(),
+        body: JSON.stringify({ action: 'create', email, password, firstName, lastName, permissions, pageIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'เพิ่มสมาชิกไม่สำเร็จ');
+      showToast('เพิ่มสมาชิกทีมแล้ว', 'success');
+    }
+    state.teamAdmin.formOpen = false;
+    state.teamAdmin.editingId = null;
+    state.teamAdmin.loaded = false; // บังคับโหลดรายชื่อใหม่ ให้เห็นค่าล่าสุดที่เพิ่งบันทึก
+    await loadTeamAdmin();
+  } catch (err) {
+    console.error('บันทึกสมาชิกทีมไม่สำเร็จ:', err);
+    showToast(err.message || 'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+  }
+  state.teamAdmin.saving = false;
+  render();
+}
+
+async function deleteTeamMember(id, email){
+  if (!window.confirm(`ลบบัญชี "${email}" ออกจากทีมเลยใช่ไหม? เข้าสู่ระบบไม่ได้อีกทันที (ย้อนกลับไม่ได้)`)) return;
+  state.teamAdmin.deletingId = id;
+  render();
+  try {
+    const res = await fetch('/api/manage-team', {
+      method: 'POST',
+      headers: apiAuthHeaders(),
+      body: JSON.stringify({ action: 'delete', id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'ลบไม่สำเร็จ');
+    showToast('ลบสมาชิกทีมแล้ว', 'success');
+    state.teamAdmin.loaded = false;
+    await loadTeamAdmin();
+  } catch (err) {
+    console.error('ลบสมาชิกทีมไม่สำเร็จ:', err);
+    showToast(err.message || 'ลบไม่สำเร็จ', 'error');
+    state.teamAdmin.deletingId = null;
+    render();
+  }
+}
+
+function permissionBadges(m){
+  const badges = [];
+  if (m.canViewAnalytics) badges.push('ดูรายงาน');
+  if (m.canManagePages) badges.push('จัดการเพจ');
+  if (m.canManageTeam) badges.push('จัดการทีม');
+  if (!badges.length) return `<span style="color:var(--text-dim);">- ไม่มีสิทธิ์พิเศษ</span>`;
+  return badges.map((b) => `<span style="display:inline-block; background:var(--hover-bg); color:var(--text-dim); border-radius:99px; padding:2px 9px; font-size:11px; margin:1px 4px 1px 0;">${b}</span>`).join('');
+}
+
+function pageAccessSummary(m){
+  if (m.canSeeAllPages) return `<span style="color:var(--green-text); font-weight:600;">ทุกเพจ</span>`;
+  if (!m.pageIds.length) return `<span style="color:var(--red-text);">- ยังไม่ได้เลือกเพจ</span>`;
+  const names = m.pageIds.map((pid) => { const p = PAGES.find((pp) => pp.id === pid); return p ? p.name : null; }).filter(Boolean);
+  return names.length ? names.join(', ') : `${m.pageIds.length} เพจ`;
+}
+
+function renderTeamAdminForm(){
+  const editing = state.teamAdmin.editingId ? state.teamAdmin.items.find((m) => m.id === state.teamAdmin.editingId) : null;
+  const seeAll = !editing || editing.canSeeAllPages;
+  return `
+    <div class="modal-backdrop" data-action="team-admin-close-form">
+      <div class="modal-card" data-action="stop-propagation" style="max-width:640px; max-height:92vh;">
+        <div class="modal-head" style="gap:12px;">
+          <h2 style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${editing ? 'แก้ไขสมาชิก: ' + editing.email : 'เพิ่มสมาชิกทีม'}</h2>
+          <div class="modal-close" data-action="team-admin-close-form" style="flex:none;">${ICONS.x}</div>
+        </div>
+        <div class="modal-scroll">
+        <div class="modal-body">
+          <div class="form-row" style="display:flex; gap:12px;">
+            <div style="flex:1;">
+              <label>ชื่อ</label>
+              <input id="ta-firstName" type="text" value="${editing ? editing.firstName : ''}" />
+            </div>
+            <div style="flex:1;">
+              <label>นามสกุล</label>
+              <input id="ta-lastName" type="text" value="${editing ? editing.lastName : ''}" />
+            </div>
+          </div>
+          <div class="form-row">
+            <label>อีเมล</label>
+            <input id="ta-email" type="email" value="${editing ? editing.email : ''}" ${editing ? 'disabled' : ''} placeholder="name@example.com" />
+          </div>
+          <div class="form-row">
+            <label>${editing ? 'ตั้งรหัสผ่านใหม่' : 'รหัสผ่าน'} <span class="opt">${editing ? '(เว้นว่างไว้ถ้าไม่เปลี่ยน)' : '(อย่างน้อย 6 ตัวอักษร)'}</span></label>
+            <input id="ta-password" type="password" autocomplete="new-password" placeholder="${editing ? '••••••' : 'ตั้งรหัสผ่าน'}" />
+          </div>
+          <div class="form-row">
+            <label>สิทธิ์การใช้งาน</label>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <label style="display:flex; align-items:center; gap:8px; font-weight:500;"><input id="ta-canViewAnalytics" type="checkbox" ${editing && editing.canViewAnalytics ? 'checked' : ''} /> ดูรายงานสถิติ</label>
+              <label style="display:flex; align-items:center; gap:8px; font-weight:500;"><input id="ta-canManagePages" type="checkbox" ${editing && editing.canManagePages ? 'checked' : ''} /> จัดการเพจ (ตั้งค่า Token/Webhook)</label>
+              <label style="display:flex; align-items:center; gap:8px; font-weight:500;"><input id="ta-canManageTeam" type="checkbox" ${editing && editing.canManageTeam ? 'checked' : ''} /> จัดการทีม (เพิ่ม/แก้/ลบสมาชิก หน้านี้)</label>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>เพจที่เห็นได้ใน Inbox/รายงาน</label>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <label style="display:flex; align-items:center; gap:8px; font-weight:500;">
+                <input type="radio" name="ta-pageScope" value="all" ${seeAll ? 'checked' : ''} onchange="document.getElementById('ta-page-list').style.opacity='.4'; document.getElementById('ta-page-list').style.pointerEvents='none';" /> เห็นทุกเพจ
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; font-weight:500;">
+                <input type="radio" name="ta-pageScope" value="some" ${!seeAll ? 'checked' : ''} onchange="document.getElementById('ta-page-list').style.opacity='1'; document.getElementById('ta-page-list').style.pointerEvents='auto';" /> เลือกเอง
+              </label>
+              <div id="ta-page-list" style="display:flex; flex-direction:column; gap:6px; margin-left:24px; ${seeAll ? 'opacity:.4; pointer-events:none;' : ''}">
+                ${PAGES.map((p) => `
+                  <label style="display:flex; align-items:center; gap:8px;">
+                    <input id="ta-page-${p.id}" type="checkbox" ${editing && !editing.canSeeAllPages && editing.pageIds.includes(p.id) ? 'checked' : ''} />
+                    <span class="dot" style="width:7px;height:7px;border-radius:50%;background:${p.color};display:inline-block;"></span> ${p.emoji} ${p.name}
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" type="button" data-action="team-admin-close-form">ยกเลิก</button>
+          <button class="btn primary" type="button" data-action="team-admin-save" ${state.teamAdmin.saving ? 'disabled' : ''}>${state.teamAdmin.saving ? 'กำลังบันทึก...' : 'บันทึก'}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTeamAdminView(){
+  if (state.teamAdmin.loading && !state.teamAdmin.loaded) {
+    return `
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+        <h1 style="margin:0;">👥 จัดการทีม</h1>
+        <button class="btn" data-action="close-team-admin">${ICONS.x} ปิด</button>
+      </div>
+      <div style="color:var(--text-dim); padding:24px; text-align:center;">กำลังโหลด...</div>
+    `;
+  }
+
+  const items = state.teamAdmin.items;
+  return `
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+      <h1 style="margin:0;">👥 จัดการทีม</h1>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button class="btn primary" data-action="team-admin-add">+ เพิ่มสมาชิก</button>
+        <button class="btn" data-action="close-team-admin">${ICONS.x} ปิด</button>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--border); border-radius:10px; background:var(--surface); overflow:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+        <thead>
+          <tr style="text-align:left; color:var(--text-dim); border-bottom:1px solid var(--border);">
+            <th style="padding:10px 12px;">สมาชิก</th>
+            <th style="padding:10px 12px;">สิทธิ์</th>
+            <th style="padding:10px 12px;">เพจที่เห็นได้</th>
+            <th style="padding:10px 12px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.length ? items.map((m) => `
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:10px 12px;">
+                ${(m.firstName || m.lastName) ? `${m.firstName} ${m.lastName}`.trim() : '<span style="color:var(--text-dim);">(ยังไม่ตั้งชื่อ)</span>'}
+                ${m.id === state.teamAdmin.selfId ? ` <span style="display:inline-block; background:var(--green-soft); color:var(--green-text); border-radius:99px; padding:1px 8px; font-size:10.5px;">คุณ</span>` : ''}
+                <div style="color:var(--text-dim); font-size:11px;">${m.email}</div>
+              </td>
+              <td style="padding:10px 12px;">${permissionBadges(m)}</td>
+              <td style="padding:10px 12px;">${pageAccessSummary(m)}</td>
+              <td style="padding:10px 12px; text-align:right; white-space:nowrap;">
+                <button class="btn" type="button" data-action="team-admin-edit" data-id="${m.id}">${ICONS.pencil} แก้ไข</button>
+                ${m.id !== state.teamAdmin.selfId ? `<button class="btn" type="button" data-action="team-admin-delete" data-id="${m.id}" data-email="${m.email}" style="margin-left:6px;" ${state.teamAdmin.deletingId === m.id ? 'disabled' : ''}>${ICONS.trash}</button>` : ''}
+              </td>
+            </tr>
+          `).join('') : `<tr><td colspan="4" style="padding:20px 12px; text-align:center; color:var(--text-dim);">ยังไม่มีสมาชิกในระบบ</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+
+    ${state.teamAdmin.formOpen ? renderTeamAdminForm() : ''}
+  `;
+}
+
+/* ============================================================
    ROOT RENDER
 ============================================================ */
 function render(){
@@ -3182,6 +3455,28 @@ function render(){
       </div>
     `;
     if (!state.pagesAdmin.loaded && !state.pagesAdmin.loading) loadPagesAdmin();
+    setFavicon();
+    updateTabTitle();
+    return;
+  }
+
+  // เผื่อมีคนพยายามสั่ง state.view = 'team-admin' เองผ่าน console แบบเดียวกับหน้าอื่นๆ — เด้งกลับ
+  // inbox ทันทีถ้าไม่มีสิทธิ์ (ฝั่ง backend เช็คซ้ำอีกชั้นอยู่แล้ว)
+  if (state.view === 'team-admin' && !canManageTeam()) {
+    state.view = 'inbox';
+  }
+
+  // หน้า "จัดการทีม" — เพิ่ม/แก้/ลบสมาชิก + ตั้งสิทธิ์
+  if (state.view === 'team-admin') {
+    app.innerHTML = `
+      ${renderTopbar()}
+      <div class="main">
+        <div class="content-card">
+          ${renderTeamAdminView()}
+        </div>
+      </div>
+    `;
+    if (!state.teamAdmin.loaded && !state.teamAdmin.loading) loadTeamAdmin();
     setFavicon();
     updateTabTitle();
     return;
@@ -3652,7 +3947,7 @@ document.getElementById('app').addEventListener('change', (e) => {
   }
 });
 
-const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu', 'close-sound-menu', 'close-filters', 'pages-admin-close-form']);
+const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu', 'close-sound-menu', 'close-filters', 'pages-admin-close-form', 'team-admin-close-form']);
 
 // กดจัดการคอมเมนต์รายการนี้ (เปิดดู/ตอบ/ซ่อน/ย้ายถัง/เก็บ archive/กู้คืน/ลบถาวร) แปลว่า "เห็น/จัดการ
 // แล้ว" — เอาสถานะ "โดนถล่ม" (surge) ของเพจนั้นออกทันที (ไฟกระพริบพื้นฐานไม่ต้องเคลียร์ตรงนี้แล้ว
@@ -3743,6 +4038,43 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'pages-admin-subscribe-webhook':
       subscribeWebhookAdmin();
+      break;
+
+    case 'open-team-admin':
+      if (!canManageTeam()) { showToast('คุณไม่มีสิทธิ์เข้าหน้านี้', 'error'); break; }
+      state.view = 'team-admin';
+      render();
+      break;
+
+    case 'close-team-admin':
+      state.view = 'inbox';
+      render();
+      break;
+
+    case 'team-admin-add':
+      state.teamAdmin.editingId = null;
+      state.teamAdmin.formOpen = true;
+      render();
+      break;
+
+    case 'team-admin-edit':
+      state.teamAdmin.editingId = id;
+      state.teamAdmin.formOpen = true;
+      render();
+      break;
+
+    case 'team-admin-close-form':
+      state.teamAdmin.formOpen = false;
+      state.teamAdmin.editingId = null;
+      render();
+      break;
+
+    case 'team-admin-save':
+      saveTeamMember();
+      break;
+
+    case 'team-admin-delete':
+      deleteTeamMember(id, el.dataset.email || '');
       break;
 
     case 'manual-refresh':
