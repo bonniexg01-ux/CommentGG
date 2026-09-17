@@ -102,32 +102,48 @@ async function handleEvent(req, res) {
 
       if (entry.changes) {
         for (const change of entry.changes) {
-          if (change.field === 'feed' && change.value && change.value.item === 'comment') {
-            // ลูกค้าลบคอมเมนต์ตัวเองทิ้ง (หรือคอมเมนต์ถูกลบจาก Facebook ไม่ว่าด้วยเหตุผลอะไรก็ตาม)
-            // Meta ส่ง event เดิมกลับมาอีกรอบแต่ verb เป็น "remove" — ให้ลบรายการที่ตรงกันออกจาก
-            // feed_items ไปด้วยเลย กันไม่ให้ค้างเป็นคอมเมนต์ "ต้องตอบกลับ" ทั้งที่ลูกค้าลบไปแล้วจริง
-            if (change.value.verb === 'remove') {
-              await deleteComment(change.value);
-              continue;
+          // เดิม try/catch คลุมทั้ง handleEvent() ก้อนเดียว (ดูด้านล่าง) แปลว่าถ้าคอมเมนต์ตัวใดตัวหนึ่ง
+          // ใน batch เดียวกัน (Facebook ส่งหลาย comment มาใน request เดียวได้) ทำให้ throw ขึ้นมา
+          // (เช่น fetch ไป Supabase ล้มเหลวแบบ network error ชั่วคราว ไม่ใช่แค่ !r.ok) for-loop จะหยุด
+          // ทันที คอมเมนต์ที่เหลือใน batch เดียวกันจะไม่ถูกบันทึกเลย แต่ webhook ก็ยังตอบ 200 กลับไปอยู่ดี
+          // (ดูท้ายฟังก์ชัน) ทำให้ Facebook คิดว่าส่งสำเร็จหมดแล้ว ไม่ retry คอมเมนต์ที่หายไปให้อีก —
+          // เจอจริง: เทียบจำนวนคอมเมนต์บนโพสต์จริงกับที่บันทึกไว้ใน feed_items ของเพจ Cabal : Infinite
+          // Combo แล้วขาดไป 2 คอมเมนต์ ทั้งที่ webhook subscription ฝั่ง Facebook ตั้งค่าถูกต้องทุกจุด
+          // แก้โดยครอบ try/catch แยกรายคอมเมนต์ ให้ตัวที่พังไม่ลากตัวอื่นในชุดเดียวกันตกไปด้วย
+          try {
+            if (change.field === 'feed' && change.value && change.value.item === 'comment') {
+              // ลูกค้าลบคอมเมนต์ตัวเองทิ้ง (หรือคอมเมนต์ถูกลบจาก Facebook ไม่ว่าด้วยเหตุผลอะไรก็ตาม)
+              // Meta ส่ง event เดิมกลับมาอีกรอบแต่ verb เป็น "remove" — ให้ลบรายการที่ตรงกันออกจาก
+              // feed_items ไปด้วยเลย กันไม่ให้ค้างเป็นคอมเมนต์ "ต้องตอบกลับ" ทั้งที่ลูกค้าลบไปแล้วจริง
+              if (change.value.verb === 'remove') {
+                await deleteComment(change.value);
+                continue;
+              }
+              // เพจตัวเองเป็นคนคอมเมนต์ — มี 2 กรณี: (1) echo ของคำตอบที่เราเพิ่งส่งไปเองผ่านปุ่มตอบ
+              // ในเว็บนี้ (ต้องข้าม ไม่งั้นจะเก็บเป็นรายการ "ต้องตอบกลับ" ซ้ำไปเรื่อยๆ ไม่รู้จบ) หรือ
+              // (2) มีคนตอบคอมเมนต์นั้นผ่านเครื่องมืออื่น (เช่นบอท AI อีกตัวที่ทีมใช้คู่กัน) ตรงที่
+              // หน้าเพจ Facebook เลย ไม่ผ่านเว็บเรา — กรณีนี้อยากให้คอมเมนต์ต้นทางในเว็บเราขึ้นสถานะ
+              // "ตอบแล้ว" ไปด้วย ไม่ใช่ค้างเป็น "ต้องตอบกลับ" ทั้งที่จริงมีคนตอบไปแล้ว (ตามที่ขอ)
+              const commenterId = change.value.from && String(change.value.from.id);
+              if (commenterId === fbPageId) {
+                await handlePageAuthoredComment(pageUuid, change.value);
+                continue;
+              }
+              await insertComment(pageUuid, change.value);
             }
-            // เพจตัวเองเป็นคนคอมเมนต์ — มี 2 กรณี: (1) echo ของคำตอบที่เราเพิ่งส่งไปเองผ่านปุ่มตอบ
-            // ในเว็บนี้ (ต้องข้าม ไม่งั้นจะเก็บเป็นรายการ "ต้องตอบกลับ" ซ้ำไปเรื่อยๆ ไม่รู้จบ) หรือ
-            // (2) มีคนตอบคอมเมนต์นั้นผ่านเครื่องมืออื่น (เช่นบอท AI อีกตัวที่ทีมใช้คู่กัน) ตรงที่
-            // หน้าเพจ Facebook เลย ไม่ผ่านเว็บเรา — กรณีนี้อยากให้คอมเมนต์ต้นทางในเว็บเราขึ้นสถานะ
-            // "ตอบแล้ว" ไปด้วย ไม่ใช่ค้างเป็น "ต้องตอบกลับ" ทั้งที่จริงมีคนตอบไปแล้ว (ตามที่ขอ)
-            const commenterId = change.value.from && String(change.value.from.id);
-            if (commenterId === fbPageId) {
-              await handlePageAuthoredComment(pageUuid, change.value);
-              continue;
-            }
-            await insertComment(pageUuid, change.value);
+          } catch (changeErr) {
+            console.error('webhook error: ประมวลผลคอมเมนต์รายการหนึ่งใน batch ล้มเหลว (ข้ามไปทำตัวถัดไปต่อ)', changeErr);
           }
         }
       }
       if (entry.messaging) {
         for (const messagingEvent of entry.messaging) {
-          if (!messagingEvent.message || messagingEvent.message.is_echo) continue;
-          await insertMessage(pageUuid, messagingEvent);
+          try {
+            if (!messagingEvent.message || messagingEvent.message.is_echo) continue;
+            await insertMessage(pageUuid, messagingEvent);
+          } catch (msgErr) {
+            console.error('webhook error: ประมวลผลข้อความรายการหนึ่งใน batch ล้มเหลว (ข้ามไปทำตัวถัดไปต่อ)', msgErr);
+          }
         }
       }
     }
@@ -181,7 +197,12 @@ async function fetchPagesByFbIds(fbPageIds) {
 function toFbId(postId, rawId) {
   if (!rawId) return null;
   const raw = String(rawId);
-  return raw.startsWith(`${postId}_`) ? raw : `${postId}_${raw}`;
+  // เจอจริง: บาง comment/parent_id ที่ Facebook ส่งมามีค่า "เท่ากับ" post_id เป๊ะๆ (ไม่ได้มี "_" ต่อท้าย
+  // แบบ post_id_commentId ปกติ) — เดิมเช็คแค่ raw.startsWith(`${postId}_`) เคสนี้จะไม่ตรง เลยไปต่อ
+  // postId ซ้ำเข้าไปอีกที ได้ fb_id ที่ยาวผิดรูป (เช่น "X_Y_X_Y") ทำให้การค้นหา/อัปเดตแถวเดิมด้วย fb_id
+  // นี้ไม่เจอแถวไหนเลย (PATCH ที่ควรจะ match กลายเป็น match ศูนย์แถวแบบเงียบๆ)
+  if (raw === postId || raw.startsWith(`${postId}_`)) return raw;
+  return `${postId}_${raw}`;
 }
 
 // เพจตัวเองเป็นคนคอมเมนต์ — ถ้าเป็นคอมเมนต์ระดับบนสุด (ไม่มี parent_id เช่นแคปชั่นประกาศของเพจ)
