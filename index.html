@@ -1175,6 +1175,7 @@ function mapItem(row){
     status: row.status, folder: row.folder,
     postExcerpt: row.post_excerpt || null, aiReason: row.ai_reason || null, adminReply: row.admin_reply || null,
     adminReplyFbId: row.admin_reply_fb_id || null, adminReplyBy: row.admin_reply_by || null,
+    failReason: row.fail_reason || null, // สาเหตุจริงตอน status='failed' (ดู api/reply.mjs) — เอาไว้โชว์ตอน hover ป้าย "ส่งไม่สำเร็จ"
     repliedAt: row.replied_at || null, // เวลาตอบสำเร็จจริง (ใช้ในหน้ารายงานสถิติ) — คอมเมนต์เก่าก่อนมีคอลัมน์นี้ fallback เป็น createdAt เอาตอนคำนวณ
     // รูปที่แนบมากับคอมเมนต์ (ถ้ามี) — เก็บไว้ตั้งแต่ตอน webhook รับคอมเมนต์เข้ามาใหม่ (ดู
     // api/webhook.js) คอมเมนต์เก่าก่อนมีฟีเจอร์นี้จะเป็น null ไปเลย (ยังกดแว่นขยายดูได้ตามปกติ)
@@ -2272,7 +2273,11 @@ function renderToolbar(){
 function tagFor(item){
   if (item.status === 'spam_hidden') return `<span class="tag hidden-tag">ซ่อนไว้</span>`;
   if (item.status === 'replied') return `<span class="tag replied-tag">ตอบแล้ว</span>`;
-  if (item.status === 'failed') return `<span class="tag hidden-tag">ส่งไม่สำเร็จ ลองใหม่</span>`;
+  if (item.status === 'failed') {
+    const reasonText = item.failReason || 'ไม่ทราบสาเหตุ (รายการเก่าก่อนมีการบันทึกสาเหตุ)';
+    const reasonAttr = reasonText.replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    return `<span class="tag hidden-tag" title="${reasonAttr}">ส่งไม่สำเร็จ ลองใหม่ ⓘ</span>`;
+  }
   if (item.blocked) return `<span class="tag blocked-tag">ผู้ใช้ถูกบล็อก</span>`;
   return `<span class="tag needs-reply">ต้องตอบกลับ</span>`;
 }

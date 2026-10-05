@@ -263,6 +263,7 @@ async function markRepliedExternally(pageUuid, parentFbId, replyMessage, replyFb
       admin_reply: replyMessage || '(ตอบผ่านเครื่องมืออื่น ไม่มีข้อความให้แสดง)',
       admin_reply_fb_id: replyFbId,
       admin_reply_by: 'ตรวจพบจาก Facebook อัตโนมัติ (ตอบที่หน้าเพจ หรือตอบผ่านเว็บนี้แต่ระบบรายงานสถานะผิดพลาด)',
+      fail_reason: null,
     }),
   });
   if (!r.ok) {

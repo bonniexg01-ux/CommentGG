@@ -146,12 +146,14 @@ export default async function handler(request) {
     } catch (fbErr) {
       const isTimeout = fbErr && fbErr.name === 'AbortError';
       console.error('reply error: เรียก Facebook Graph API ไม่สำเร็จ', isTimeout ? 'timeout' : fbErr, fbErr && fbErr.fbError);
-      await markFeedItem(itemId, { status: 'failed' });
-      // เดิมถ้าอัปโหลดรูป (uploadUnpublishedPhoto/uploadMessengerAttachment) โยน error ที่มีข้อความ
-      // จริงจาก Facebook ติดมาด้วย (fbErr.message / fbErr.fbError) ข้อความนั้นจะหายไปเลย เหลือแค่
-      // ข้อความกลางๆ "เชื่อมต่อ Facebook ไม่สำเร็จ" ทำให้ debug ไม่ได้ว่าจริงๆ แล้ว Facebook ปฏิเสธ
-      // เพราะอะไร (เช่น ไฟล์รูปใหญ่เกิน/ฟอร์แมตไม่รองรับ/สิทธิ์ไม่พอ) — ตอนนี้ส่งข้อความจริงกลับไปด้วย
+      // เดิมไม่มีที่เก็บว่า "ทำไม" ถึง failed — พอมีรายการ failed ค้างอยู่ ไล่ดูทีหลังไม่ได้เลยว่าเป็น
+      // timeout (อาจจะส่งสำเร็จจริงแต่ตัดการเชื่อมต่อก่อน) หรือ Facebook ปฏิเสธจริงๆ (ต้องแก้ข้อความ/
+      // สิทธิ์ก่อนส่งใหม่) เพิ่ม fail_reason เก็บไว้ ให้เห็นสาเหตุจริงตอนไล่ดูรายการ failed ทีหลังได้
       const detail = !isTimeout && fbErr && fbErr.message ? fbErr.message : null;
+      const failReason = isTimeout
+        ? 'หมดเวลารอ Facebook ตอบกลับ (เป็นไปได้ว่าส่งสำเร็จจริงแล้วแต่รอผลไม่ทัน — เว็บไซต์มีระบบตรวจสอบย้อนหลังอัตโนมัติให้)'
+        : `เชื่อมต่อ Facebook ไม่สำเร็จ${detail ? `: ${detail}` : ''}`;
+      await markFeedItem(itemId, { status: 'failed', fail_reason: failReason });
       return json(
         {
           error: isTimeout
@@ -164,7 +166,10 @@ export default async function handler(request) {
 
     if (fbResult && fbResult.error) {
       console.error('reply error: Facebook ปฏิเสธการส่ง', fbResult.error);
-      await markFeedItem(itemId, { status: 'failed' });
+      await markFeedItem(itemId, {
+        status: 'failed',
+        fail_reason: `Facebook ปฏิเสธการส่ง: ${fbResult.error.message || 'unknown error'}${fbResult.error.code ? ` (code ${fbResult.error.code})` : ''}`,
+      });
       return json(
         { error: `Facebook ปฏิเสธการส่ง: ${fbResult.error.message || 'unknown error'}` },
         502
@@ -191,7 +196,7 @@ export default async function handler(request) {
     // replied_at: เวลาที่ตอบสำเร็จจริง (แยกจาก created_at ของคอมเมนต์เดิม) ใช้คำนวณ "ตอบไปกี่ครั้ง
     // ต่อวัน/ต่อคน" ในหน้ารายงานสถิติให้แม่นยำ — เดิมไม่มีคอลัมน์นี้ ต้องเดาจาก created_at ของคอมเมนต์
     // ซึ่งผิดเพี้ยนถ้าตอบข้ามวันจากที่คอมเมนต์เข้ามา
-    const updateFields = { status: 'replied', admin_reply: replyText, admin_reply_by: replierName, replied_at: new Date().toISOString() };
+    const updateFields = { status: 'replied', admin_reply: replyText, admin_reply_by: replierName, replied_at: new Date().toISOString(), fail_reason: null };
     if (item.type === 'comment' && fbResult && fbResult.id) {
       updateFields.admin_reply_fb_id = fbResult.id;
     }
