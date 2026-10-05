@@ -63,12 +63,63 @@ function canManagePages(user) {
   return !!(user && user.app_metadata && user.app_metadata.can_manage_pages);
 }
 
-// เช็ค access_token กับ Facebook จริงๆ ก่อนบันทึกเสมอ — ยิง GET ธรรมดาไปที่ตัวเพจเอง (ไม่ใช่
-// debug_token) เพราะนี่คือคำขอแบบเดียวกับที่ api/reply.mjs จะใช้จริงตอนตอบคอมเมนต์ ถ้าอันนี้ผ่าน
-// แปลว่า token เพจจริงพร้อมใช้งานแน่นอน
+// เช็ค access_token กับ Facebook จริงๆ ก่อนบันทึกเสมอ
+//
+// เจอจริง: เดิมเช็คแค่ยิง GET /{pageId}?fields=id,name ไปตรงๆ — ปัญหาคือ field id/name เป็นข้อมูล
+// สาธารณะของเพจ อ่านได้ด้วย token แทบทุกประเภท "แม้แต่ user access token ของผู้ใช้ทั่วไปก็ยังอ่าน
+// ผ่าน" ทำให้การเช็คแบบนี้ไม่สามารถจับได้เลยว่ามีคนเผลอวาง "user token" (token ของบัญชีผู้ใช้ตอนล็อกอิน
+// Facebook) แทนที่จะเป็น "page token" (token เฉพาะของเพจ ใช้โพสต์/ตอบคอมเมนต์แทนเพจได้จริง) ลงไป —
+// ตรวจสอบผ่านตอนกด "ทดสอบ Token" ทั้งที่ token ใช้ตอบคอมเมนต์จริงไม่ได้ (เจอเคสจริงกับ Cabal)
+//
+// แก้โดยเช็คผ่าน debug_token ก่อนเสมอ ซึ่งบอกชัดเจนว่า token นี้เป็น "PAGE" หรือ "USER":
+// - เป็น PAGE token ของเพจที่ตรงกับ pageId อยู่แล้ว → ใช้ได้เลย
+// - เป็น USER token (เผลอวางผิด) → แทนที่จะปฏิเสธเฉยๆ ลองแลก (exchange) เป็น page token ที่ถูกต้องให้
+//   อัตโนมัติผ่าน /me/accounts (ถ้า user คนนั้นมีสิทธิ์แอดมินเพจนี้อยู่แล้ว) กันพลาดจากการที่คนวาง
+//   token ผิดประเภทโดยไม่รู้ตัว — ไม่ต้องรอให้ใครมาคอยสอนว่า token ไหนถูกประเภทอีกต่อไป
 async function testFacebookToken(pageId, accessToken) {
   try {
-    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}?fields=id,name&access_token=${encodeURIComponent(accessToken)}`;
+    const debugUrl = `https://graph.facebook.com/${GRAPH_VERSION}/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(accessToken)}`;
+    const dr = await fetchWithTimeout(debugUrl, { method: 'GET' });
+    const ddata = await dr.json();
+    if (ddata.error) {
+      return { ok: false, error: ddata.error.message || 'Facebook ปฏิเสธ token นี้ (ตรวจสอบไม่ผ่าน)' };
+    }
+    const info = ddata.data || {};
+    if (!info.is_valid) {
+      return { ok: false, error: 'Token นี้ไม่ valid แล้ว (อาจถูกยกเลิก/หมดอายุ/เปลี่ยนรหัสผ่านบัญชีที่สร้าง token นี้)' };
+    }
+
+    let finalToken = accessToken;
+    let note = null;
+
+    if (info.type === 'PAGE') {
+      if (String(info.profile_id) !== String(pageId)) {
+        return { ok: false, error: `Token นี้ใช้ได้ แต่เป็นของเพจอื่น (id: ${info.profile_id}) ไม่ตรงกับ Page ID ที่กรอกไว้ (${pageId})` };
+      }
+    } else if (info.type === 'USER') {
+      // user token ล็อกอินส่วนตัว — ลองแลกเป็น page token ของเพจนี้โดยเฉพาะให้อัตโนมัติ
+      const accUrl = `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts?fields=id,access_token&limit=200&access_token=${encodeURIComponent(accessToken)}`;
+      const ar = await fetchWithTimeout(accUrl, { method: 'GET' });
+      const adata = await ar.json();
+      if (adata.error) {
+        return { ok: false, error: `นี่คือ token ของบัญชีผู้ใช้ ไม่ใช่ token ของเพจ และดึงรายชื่อเพจที่จัดการได้ไม่สำเร็จ: ${adata.error.message}` };
+      }
+      const match = (adata.data || []).find((p) => String(p.id) === String(pageId));
+      if (!match || !match.access_token) {
+        return {
+          ok: false,
+          error: `นี่คือ token ของบัญชีผู้ใช้ (ไม่ใช่ token ของเพจ) และบัญชีนี้ไม่มีสิทธิ์แอดมินเพจ ID ${pageId} — วิธีแก้: ใน Facebook ให้เลือก "page access token" ของเพจนี้โดยเฉพาะ หรือล็อกอินด้วยบัญชีที่เป็นแอดมินเพจนี้แล้วลองใหม่`,
+        };
+      }
+      finalToken = match.access_token;
+      note = 'วาง token ของบัญชีผู้ใช้มาแทน token ของเพจ — ระบบแลกเป็น page token ที่ถูกต้องให้อัตโนมัติแล้ว ไม่ต้องทำอะไรเพิ่ม';
+    } else {
+      return { ok: false, error: `Token ประเภท "${info.type || 'ไม่ทราบ'}" ใช้กับระบบนี้ไม่ได้ ต้องเป็น page access token เท่านั้น` };
+    }
+
+    // เช็คซ้ำอีกชั้นด้วย GET จริงแบบเดียวกับที่ api/reply.mjs ใช้ตอนตอบคอมเมนต์จริง (คำขอชนิดเดียวกัน
+    // เป๊ะๆ) ให้มั่นใจว่า token สุดท้ายที่จะบันทึก (ไม่ว่าจะของเดิมหรือที่เพิ่งแลกมา) ใช้งานได้จริง
+    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}?fields=id,name&access_token=${encodeURIComponent(finalToken)}`;
     const r = await fetchWithTimeout(url, { method: 'GET' });
     const data = await r.json();
     if (data.error) {
@@ -77,7 +128,7 @@ async function testFacebookToken(pageId, accessToken) {
     if (String(data.id) !== String(pageId)) {
       return { ok: false, error: `Token นี้ใช้ได้ แต่เป็นของเพจอื่น (id: ${data.id}) ไม่ตรงกับ Page ID ที่กรอกไว้ (${pageId})` };
     }
-    return { ok: true, name: data.name, fbId: data.id };
+    return { ok: true, name: data.name, fbId: data.id, finalToken, note };
   } catch (err) {
     const isTimeout = err && err.name === 'AbortError';
     return { ok: false, error: isTimeout ? 'Facebook ไม่ตอบสนอง (หมดเวลา) ลองใหม่อีกครั้ง' : `เชื่อมต่อ Facebook ไม่สำเร็จ: ${err.message || err}` };
@@ -193,7 +244,10 @@ export default async function handler(request) {
       const { pageId, accessToken } = body || {};
       if (!pageId || !accessToken) return json({ error: 'pageId และ accessToken จำเป็นต้องมี' }, 400);
       const result = await testFacebookToken(pageId, accessToken);
-      return json(result, result.ok ? 200 : 400);
+      // ไม่ส่ง finalToken (ค่า token จริง) กลับไปฝั่ง client ตอน "ทดสอบ" เฉยๆ — ส่งแค่ชื่อเพจ/note
+      // พอ (เก็บ token จริงไว้แค่ตอน action 'save' เท่านั้น ลดพื้นที่หลุดของค่า token)
+      const { finalToken, ...safeResult } = result;
+      return json(safeResult, result.ok ? 200 : 400);
     }
 
     if (action === 'save') {
@@ -207,12 +261,18 @@ export default async function handler(request) {
       // ถ้ามีการวาง token ใหม่มาด้วย (ไม่ว่าจะเพิ่มเพจใหม่หรือแก้เพจเดิม) ต้องเช็คกับ Facebook จริง
       // ให้ผ่านก่อนเสมอ ถึงจะยอมบันทึกลงฐานข้อมูล — ถ้าไม่ผ่านหยุดตรงนี้เลย ไม่บันทึกอะไรทั้งนั้น
       let fbCheckedName = null;
+      let fbNote = null;
+      let resolvedToken = null;
       if (accessToken && String(accessToken).trim()) {
         const testResult = await testFacebookToken(pageId, accessToken);
         if (!testResult.ok) {
           return json({ error: `ตรวจสอบ Token ไม่ผ่าน: ${testResult.error}` }, 400);
         }
         fbCheckedName = testResult.name;
+        fbNote = testResult.note;
+        // ถ้าที่วางมาเป็น user token เผลอวางผิด testFacebookToken จะแลกเป็น page token ที่ถูกต้องให้
+        // แล้ว (ดูคอมเมนต์ในฟังก์ชันนั้น) — เก็บตัวที่แลกแล้วลงฐานข้อมูลเสมอ ไม่ใช่ตัวที่วางมาดิบๆ
+        resolvedToken = testResult.finalToken;
       } else if (!id) {
         // เพจใหม่ (ยังไม่มี id เดิม) บังคับต้องมี token ตั้งแต่แรกเลย ไม่งั้นเพิ่มเพจแล้วตอบคอมเมนต์
         // ไม่ได้ทันที เดี๋ยวจะงงว่าทำไมส่งไม่ออก
@@ -232,8 +292,8 @@ export default async function handler(request) {
         is_active: isActive !== false,
         needs_polling: !!needsPolling,
       };
-      if (accessToken && String(accessToken).trim()) {
-        fields.access_token = String(accessToken).trim();
+      if (resolvedToken) {
+        fields.access_token = resolvedToken;
       }
 
       let url;
@@ -264,7 +324,16 @@ export default async function handler(request) {
       }
 
       const rows = await r.json().catch(() => []);
-      return json({ ok: true, page: rows[0] || null, fbCheckedName });
+      // เดิม Prefer: return=representation ส่งทั้งแถว "รวม access_token/app_secret ตัวจริง" กลับไปฝั่ง
+      // client ตรงๆ ทุกครั้งที่บันทึก (ถึงจะมีแค่ action 'list' ที่ตัดออกก่อนตามคอมเมนต์ด้านบน แต่
+      // action 'save' หลุดไป) — ตัดออกให้เหมือนกันตรงนี้ด้วย กันค่า token จริงหลุดไปอยู่ใน network
+      // response/console ฝั่งเบราว์เซอร์โดยไม่จำเป็น
+      let safePage = null;
+      if (rows[0]) {
+        const { access_token, app_secret, ...rest } = rows[0];
+        safePage = { ...rest, has_token: !!access_token, has_webhook: !!app_secret };
+      }
+      return json({ ok: true, page: safePage, fbCheckedName, fbNote });
     }
 
     if (action === 'subscribe-webhook') {

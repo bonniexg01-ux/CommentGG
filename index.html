@@ -2903,7 +2903,7 @@ async function testPageToken(){
       body: JSON.stringify({ action: 'test-token', pageId, accessToken }),
     });
     const data = await res.json().catch(() => ({}));
-    state.pagesAdmin.testResult = res.ok ? { ok: true, name: data.name } : { ok: false, error: data.error || 'ทดสอบไม่สำเร็จ' };
+    state.pagesAdmin.testResult = res.ok ? { ok: true, name: data.name, note: data.note } : { ok: false, error: data.error || 'ทดสอบไม่สำเร็จ' };
   } catch (err) {
     state.pagesAdmin.testResult = { ok: false, error: 'เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ' };
   }
@@ -2940,6 +2940,7 @@ async function savePageAdmin(){
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'บันทึกไม่สำเร็จ');
     showToast(editingId ? 'แก้ไขเพจแล้ว' : 'เพิ่มเพจใหม่แล้ว', 'success');
+    if (data.fbNote) showToast(data.fbNote, 'success'); // เช่น กรณีแลก user token เป็น page token ให้อัตโนมัติ
     state.pagesAdmin.formOpen = false;
     state.pagesAdmin.editingId = null;
     state.pagesAdmin.testResult = null;
@@ -3043,11 +3044,12 @@ function renderPagesAdminForm(){
         </div>
         <div class="form-row">
           <label>Access Token ${editing ? '<span class="opt">(เว้นว่างไว้ถ้าไม่ต้องการเปลี่ยน Token เดิม)</span>' : ''}</label>
+          <div class="opt" style="margin:-2px 0 6px;">วาง token ที่ Facebook ให้มาได้เลย ไม่ว่าจะเป็น token ของเพจหรือของบัญชีผู้ใช้ที่เป็นแอดมินเพจนี้ — ระบบตรวจสอบและแปลงเป็น token ของเพจที่ถูกต้องให้อัตโนมัติตอนกดทดสอบ/บันทึก</div>
           <textarea id="pa-accessToken" rows="3" placeholder="${editing ? (editing.has_token ? 'มี Token เดิมอยู่แล้ว — วางใหม่ตรงนี้ถ้าจะเปลี่ยน' : 'ยังไม่มี Token — ต้องใส่ก่อนเพจนี้ถึงจะตอบคอมเมนต์ได้') : 'วาง Access Token ของเพจที่นี่'}" style="width:100%; font-family:monospace; font-size:11.5px;"></textarea>
-          <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+          <div style="display:flex; align-items:center; gap:10px; margin-top:8px; flex-wrap:wrap;">
             <button class="btn" type="button" data-action="pages-admin-test-token" ${state.pagesAdmin.testing ? 'disabled' : ''}>${state.pagesAdmin.testing ? 'กำลังทดสอบ...' : '🔎 ทดสอบ Token'}</button>
             ${tr ? (tr.ok
-              ? `<span style="color:var(--green-text); font-size:12.5px; display:flex; align-items:center; gap:4px;">${ICONS.checkCircle} ใช้ได้ (เพจ: ${tr.name})</span>`
+              ? `<span style="color:var(--green-text); font-size:12.5px; display:flex; align-items:center; gap:4px;">${ICONS.checkCircle} ใช้ได้ (เพจ: ${tr.name})${tr.note ? ' — ' + tr.note : ''}</span>`
               : `<span style="color:var(--red-text); font-size:12.5px;">✕ ${tr.error}</span>`
             ) : ''}
           </div>
