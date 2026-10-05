@@ -247,10 +247,14 @@ async function isOwnRecordedReply(replyFbId) {
   return rows.length > 0;
 }
 
-// เจอว่ามีคนตอบคอมเมนต์ต้นทางนี้ผ่านเครื่องมืออื่นแล้ว (ไม่ใช่ผ่านเว็บเรา) — มาร์คสถานะเป็น "ตอบแล้ว"
-// ให้ตรงกับความจริง เฉพาะรายการที่ยัง pending อยู่เท่านั้น (กันเผลอไปทับของที่จัดการไปแล้วซ้ำ)
+// เจอว่ามีคนตอบคอมเมนต์ต้นทางนี้แล้วแต่เว็บเรายังไม่รู้ — มาร์คสถานะเป็น "ตอบแล้ว" ให้ตรงกับความจริง
+// เดิมเช็คเฉพาะรายการที่ยัง pending เท่านั้น แต่เจอเคสจริง: บางครั้ง /api/reply ส่งคำตอบไป Facebook
+// สำเร็จจริง แต่เขียนสถานะ 'replied' กลับ Supabase ไม่ทัน (เช่น timeout ก่อนได้ response) รายการเลยค้าง
+// เป็น 'failed' ทั้งที่จริงๆ ตอบไปแล้ว — เพิ่ม 'failed' เข้าไปในเงื่อนไขด้วย ให้ webhook event ของคำตอบ
+// นั้นเอง (ที่ Facebook ส่ง echo กลับมาเสมอ ไม่ว่าจะตอบผ่านเว็บเราหรือเครื่องมืออื่น) ช่วยแก้สถานะให้
+// อัตโนมัติ กันรายการที่ตอบไปแล้วจริงค้างโชว์ "ส่งไม่สำเร็จ" ในแดชบอร์ดตลอดไป
 async function markRepliedExternally(pageUuid, parentFbId, replyMessage, replyFbId) {
-  const url = `${SUPABASE_URL}/rest/v1/feed_items?page_id=eq.${encodeURIComponent(pageUuid)}&fb_id=eq.${encodeURIComponent(parentFbId)}&status=eq.pending`;
+  const url = `${SUPABASE_URL}/rest/v1/feed_items?page_id=eq.${encodeURIComponent(pageUuid)}&fb_id=eq.${encodeURIComponent(parentFbId)}&status=in.(pending,failed)`;
   const r = await fetch(url, {
     method: 'PATCH',
     headers: { ...sbHeaders, Prefer: 'return=minimal' },
@@ -258,7 +262,7 @@ async function markRepliedExternally(pageUuid, parentFbId, replyMessage, replyFb
       status: 'replied',
       admin_reply: replyMessage || '(ตอบผ่านเครื่องมืออื่น ไม่มีข้อความให้แสดง)',
       admin_reply_fb_id: replyFbId,
-      admin_reply_by: 'บอท/เครื่องมืออื่น (ตอบที่หน้าเพจ)',
+      admin_reply_by: 'ตรวจพบจาก Facebook อัตโนมัติ (ตอบที่หน้าเพจ หรือตอบผ่านเว็บนี้แต่ระบบรายงานสถานะผิดพลาด)',
     }),
   });
   if (!r.ok) {

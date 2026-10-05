@@ -28,7 +28,12 @@ const GRAPH_VERSION = 'v23.0';
 // ถ้า Facebook ไม่ตอบภายในเวลานี้ ให้ตัดการเชื่อมต่อเองแล้วมาร์ค 'failed' ทันที
 // กันไม่ให้ Vercel Edge Function ถูก platform ตัดจบกลางคันแบบเงียบๆ (ซึ่งจะทำให้ไม่มีการเขียน
 // สถานะลง Supabase เลยสักครั้ง — รายการค้างเป็น 'pending' ตลอดไปโดยไม่มีใครรู้ว่าส่งไม่สำเร็จ)
-const FB_TIMEOUT_MS = 12000;
+//
+// เจอจริง: 12 วิ สั้นเกินไปในบางช่วงที่ Facebook ตอบช้า — คอมเมนต์ "ส่งจริงสำเร็จบน Facebook" แต่
+// ฝั่งเรา abort ไปก่อนจะได้รับ response กลับมา เลยมาร์ค 'failed' ทั้งที่จริงๆ ส่งไปแล้ว (เกิดซ้ำๆ
+// หลายรายการ เห็นได้จาก feed_items.status='failed' ที่จริงๆ มีคำตอบโผล่บนเพจจริงแล้ว) ขยับเป็น 20 วิ
+// (ยังเหลือ margin พอสมควรก่อนชน runtime limit ของ Vercel Edge Function ~25 วิ) ลดโอกาสเจอเคสนี้ลง
+const FB_TIMEOUT_MS = 20000;
 
 function fetchWithTimeout(url, options, timeoutMs = FB_TIMEOUT_MS) {
   const controller = new AbortController();
