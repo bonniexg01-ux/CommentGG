@@ -212,6 +212,59 @@ async function subscribeWebhook(pageDbId, pageFbId, pageAccessToken, appId, appS
   return { ok: true };
 }
 
+// เช็คสถานะ token ของทุกเพจพร้อมกัน (ใช้ debug_token อย่างเดียว ไม่ยิง GET หน้าเพจซ้ำ เบากว่า
+// testFacebookToken ทั้งก้อน) — ใช้โชว์ที่หน้า "จัดการเพจ" ให้เห็นล่วงหน้าว่าเพจไหน token ใกล้หมดอายุ/
+// หมดอายุแล้ว/ใช้ไม่ได้แล้ว โดยไม่ต้องรอให้ตอบคอมเมนต์ไม่ออกก่อนถึงจะรู้ตัว (ตามที่ขอ)
+async function checkAllTokenHealth() {
+  const url = `${SUPABASE_URL}/rest/v1/pages?select=id,page_id,page_name,access_token&order=page_name.asc`;
+  const r = await fetch(url, { headers: sbHeaders });
+  if (!r.ok) throw new Error('โหลดรายชื่อเพจไม่สำเร็จ');
+  const rows = await r.json();
+
+  const results = await Promise.all(
+    rows.map(async (row) => {
+      const base = { id: row.id, pageId: row.page_id, pageName: row.page_name };
+      if (!row.access_token) {
+        return { ...base, status: 'no_token', message: 'ยังไม่มี Access Token' };
+      }
+      try {
+        const debugUrl = `https://graph.facebook.com/${GRAPH_VERSION}/debug_token?input_token=${encodeURIComponent(row.access_token)}&access_token=${encodeURIComponent(row.access_token)}`;
+        const dr = await fetchWithTimeout(debugUrl, { method: 'GET' });
+        const ddata = await dr.json();
+        if (ddata.error) {
+          return { ...base, status: 'invalid', message: ddata.error.message || 'Facebook ปฏิเสธ token นี้' };
+        }
+        const info = ddata.data || {};
+        if (!info.is_valid) {
+          return { ...base, status: 'invalid', message: 'Token ไม่ valid แล้ว (ถูกยกเลิก/รหัสผ่านบัญชีที่สร้างถูกเปลี่ยน/ถอนสิทธิ์แอป)' };
+        }
+        if (info.type !== 'PAGE' || String(info.profile_id) !== String(row.page_id)) {
+          // ไม่ควรเกิดแล้วหลังมีระบบแลก token อัตโนมัติตอนบันทึก แต่เผื่อไว้ (เช่น ข้อมูลเก่าก่อนมีระบบนี้)
+          return { ...base, status: 'invalid', message: 'Token ที่บันทึกไว้ไม่ใช่ page token ของเพจนี้ — ลองวาง token ใหม่แล้วบันทึกอีกครั้ง' };
+        }
+        // page access token ที่ได้จาก user token ที่ไม่มีวันหมดอายุ (long-lived) จะได้ expires_at: 0
+        // แปลว่า "ไม่มีวันหมดอายุ" ตราบใดที่ยังเป็นแอดมินเพจและไม่ถอนสิทธิ์แอปออกเอง
+        if (!info.expires_at) {
+          return { ...base, status: 'ok', message: 'ใช้ได้ ไม่มีวันหมดอายุ (ตราบใดที่ยังเป็นแอดมินเพจ และไม่ถอนสิทธิ์แอปใน Facebook)', expiresAt: null };
+        }
+        const expiresAtMs = info.expires_at * 1000;
+        const daysLeft = Math.floor((expiresAtMs - Date.now()) / (24 * 60 * 60 * 1000));
+        if (daysLeft < 0) {
+          return { ...base, status: 'expired', message: `Token หมดอายุไปแล้ว`, expiresAt: expiresAtMs };
+        }
+        if (daysLeft <= 7) {
+          return { ...base, status: 'expiring', message: `Token จะหมดอายุในอีก ${daysLeft} วัน`, expiresAt: expiresAtMs };
+        }
+        return { ...base, status: 'ok', message: `ใช้ได้ (หมดอายุในอีก ${daysLeft} วัน)`, expiresAt: expiresAtMs };
+      } catch (err) {
+        const isTimeout = err && err.name === 'AbortError';
+        return { ...base, status: 'unknown', message: isTimeout ? 'Facebook ไม่ตอบสนอง (หมดเวลา) ตอนเช็ค token' : `เช็คไม่สำเร็จ: ${err.message || err}` };
+      }
+    })
+  );
+  return results;
+}
+
 export default async function handler(request) {
   if (request.method !== 'POST') {
     return json({ error: 'Method Not Allowed' }, 405);
@@ -238,6 +291,11 @@ export default async function handler(request) {
     if (action === 'list') {
       const pages = await listPages();
       return json({ ok: true, pages });
+    }
+
+    if (action === 'token-health') {
+      const health = await checkAllTokenHealth();
+      return json({ ok: true, health });
     }
 
     if (action === 'test-token') {

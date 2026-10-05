@@ -1667,7 +1667,7 @@ const state = {
   analytics: { startDate: addDaysStr(todayThaiStr(), -29), endDate: todayThaiStr(), pageIds: null },
   // หน้า "จัดการเพจ" — loaded/loading คุมสถานะโหลดรายชื่อเพจจาก /api/manage-pages (ไม่ได้อยู่ใน ITEMS/
   // PAGES ที่โหลดตอน login ปกติ เพราะต้องดึงผ่าน endpoint ที่เช็คสิทธิ์ can_manage_pages โดยเฉพาะ)
-  pagesAdmin: { loaded: false, loading: false, items: [], formOpen: false, editingId: null, testResult: null, testing: false, saving: false, webhookSubscribing: false, webhookResult: null },
+  pagesAdmin: { loaded: false, loading: false, items: [], formOpen: false, editingId: null, testResult: null, testing: false, saving: false, webhookSubscribing: false, webhookResult: null, tokenHealth: {}, tokenHealthLoading: false },
   // หน้า "จัดการทีม" — เพิ่ม/แก้/ลบสมาชิก + ตั้งสิทธิ์ (feature flags + เพจที่เห็นได้) ผ่าน
   // /api/manage-team โครงเดียวกับ pagesAdmin ด้านบนทุกอย่าง
   teamAdmin: { loaded: false, loading: false, items: [], selfId: null, formOpen: false, editingId: null, saving: false, deletingId: null },
@@ -2886,6 +2886,38 @@ async function loadPagesAdmin(){
   }
   state.pagesAdmin.loading = false;
   render();
+  loadTokenHealth(); // แยกยิงต่างหาก ไม่บล็อกการโชว์รายชื่อเพจ (เช็คกับ Facebook จริงอาจช้ากว่า list ธรรมดา)
+}
+
+// เช็คว่า token ของแต่ละเพจใกล้หมดอายุ/หมดอายุแล้ว/ใช้ไม่ได้แล้วหรือยัง — โชว์ป้ายเตือนไว้ที่หน้า
+// "จัดการเพจ" เลย ไม่ต้องรอให้ตอบคอมเมนต์ไม่ออกก่อนถึงจะรู้ตัว (ตามที่ขอ)
+async function loadTokenHealth(){
+  state.pagesAdmin.tokenHealthLoading = true;
+  render();
+  try {
+    const res = await fetch('/api/manage-pages', {
+      method: 'POST',
+      headers: apiAuthHeaders(),
+      body: JSON.stringify({ action: 'token-health' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'เช็คสถานะ token ไม่สำเร็จ');
+    const map = {};
+    (data.health || []).forEach(h => { map[h.id] = h; });
+    state.pagesAdmin.tokenHealth = map;
+    const bad = (data.health || []).filter(h => h.status === 'expired' || h.status === 'invalid' || h.status === 'no_token');
+    const soon = (data.health || []).filter(h => h.status === 'expiring');
+    if (bad.length) {
+      showToast(`⚠️ เพจ ${bad.map(b => b.pageName).join(', ')} token มีปัญหา — ตอบคอมเมนต์ไม่ได้จนกว่าจะแก้ไข`, 'error');
+    } else if (soon.length) {
+      showToast(`⏰ เพจ ${soon.map(s => s.pageName).join(', ')} token ใกล้หมดอายุ แนะนำให้รีบแก้ไขก่อน`, 'error');
+    }
+  } catch (err) {
+    console.error('เช็คสถานะ token ไม่สำเร็จ:', err);
+    // ไม่ขึ้น toast error ซ้ำ กันรำคาญถ้าเน็ตหลุดจังหวะเดียว ไม่กระทบการใช้งานหลัก (แค่ไม่เห็นป้ายเตือน)
+  }
+  state.pagesAdmin.tokenHealthLoading = false;
+  render();
 }
 
 async function testPageToken(){
@@ -3087,6 +3119,26 @@ function renderPagesAdminForm(){
   `;
 }
 
+// ป้ายสถานะ token ของเพจหนึ่งเพจ — ใช้ tokenHealth ที่เช็คกับ Facebook จริงถ้าโหลดมาแล้ว
+// ไม่งั้น fallback ไปใช้ has_token (มี/ไม่มี เฉยๆ จาก action 'list' ธรรมดา) ระหว่างรอโหลด
+function tokenHealthBadge(p){
+  const h = state.pagesAdmin.tokenHealth[p.id];
+  if (!h) {
+    if (state.pagesAdmin.tokenHealthLoading) return `<span style="color:var(--text-dim);">กำลังเช็ค...</span>`;
+    return p.has_token
+      ? `<span style="color:var(--green-text); display:inline-flex; align-items:center; gap:4px;">${ICONS.checkCircle} มี Token</span>`
+      : `<span style="color:var(--red-text);">✕ ยังไม่มี</span>`;
+  }
+  const colorByStatus = {
+    ok: 'var(--green-text)', expiring: '#d97706', expired: 'var(--red-text)',
+    invalid: 'var(--red-text)', no_token: 'var(--red-text)', unknown: 'var(--text-dim)',
+  };
+  const iconByStatus = { ok: '✓', expiring: '⏰', expired: '✕', invalid: '✕', no_token: '✕', unknown: '?' };
+  const color = colorByStatus[h.status] || 'var(--text-dim)';
+  const icon = iconByStatus[h.status] || '';
+  return `<span style="color:${color}; display:inline-flex; align-items:center; gap:4px;" title="${(h.message || '').replace(/"/g, '&quot;')}">${icon} ${h.message || h.status}</span>`;
+}
+
 function renderPagesAdminView(){
   if (state.pagesAdmin.loading && !state.pagesAdmin.loaded) {
     return `
@@ -3099,6 +3151,9 @@ function renderPagesAdminView(){
   }
 
   const items = state.pagesAdmin.items;
+  const healthList = Object.values(state.pagesAdmin.tokenHealth);
+  const badHealth = healthList.filter(h => h.status === 'expired' || h.status === 'invalid' || h.status === 'no_token');
+  const soonHealth = healthList.filter(h => h.status === 'expiring');
   return `
     <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
       <h1 style="margin:0;">⚙️ จัดการเพจ</h1>
@@ -3107,6 +3162,19 @@ function renderPagesAdminView(){
         <button class="btn" data-action="close-pages-admin">${ICONS.x} ปิด</button>
       </div>
     </div>
+
+    ${badHealth.length ? `
+      <div style="background:#fef2f2; border:1px solid #fecaca; color:#991b1b; border-radius:10px; padding:12px 14px; margin-bottom:12px; font-size:13px;">
+        ⚠️ <strong>${badHealth.length} เพจ Token มีปัญหา ตอบคอมเมนต์ไม่ได้จนกว่าจะแก้ไข:</strong>
+        ${badHealth.map(h => `<div style="margin-top:4px;">• ${h.pageName}: ${h.message}</div>`).join('')}
+      </div>
+    ` : ''}
+    ${soonHealth.length ? `
+      <div style="background:#fffbeb; border:1px solid #fde68a; color:#92400e; border-radius:10px; padding:12px 14px; margin-bottom:12px; font-size:13px;">
+        ⏰ <strong>${soonHealth.length} เพจ Token ใกล้หมดอายุ แนะนำให้รีบแก้ไขก่อนล่วงหน้า:</strong>
+        ${soonHealth.map(h => `<div style="margin-top:4px;">• ${h.pageName}: ${h.message}</div>`).join('')}
+      </div>
+    ` : ''}
 
     <div style="border:1px solid var(--border); border-radius:10px; background:var(--surface); overflow:auto;">
       <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
@@ -3128,7 +3196,7 @@ function renderPagesAdminView(){
                 ${p.game_name ? `<div style="color:var(--text-dim); font-size:11px;">${p.game_name}</div>` : ''}
               </td>
               <td style="padding:10px 12px; font-family:monospace; font-size:11px;">${p.page_id}</td>
-              <td style="padding:10px 12px;">${p.has_token ? `<span style="color:var(--green-text); display:inline-flex; align-items:center; gap:4px;">${ICONS.checkCircle} มี Token</span>` : `<span style="color:var(--red-text);">✕ ยังไม่มี</span>`}</td>
+              <td style="padding:10px 12px;">${tokenHealthBadge(p)}</td>
               <td style="padding:10px 12px;">${p.has_webhook ? `<span style="color:var(--green-text); display:inline-flex; align-items:center; gap:4px;">${ICONS.checkCircle} ผูกแล้ว</span>` : `<span style="color:var(--text-dim);">- ยังไม่ผูก</span>`}</td>
               <td style="padding:10px 12px;">${p.is_active ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}${p.needs_polling ? ' · polling' : ''}</td>
               <td style="padding:10px 12px; text-align:right;"><button class="btn" type="button" data-action="pages-admin-edit" data-id="${p.id}">${ICONS.pencil} แก้ไข</button></td>
