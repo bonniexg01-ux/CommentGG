@@ -197,11 +197,29 @@ async function fetchPagesByFbIds(fbPageIds) {
 function toFbId(postId, rawId) {
   if (!rawId) return null;
   const raw = String(rawId);
-  // เจอจริง: บาง comment/parent_id ที่ Facebook ส่งมามีค่า "เท่ากับ" post_id เป๊ะๆ (ไม่ได้มี "_" ต่อท้าย
-  // แบบ post_id_commentId ปกติ) — เดิมเช็คแค่ raw.startsWith(`${postId}_`) เคสนี้จะไม่ตรง เลยไปต่อ
-  // postId ซ้ำเข้าไปอีกที ได้ fb_id ที่ยาวผิดรูป (เช่น "X_Y_X_Y") ทำให้การค้นหา/อัปเดตแถวเดิมด้วย fb_id
-  // นี้ไม่เจอแถวไหนเลย (PATCH ที่ควรจะ match กลายเป็น match ศูนย์แถวแบบเงียบๆ)
+  // เจอจริง (เคสที่ 1): บาง comment/parent_id ที่ Facebook ส่งมามีค่า "เท่ากับ" post_id เป๊ะๆ (ไม่ได้มี
+  // "_" ต่อท้ายแบบ post_id_commentId ปกติ) — เช็คแค่ raw.startsWith(`${postId}_`) เคสนี้จะไม่ตรง เลยไปต่อ
+  // postId ซ้ำเข้าไปอีกที ได้ fb_id ที่ยาวผิดรูป
   if (raw === postId || raw.startsWith(`${postId}_`)) return raw;
+
+  // เจอจริง (เคสที่ 2 — ตัวที่ใหญ่กว่า พบว่ากระทบคอมเมนต์แทบทุกตัวในระบบ ไม่ใช่แค่เคสหายาก): Facebook
+  // ส่ง comment_id ที่มีรูปแบบ "{postNumericId}_{commentNumericId}" มาอยู่แล้ว (มีแค่เลข post ต่อท้าย
+  // ไม่มี page_id นำหน้า) ไม่ใช่แค่เลข comment เปล่าๆ ตามที่เข้าใจตอนแรก — post_id เต็มรูปคือ
+  // "{page_id}_{postNumericId}" เช็คแค่ raw.startsWith(`${postId}_`) (ที่มี page_id นำหน้าด้วย) จะไม่ตรง
+  // กับ raw ที่ไม่มี page_id นำหน้าแบบนี้ โค้ดเดิมเลยต่อ postId (ซึ่งมี postNumericId อยู่ในตัวอยู่แล้ว)
+  // เข้าไปข้างหน้า raw อีกที ได้ fb_id ซ้อนกัน 2 ชั้นแบบ "page_post_post_comment" ผิดรูป — ผลคือลบ/แก้ไข
+  // คอมเมนต์เก่าไม่ได้เลย (Facebook ตอบ "Unsupported delete request... does not exist") เพราะ ID ที่ส่งไป
+  // ไม่ตรงกับ comment จริงบน Facebook — เช็คกรณีนี้เพิ่ม: ถ้า raw ขึ้นต้นด้วยเลข post อย่างเดียว (ไม่มี
+  // page_id) ให้ต่อแค่ page_id นำหน้า ไม่ใช่ต่อ postId (ที่มี postNumericId อยู่แล้ว) ทั้งก้อน
+  const underscoreIdx = postId.indexOf('_');
+  if (underscoreIdx > -1) {
+    const pageId = postId.slice(0, underscoreIdx);
+    const postNumericId = postId.slice(underscoreIdx + 1);
+    if (raw === postNumericId || raw.startsWith(`${postNumericId}_`)) {
+      return `${pageId}_${raw}`;
+    }
+  }
+
   return `${postId}_${raw}`;
 }
 
