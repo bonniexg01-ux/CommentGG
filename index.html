@@ -1568,7 +1568,11 @@ async function loadData(){
       // จะคืนแถวมาตามลำดับภายในของมันเอง ไม่การันตีว่าจะตรงกับลำดับที่เพิ่มเพจจริง ทำให้แท็บเพจ
       // สลับที่ไปมาดูไม่เป็นระเบียบ (เช่น WarZ TH ซึ่งเพิ่มก่อน ดันไปโผล่ท้ายแถว)
       fetch(`${SUPABASE_URL}/rest/v1/pages_public?select=*&order=created_at.asc`, { headers: sbAuthHeaders() }),
-      fetch(`${SUPABASE_URL}/rest/v1/feed_items?select=*&order=created_at.desc`, { headers: sbAuthHeaders() }),
+      // ระบุ select เฉพาะคอลัมน์ที่หน้าเว็บใช้จริง (ไม่เอา fb_id, fb_post_id, author_fb_id — เป็น ID
+      // ของ Facebook ที่ฝั่งหน้าเว็บไม่เคยอ่านไปใช้เลย ฝั่ง backend ที่ต้องใช้ตอนตอบ/ลบ/ซ่อนคอมเมนต์จะ
+      // ไปดึงเองจากฐานข้อมูลตรงๆ อยู่แล้วตอนนั้น) ลดขนาดข้อมูลที่ต้องโหลดทุกครั้งลง โดยไม่เปลี่ยนจำนวน/
+      // ลำดับแถวที่ได้เลยแม้แต่น้อย — ปลอดภัยกว่าการเปลี่ยนวิธีดึงข้อมูลเหมือนที่เคยลองแล้วมีบั๊ก
+      fetch(`${SUPABASE_URL}/rest/v1/feed_items?select=id,page_id,type,post_excerpt,author_name,message,status,folder,ai_reason,admin_reply,admin_reply_fb_id,admin_reply_by,fail_reason,replied_at,attachment_image_url,liked,blocked,created_at&order=created_at.desc`, { headers: sbAuthHeaders() }),
       fetch(`${SUPABASE_URL}/rest/v1/user_page_hashtags?select=page_id,hashtag`, { headers: sbAuthHeaders() }),
     ]);
     if (!pagesRes.ok || !itemsRes.ok) throw new Error('โหลดข้อมูลไม่สำเร็จ');
