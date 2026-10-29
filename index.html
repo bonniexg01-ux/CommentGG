@@ -4595,7 +4595,13 @@ function isUserEditingSomething(){
   // ค้นหาทิ้งทุก 20 วิ ถ้าดันพิมพ์อยู่พอดี (ค่าที่พิมพ์ไม่หายเพราะเก็บใน state.search แต่โฟกัสจะหลุด
   // เหมือนพิมพ์ไม่ติด คล้ายบั๊กที่เจอใน Account settings ก่อนหน้านี้)
   const searchFocused = state.searchOpen && document.activeElement && document.activeElement.id === 'searchInput';
-  return !!state.expandedId || !!state.editingReplyId || state.profileOpen || state.postPanel.open || searchFocused;
+  // เจอจริง: ฟอร์ม "เพิ่ม/แก้ไขเพจ" (pagesAdmin.formOpen) กับ "เพิ่ม/แก้ไขสมาชิกทีม" (teamAdmin.formOpen)
+  // ไม่เคยถูกเช็คตรงนี้เลยตั้งแต่สร้างมา — ถ้าเปิดฟอร์มพวกนี้ค้างไว้นานกว่า 20 วิ (เช่น สลับไปคัดลอก
+  // Page ID / Access Token จากแท็บอื่นแล้วย้อนกลับมา) poll จะยิง render() ทับกลางคัน สร้าง input/textarea
+  // ขึ้นใหม่จาก template เปล่าๆ (ไม่มี value ผูกไว้กับ state เลย) สิ่งที่พิมพ์/วางไว้เลยหายหมดโดยไม่รู้ตัว
+  // — เพิ่มเงื่อนไขทั้งสองฟอร์มนี้เข้ามา กัน poll ทับระหว่างที่ฟอร์มเปิดอยู่
+  return !!state.expandedId || !!state.editingReplyId || state.profileOpen || state.postPanel.open || searchFocused
+    || state.pagesAdmin.formOpen || state.teamAdmin.formOpen;
 }
 setInterval(() => {
   // เผื่อกรณีเปิดแท็บทิ้งไว้ข้ามวัน (ไม่ได้ปิดคอม/ปิดเว็บเลย) ก็ยังบังคับให้ล็อกอินใหม่ตอนข้ามวันด้วย
