@@ -1681,7 +1681,11 @@ const state = {
   analytics: { startDate: addDaysStr(todayThaiStr(), -29), endDate: todayThaiStr(), pageIds: null },
   // หน้า "จัดการเพจ" — loaded/loading คุมสถานะโหลดรายชื่อเพจจาก /api/manage-pages (ไม่ได้อยู่ใน ITEMS/
   // PAGES ที่โหลดตอน login ปกติ เพราะต้องดึงผ่าน endpoint ที่เช็คสิทธิ์ can_manage_pages โดยเฉพาะ)
-  pagesAdmin: { loaded: false, loading: false, items: [], formOpen: false, editingId: null, testResult: null, testing: false, saving: false, webhookSubscribing: false, webhookResult: null, tokenHealth: {}, tokenHealthLoading: false },
+  // formDraft: เก็บค่าที่ผู้ใช้พิมพ์/วางไว้ในฟอร์ม "เพิ่ม/แก้ไขเพจ" ชั่วคราว (ดู captureAdminFormDraft())
+  // แก้บั๊กที่เจอจริง: ปุ่ม "ทดสอบ Token" เรียก render() เองตอนกำลังทดสอบ/ทดสอบเสร็จ ซึ่ง render()
+  // สร้าง input ใหม่ทั้งหมดจาก value="${editing ? ... : ''}" (ไม่ได้ผูกกับสิ่งที่พิมพ์ไว้) ทำให้ค่าที่
+  // เพิ่งวาง (เช่น Page ID, Access Token) หายไปทันทีที่กดทดสอบ หรือสลับหน้าไปคัดลอกค่าถัดมาแล้วกลับมา
+  pagesAdmin: { loaded: false, loading: false, items: [], formOpen: false, editingId: null, testResult: null, testing: false, saving: false, webhookSubscribing: false, webhookResult: null, tokenHealth: {}, tokenHealthLoading: false, formDraft: null },
   // หน้า "จัดการทีม" — เพิ่ม/แก้/ลบสมาชิก + ตั้งสิทธิ์ (feature flags + เพจที่เห็นได้) ผ่าน
   // /api/manage-team โครงเดียวกับ pagesAdmin ด้านบนทุกอย่าง
   teamAdmin: { loaded: false, loading: false, items: [], selfId: null, formOpen: false, editingId: null, saving: false, deletingId: null },
@@ -2953,6 +2957,23 @@ async function loadTokenHealth(){
   render();
 }
 
+// เก็บค่าปัจจุบันของทุกช่องในฟอร์ม "เพิ่ม/แก้ไขเพจ" ไว้ใน state.pagesAdmin.formDraft ก่อนเรียก render()
+// ระหว่างฟอร์มยังเปิดอยู่ — กัน input ที่ไม่ได้ผูกกับ state โดยตรง (uncontrolled) โดน render() ทับค่า
+// กลับไปเป็นค่าเดิม/ว่างเปล่า (ดูคอมเมนต์ที่ state.pagesAdmin ตอนประกาศ)
+function captureAdminFormDraft(){
+  const byId = (id) => document.getElementById(id);
+  const val = (id) => { const el = byId(id); return el ? el.value : undefined; };
+  const checked = (id) => { const el = byId(id); return el ? el.checked : undefined; };
+  if (!byId('pa-pageId')) return; // ฟอร์มไม่ได้เปิดอยู่จริง (เผื่อเรียกผิดจังหวะ) ไม่ต้องทำอะไร
+  state.pagesAdmin.formDraft = {
+    pageId: val('pa-pageId'), pageName: val('pa-pageName'), gameName: val('pa-gameName'),
+    emoji: val('pa-emoji'), colorHex: val('pa-colorHex'), pronoun: val('pa-pronoun'),
+    ending: val('pa-ending'), tag: val('pa-tag'), hashtag: val('pa-hashtag'),
+    accessToken: val('pa-accessToken'), appId: val('pa-appId'), appSecret: val('pa-appSecret'),
+    isActive: checked('pa-isActive'), needsPolling: checked('pa-needsPolling'),
+  };
+}
+
 async function testPageToken(){
   const pageId = document.getElementById('pa-pageId').value.trim();
   const accessToken = document.getElementById('pa-accessToken').value.trim();
@@ -2960,6 +2981,7 @@ async function testPageToken(){
   if (!accessToken) { showToast('ใส่ Access Token ก่อนถึงจะทดสอบได้', 'error'); return; }
   state.pagesAdmin.testing = true;
   state.pagesAdmin.testResult = null;
+  captureAdminFormDraft();
   render();
   try {
     const res = await fetch('/api/manage-pages', {
@@ -2973,6 +2995,7 @@ async function testPageToken(){
     state.pagesAdmin.testResult = { ok: false, error: 'เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ' };
   }
   state.pagesAdmin.testing = false;
+  captureAdminFormDraft(); // เผื่อผู้ใช้พิมพ์อะไรเพิ่มระหว่างรอผลทดสอบ (เช่น สลับไปวางค่าอื่นต่อ)
   render();
 }
 
@@ -2995,6 +3018,7 @@ async function savePageAdmin(){
     needsPolling: document.getElementById('pa-needsPolling').checked,
   };
   state.pagesAdmin.saving = true;
+  captureAdminFormDraft(); // เก็บค่าที่พิมพ์ไว้ก่อน render() เผื่อบันทึกไม่สำเร็จจะได้ไม่ต้องพิมพ์ใหม่
   render();
   try {
     const res = await fetch('/api/manage-pages', {
@@ -3009,6 +3033,7 @@ async function savePageAdmin(){
     state.pagesAdmin.formOpen = false;
     state.pagesAdmin.editingId = null;
     state.pagesAdmin.testResult = null;
+    state.pagesAdmin.formDraft = null; // บันทึกสำเร็จแล้ว ไม่ต้องเก็บ draft ไว้ต่อ
     state.pagesAdmin.loaded = false; // บังคับโหลดรายชื่อใหม่ทั้งหมด ให้เห็นค่าล่าสุดที่เพิ่งบันทึก
     await loadPagesAdmin();
   } catch (err) {
@@ -3028,6 +3053,7 @@ async function subscribeWebhookAdmin(){
   if (!appSecret) { showToast('ใส่ App Secret ก่อนถึงจะผูก Webhook ได้', 'error'); return; }
   state.pagesAdmin.webhookSubscribing = true;
   state.pagesAdmin.webhookResult = null;
+  captureAdminFormDraft();
   render();
   try {
     const res = await fetch('/api/manage-pages', {
@@ -3046,11 +3072,14 @@ async function subscribeWebhookAdmin(){
     showToast(err.message || 'ผูก Webhook ไม่สำเร็จ', 'error');
   }
   state.pagesAdmin.webhookSubscribing = false;
+  captureAdminFormDraft();
   render();
 }
 
 function renderPagesAdminForm(){
   const editing = state.pagesAdmin.editingId ? state.pagesAdmin.items.find(p => p.id === state.pagesAdmin.editingId) : null;
+  const d = state.pagesAdmin.formDraft; // ค่าที่พิมพ์ค้างไว้ (ถ้ามี) — ดูคอมเมนต์ที่ captureAdminFormDraft()
+  const dv = (key, fallback) => (d && d[key] !== undefined ? d[key] : fallback); // draft มาก่อนเสมอถ้ามี
   const tr = state.pagesAdmin.testResult;
   return `
     <div class="modal-backdrop" data-action="pages-admin-close-form">
@@ -3063,54 +3092,54 @@ function renderPagesAdminForm(){
         <div class="modal-body">
         <div class="form-row">
           <label>Page ID (Facebook) <span class="opt">(ตัวเลขจาก Meta Business Suite/Graph API)</span></label>
-          <input id="pa-pageId" type="text" value="${editing ? editing.page_id : ''}" placeholder="เช่น 1060422630485711" />
+          <input id="pa-pageId" type="text" value="${dv('pageId', editing ? editing.page_id : '')}" placeholder="เช่น 1060422630485711" />
         </div>
         <div class="form-row">
           <label>ชื่อเพจ (โชว์ในแดชบอร์ด)</label>
-          <input id="pa-pageName" type="text" value="${editing ? editing.page_name : ''}" placeholder="เช่น WarZ TH" />
+          <input id="pa-pageName" type="text" value="${dv('pageName', editing ? editing.page_name : '')}" placeholder="เช่น WarZ TH" />
         </div>
         <div class="form-row">
           <label>ชื่อเกม <span class="opt">(ไม่บังคับ)</span></label>
-          <input id="pa-gameName" type="text" value="${editing ? (editing.game_name || '') : ''}" />
+          <input id="pa-gameName" type="text" value="${dv('gameName', editing ? (editing.game_name || '') : '')}" />
         </div>
         <div class="form-row" style="display:flex; gap:10px;">
           <div style="flex:1;">
             <label>อีโมจิ</label>
-            <input id="pa-emoji" type="text" value="${editing ? editing.emoji : '🎮'}" maxlength="4" />
+            <input id="pa-emoji" type="text" value="${dv('emoji', editing ? editing.emoji : '🎮')}" maxlength="4" />
           </div>
           <div style="flex:1;">
             <label>สี</label>
             <div style="display:flex; gap:8px;">
-              <input id="pa-colorPicker" type="color" value="${editing ? editing.color_hex : '#2563eb'}" oninput="document.getElementById('pa-colorHex').value=this.value;" style="width:42px; height:38px; padding:2px; border:1.5px solid var(--border); border-radius:9px; cursor:pointer; background:var(--surface); flex:none;" title="เลือกสีจากจานสี" />
-              <input id="pa-colorHex" type="text" value="${editing ? editing.color_hex : '#2563eb'}" placeholder="#2563eb" oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('pa-colorPicker').value=this.value;" style="flex:1;" />
+              <input id="pa-colorPicker" type="color" value="${dv('colorHex', editing ? editing.color_hex : '#2563eb')}" oninput="document.getElementById('pa-colorHex').value=this.value;" style="width:42px; height:38px; padding:2px; border:1.5px solid var(--border); border-radius:9px; cursor:pointer; background:var(--surface); flex:none;" title="เลือกสีจากจานสี" />
+              <input id="pa-colorHex" type="text" value="${dv('colorHex', editing ? editing.color_hex : '#2563eb')}" placeholder="#2563eb" oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('pa-colorPicker').value=this.value;" style="flex:1;" />
             </div>
           </div>
         </div>
         <div class="form-row" style="display:flex; gap:10px;">
           <div style="flex:1;">
             <label>สรรพนามบังคับ <span class="opt">(เช่น แอดมิน)</span></label>
-            <input id="pa-pronoun" type="text" value="${editing ? (editing.pronoun || '') : ''}" />
+            <input id="pa-pronoun" type="text" value="${dv('pronoun', editing ? (editing.pronoun || '') : '')}" />
           </div>
           <div style="flex:1;">
             <label>คำลงท้ายบังคับ</label>
             <select id="pa-ending">
-              <option value="ค่ะ" ${editing && editing.ending === 'ค่ะ' ? 'selected' : ''}>ค่ะ</option>
-              <option value="ครับ" ${editing && editing.ending === 'ครับ' ? 'selected' : ''}>ครับ</option>
+              <option value="ค่ะ" ${dv('ending', editing ? editing.ending : null) === 'ค่ะ' ? 'selected' : ''}>ค่ะ</option>
+              <option value="ครับ" ${dv('ending', editing ? editing.ending : null) === 'ครับ' ? 'selected' : ''}>ครับ</option>
             </select>
           </div>
         </div>
         <div class="form-row">
           <label>Tag <span class="opt">(ไม่บังคับ)</span></label>
-          <input id="pa-tag" type="text" value="${editing ? (editing.tag || '') : ''}" />
+          <input id="pa-tag" type="text" value="${dv('tag', editing ? (editing.tag || '') : '')}" />
         </div>
         <div class="form-row">
           <label>แฮชแท็กหลักของเพจ <span class="opt">(ไม่บังคับ — แยกจากแฮชแท็กส่วนตัวของแต่ละคนในทีม)</span></label>
-          <input id="pa-hashtag" type="text" value="${editing ? (editing.hashtag || '') : ''}" />
+          <input id="pa-hashtag" type="text" value="${dv('hashtag', editing ? (editing.hashtag || '') : '')}" />
         </div>
         <div class="form-row">
           <label>Access Token ${editing ? '<span class="opt">(เว้นว่างไว้ถ้าไม่ต้องการเปลี่ยน Token เดิม)</span>' : ''}</label>
           <div class="opt" style="margin:-2px 0 6px;">วาง token ที่ Facebook ให้มาได้เลย ไม่ว่าจะเป็น token ของเพจหรือของบัญชีผู้ใช้ที่เป็นแอดมินเพจนี้ — ระบบตรวจสอบและแปลงเป็น token ของเพจที่ถูกต้องให้อัตโนมัติตอนกดทดสอบ/บันทึก</div>
-          <textarea id="pa-accessToken" rows="3" placeholder="${editing ? (editing.has_token ? 'มี Token เดิมอยู่แล้ว — วางใหม่ตรงนี้ถ้าจะเปลี่ยน' : 'ยังไม่มี Token — ต้องใส่ก่อนเพจนี้ถึงจะตอบคอมเมนต์ได้') : 'วาง Access Token ของเพจที่นี่'}" style="width:100%; font-family:monospace; font-size:11.5px;"></textarea>
+          <textarea id="pa-accessToken" rows="3" placeholder="${editing ? (editing.has_token ? 'มี Token เดิมอยู่แล้ว — วางใหม่ตรงนี้ถ้าจะเปลี่ยน' : 'ยังไม่มี Token — ต้องใส่ก่อนเพจนี้ถึงจะตอบคอมเมนต์ได้') : 'วาง Access Token ของเพจที่นี่'}" style="width:100%; font-family:monospace; font-size:11.5px;">${dv('accessToken', '')}</textarea>
           <div style="display:flex; align-items:center; gap:10px; margin-top:8px; flex-wrap:wrap;">
             <button class="btn" type="button" data-action="pages-admin-test-token" ${state.pagesAdmin.testing ? 'disabled' : ''}>${state.pagesAdmin.testing ? 'กำลังทดสอบ...' : '🔎 ทดสอบ Token'}</button>
             ${tr ? (tr.ok
@@ -3122,8 +3151,8 @@ function renderPagesAdminForm(){
         ${editing && editing.has_token ? `
         <div class="form-row" style="border-top:1px solid var(--border); padding-top:14px; margin-top:4px;">
           <label>ผูก Webhook (รับคอมเมนต์แบบเรียลไทม์) ${editing.has_webhook ? '<span style="color:var(--green-text); font-size:12px; display:inline-flex; align-items:center; gap:4px;">' + ICONS.checkCircle + ' ผูกอยู่แล้ว</span>' : '<span class="opt">(ยังไม่ได้ผูก — ใส่ App ID + App Secret ของแอป Facebook ที่จะใช้)</span>'}</label>
-          <input id="pa-appId" type="text" placeholder="App ID เช่น 1114919626939183" style="margin-bottom:6px;" />
-          <input id="pa-appSecret" type="text" placeholder="App Secret" style="font-family:monospace; font-size:11.5px;" />
+          <input id="pa-appId" type="text" value="${dv('appId', '')}" placeholder="App ID เช่น 1114919626939183" style="margin-bottom:6px;" />
+          <input id="pa-appSecret" type="text" value="${dv('appSecret', '')}" placeholder="App Secret" style="font-family:monospace; font-size:11.5px;" />
           <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
             <button class="btn" type="button" data-action="pages-admin-subscribe-webhook" ${state.pagesAdmin.webhookSubscribing ? 'disabled' : ''}>${state.pagesAdmin.webhookSubscribing ? 'กำลังผูก...' : '🔗 ผูก Webhook'}</button>
             ${state.pagesAdmin.webhookResult ? (state.pagesAdmin.webhookResult.ok
@@ -3135,10 +3164,10 @@ function renderPagesAdminForm(){
         ` : ''}
         <div class="form-row" style="display:flex; flex-wrap:wrap; gap:16px 24px;">
           <label style="display:flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap; flex:none;">
-            <input id="pa-isActive" type="checkbox" ${!editing || editing.is_active ? 'checked' : ''} /> เปิดใช้งานเพจนี้
+            <input id="pa-isActive" type="checkbox" ${dv('isActive', !editing || editing.is_active) ? 'checked' : ''} /> เปิดใช้งานเพจนี้
           </label>
           <label style="display:flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap; flex:none;" title="เปิดถ้าเพจนี้ไม่มี webhook ต้องให้ระบบ polling ดึงคอมเมนต์เองแทน">
-            <input id="pa-needsPolling" type="checkbox" ${editing && editing.needs_polling ? 'checked' : ''} /> ต้อง polling (ไม่มี webhook)
+            <input id="pa-needsPolling" type="checkbox" ${dv('needsPolling', editing && editing.needs_polling) ? 'checked' : ''} /> ต้อง polling (ไม่มี webhook)
           </label>
         </div>
         </div>
@@ -4125,6 +4154,7 @@ document.getElementById('app').addEventListener('click', (e) => {
       state.pagesAdmin.editingId = null;
       state.pagesAdmin.testResult = null;
       state.pagesAdmin.webhookResult = null;
+      state.pagesAdmin.formDraft = null; // เปิดฟอร์มใหม่ ล้าง draft ของฟอร์มก่อนหน้าทิ้ง (เผื่อเหลือค้าง)
       state.pagesAdmin.formOpen = true;
       render();
       break;
@@ -4133,12 +4163,14 @@ document.getElementById('app').addEventListener('click', (e) => {
       state.pagesAdmin.editingId = id;
       state.pagesAdmin.testResult = null;
       state.pagesAdmin.webhookResult = null;
+      state.pagesAdmin.formDraft = null;
       state.pagesAdmin.formOpen = true;
       render();
       break;
 
     case 'pages-admin-close-form':
       state.pagesAdmin.formOpen = false;
+      state.pagesAdmin.formDraft = null;
       state.pagesAdmin.editingId = null;
       state.pagesAdmin.testResult = null;
       state.pagesAdmin.webhookResult = null;
