@@ -3169,7 +3169,11 @@ function tokenHealthBadge(p){
   const iconByStatus = { ok: '✓', expiring: '⏰', expired: '✕', invalid: '✕', no_token: '✕', unknown: '?' };
   const color = colorByStatus[h.status] || 'var(--text-dim)';
   const icon = iconByStatus[h.status] || '';
-  return `<span style="color:${color}; display:inline-flex; align-items:center; gap:4px;" title="${(h.message || '').replace(/"/g, '&quot;')}">${icon} ${h.message || h.status}</span>`;
+  const fullMessage = h.message || h.status;
+  // ตัดส่วนในวงเล็บท้ายข้อความออกจากป้ายที่โชว์บนตาราง (ยาวเกินไป ทำให้ตารางดูรก/ตัดคำ) แต่ยังเก็บ
+  // ข้อความเต็มไว้ใน title ให้ hover ดูได้เหมือนเดิม ไม่ได้เสียข้อมูลอะไรไป แค่ซ่อนไว้เฉยๆ
+  const shortMessage = fullMessage.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  return `<span style="color:${color}; display:inline-flex; align-items:center; gap:4px;" title="${fullMessage.replace(/"/g, '&quot;')}">${icon} ${shortMessage}</span>`;
 }
 
 function renderPagesAdminView(){
