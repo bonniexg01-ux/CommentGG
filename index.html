@@ -266,6 +266,11 @@
   }
   @keyframes spinIcon{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
   .spin-icon svg{ animation: spinIcon .7s linear infinite; }
+  .spinner{
+    width:28px; height:28px; border-radius:50%;
+    border:3px solid var(--border); border-top-color:var(--accent, #d97757);
+    animation: spinIcon .7s linear infinite;
+  }
   .user-menu-wrap{position:relative;}
   .topbar-icon-btn{
     width:34px; height:34px; border-radius:8px; background:var(--navy-2); color:#fff;
@@ -1623,6 +1628,7 @@ async function loadData(){
     console.error('โหลดข้อมูลจาก Supabase ไม่สำเร็จ:', err);
     showToast('โหลดข้อมูลคอมเมนต์ไม่สำเร็จ ลองรีเฟรชอีกครั้ง', 'error');
   }
+  state.dataLoaded = true; // ไม่ว่าจะสำเร็จหรือพลาด ก็ถือว่า "ลองโหลดรอบแรกแล้ว" ไม่ใช่สถานะ "กำลังโหลด" อีกต่อไป
   render();
 }
 
@@ -1731,6 +1737,14 @@ const state = {
   // 2) กัน loadData() (poll ทุก 20 วิ) เอาข้อมูลเก่าจาก Supabase มาทับสถานะที่เพิ่ง optimistic ไว้
   //    ก่อนที่คำขอจริงจะเขียนลง Supabase เสร็จ — ไม่งั้นจะดูเหมือนกดแล้วไม่มีอะไรเกิดขึ้น
   pendingActionIds: new Set(),
+
+  // true ตั้งแต่ loadData() ดึงข้อมูลรอบแรกเสร็จแล้วเท่านั้น (ไม่ใช่แค่ auth พร้อม) — เดิม render()
+  // ถูกเรียกทันทีหลังรู้ผล session (ก่อน loadData() จะดึงข้อมูลเสร็จด้วยซ้ำ) ทำให้ช่วงที่ยังโหลดข้อมูล
+  // คอมเมนต์/รายชื่อเพจอยู่ (PAGES/ITEMS ยังเป็น [] ว่างเปล่า) หน้าจอจะโชว์ "ทุกเพจ (0)" กับ "ไม่มี
+  // รายการในมุมมองนี้" เหมือนไม่มีข้อมูลจริงๆ ทั้งที่จริงๆ แค่ยังโหลดไม่เสร็จ (เจอจริง: ถ้า feed_items
+  // มีข้อมูลเยอะ โหลดช้ากว่าปกติ จะยิ่งเห็นสถานะ "ว่างเปล่า" นี้ค้างนานขึ้นจนดูเหมือนเว็บพัง) ใช้ตัวนี้
+  // แยกให้ชัดระหว่าง "กำลังโหลด" กับ "โหลดเสร็จแล้วแต่ไม่มีข้อมูลจริงๆ"
+  dataLoaded: false,
 
   // สถานะการล็อกอิน (Supabase Auth) — ทีมมีหลายคน ใช้คนละไอดีกันเข้า บัญชีสร้างโดยแอดมินเท่านั้น
   // ไม่มีปุ่มสมัครเองในหน้าเว็บ ทุกคนที่ล็อกอินได้มีสิทธิ์เท่ากันหมด
@@ -2456,6 +2470,17 @@ function currentPageItems(){
 function renderList(){
   const items = visibleItems();
   if (!items.length) {
+    // แยกให้ชัดระหว่าง "กำลังโหลดข้อมูลรอบแรกอยู่" (PAGES/ITEMS ยังว่างเพราะ loadData() ยังไม่เสร็จ)
+    // กับ "โหลดเสร็จแล้วแต่ไม่มีรายการจริงๆ" — ไม่งั้นตอนเพิ่งรีเฟรช/ล็อกอินใหม่ จะเห็น "ไม่มีรายการ"
+    // ค้างอยู่พักหนึ่งจนดูเหมือนเว็บพังหรือข้อมูลหาย ทั้งที่จริงๆ แค่กำลังดึงข้อมูลอยู่
+    if (!state.dataLoaded) {
+      return `
+        <div class="empty">
+          <div class="spinner" style="margin:0 auto 10px;"></div>
+          <div class="t">กำลังโหลดข้อมูล...</div>
+        </div>
+      `;
+    }
     return `
       <div class="empty">
         ${ICONS.inbox}
