@@ -96,23 +96,32 @@ async function testFacebookToken(pageId, accessToken) {
       if (String(info.profile_id) !== String(pageId)) {
         return { ok: false, error: `Token นี้ใช้ได้ แต่เป็นของเพจอื่น (id: ${info.profile_id}) ไม่ตรงกับ Page ID ที่กรอกไว้ (${pageId})` };
       }
-    } else if (info.type === 'USER') {
-      // user token ล็อกอินส่วนตัว — ลองแลกเป็น page token ของเพจนี้โดยเฉพาะให้อัตโนมัติ
+    } else if (info.type === 'USER' || info.type === 'SYSTEM_USER') {
+      // USER = token ของบัญชีผู้ใช้ทั่วไปตอนล็อกอิน / SYSTEM_USER = token ของ "System User" ใน Meta
+      // Business Suite (มักใช้ตอนต่อ API ผ่าน Business Manager แทนบัญชีคนจริง) — ทั้งสองแบบใช้
+      // /me/accounts ดึง page token ที่ถูกต้องของเพจนี้ได้เหมือนกัน (Facebook ตีความ "me" ตามเจ้าของ
+      // token ที่ยิงมา ไม่ว่าจะเป็นคนจริงหรือ System User) เลยแลกให้อัตโนมัติแบบเดียวกันได้เลย — เงื่อนไข
+      // คือ token นั้นต้องมีสิทธิ์เข้าถึงเพจนี้เป็น asset ใน Business Manager อยู่ก่อนแล้ว (ถ้ายังไม่ได้ผูก
+      // ต้องไปเพิ่มเพจนี้เป็น asset ให้ System User นั้นใน Business Settings ก่อน ถึงจะแลกได้)
       const accUrl = `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts?fields=id,access_token&limit=200&access_token=${encodeURIComponent(accessToken)}`;
       const ar = await fetchWithTimeout(accUrl, { method: 'GET' });
       const adata = await ar.json();
       if (adata.error) {
-        return { ok: false, error: `นี่คือ token ของบัญชีผู้ใช้ ไม่ใช่ token ของเพจ และดึงรายชื่อเพจที่จัดการได้ไม่สำเร็จ: ${adata.error.message}` };
+        return { ok: false, error: `นี่คือ token ของ${info.type === 'SYSTEM_USER' ? ' System User (Business Manager)' : 'บัญชีผู้ใช้'} ไม่ใช่ token ของเพจ และดึงรายชื่อเพจที่จัดการได้ไม่สำเร็จ: ${adata.error.message}` };
       }
       const match = (adata.data || []).find((p) => String(p.id) === String(pageId));
       if (!match || !match.access_token) {
         return {
           ok: false,
-          error: `นี่คือ token ของบัญชีผู้ใช้ (ไม่ใช่ token ของเพจ) และบัญชีนี้ไม่มีสิทธิ์แอดมินเพจ ID ${pageId} — วิธีแก้: ใน Facebook ให้เลือก "page access token" ของเพจนี้โดยเฉพาะ หรือล็อกอินด้วยบัญชีที่เป็นแอดมินเพจนี้แล้วลองใหม่`,
+          error: info.type === 'SYSTEM_USER'
+            ? `นี่คือ token ของ System User (Business Manager) แต่ System User นี้ยังไม่มีสิทธิ์เข้าถึงเพจ ID ${pageId} — วิธีแก้: เข้า Meta Business Suite > Business Settings > Users > System Users เลือก System User นี้ แล้วกด "Assign Assets" ไปเพิ่มเพจนี้เป็น asset ที่มีสิทธิ์ก่อน (อย่างน้อยระดับ "ตอบคอมเมนต์/ข้อความ") แล้วค่อยลองใหม่`
+            : `นี่คือ token ของบัญชีผู้ใช้ (ไม่ใช่ token ของเพจ) และบัญชีนี้ไม่มีสิทธิ์แอดมินเพจ ID ${pageId} — วิธีแก้: ใน Facebook ให้เลือก "page access token" ของเพจนี้โดยเฉพาะ หรือล็อกอินด้วยบัญชีที่เป็นแอดมินเพจนี้แล้วลองใหม่`,
         };
       }
       finalToken = match.access_token;
-      note = 'วาง token ของบัญชีผู้ใช้มาแทน token ของเพจ — ระบบแลกเป็น page token ที่ถูกต้องให้อัตโนมัติแล้ว ไม่ต้องทำอะไรเพิ่ม';
+      note = info.type === 'SYSTEM_USER'
+        ? 'วาง token ของ System User (Business Manager) มาแทน token ของเพจ — ระบบแลกเป็น page token ที่ถูกต้องให้อัตโนมัติแล้ว ไม่ต้องทำอะไรเพิ่ม'
+        : 'วาง token ของบัญชีผู้ใช้มาแทน token ของเพจ — ระบบแลกเป็น page token ที่ถูกต้องให้อัตโนมัติแล้ว ไม่ต้องทำอะไรเพิ่ม';
     } else {
       return { ok: false, error: `Token ประเภท "${info.type || 'ไม่ทราบ'}" ใช้กับระบบนี้ไม่ได้ ต้องเป็น page access token เท่านั้น` };
     }
