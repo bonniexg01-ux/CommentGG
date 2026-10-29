@@ -1033,6 +1033,31 @@ function apiAuthHeaders(){
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 }
 
+// ชื่อภาษาที่ใช้แสดงผล (ไทย) ของรหัสภาษาที่ใช้ตั้งค่า "ภาษาที่ใช้ตอบ" ของแต่ละเพจ — ถ้าไม่ตรงกับ
+// รายการนี้ (เช่นพิมพ์รหัสแปลกๆ เอง) ก็ยังใช้งานได้ปกติ แค่โชว์เป็นรหัสดิบแทนชื่อเต็ม
+const REPLY_LANG_LABELS = {
+  th: 'ไทย', en: 'อังกฤษ', id: 'อินโดนีเซีย', tl: 'ฟิลิปปินส์ (ตากาล็อก)', vi: 'เวียดนาม',
+  ms: 'มาเลย์', zh: 'จีน', ja: 'ญี่ปุ่น', ko: 'เกาหลี',
+};
+function langLabel(code){ return REPLY_LANG_LABELS[code] || code; }
+
+// เรียก /api/translate ตัวเดียว ใช้ร่วมกันทั้งแปลคอมเมนต์เข้า (→ไทย) และแปลข้อความที่พิมพ์ตอบ (→ภาษา
+// ของเพจ) — คืนค่า { ok, translated } หรือ { ok:false, error }
+async function callTranslateApi(text, target, source){
+  try {
+    const res = await fetch('/api/translate', {
+      method: 'POST',
+      headers: apiAuthHeaders(),
+      body: JSON.stringify({ text, target, source: source || 'auto' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) return { ok: false, error: data.error || 'แปลไม่สำเร็จ' };
+    return { ok: true, translated: data.translated };
+  } catch (err) {
+    return { ok: false, error: 'เชื่อมต่อเซิร์ฟเวอร์แปลภาษาไม่สำเร็จ' };
+  }
+}
+
 let PAGES = [];
 let ITEMS = [];
 // แฮชแท็กของ "ฉัน" (คนที่ล็อกอินอยู่ตอนนี้) แยกตามเพจ — { [pageId]: hashtag } แต่ละคนในทีมตั้งของ
@@ -1170,7 +1195,10 @@ function categorizeComment(item){
 
 function mapPage(row){
   return { id: row.id, name: row.page_name, tag: row.tag || '', color: row.color_hex || '#2563eb',
-    emoji: row.emoji || '🙂', pronoun: row.pronoun || '', ending: row.ending || 'ค่ะ', hashtag: row.hashtag || '' };
+    emoji: row.emoji || '🙂', pronoun: row.pronoun || '', ending: row.ending || 'ค่ะ', hashtag: row.hashtag || '',
+    // ภาษาที่ใช้ตอบคอมเมนต์ของเพจนี้ — 'th' = ตอบไทยตรงๆ ตามปกติ (ไม่โชว์ปุ่มแปล) ภาษาอื่นจะโชว์ปุ่ม
+    // "แปลก่อนส่ง" ในกล่องตอบกลับให้อัตโนมัติ (ดู renderReplyBox())
+    replyLang: row.reply_lang || 'th' };
 }
 function mapItem(row){
   return {
@@ -1705,6 +1733,14 @@ const state = {
   replyImages: {},
   // item.id ของคอมเมนต์ที่กำลังเปิดแผงเลือกอิโมจิอยู่ (เปิดได้ทีละอันเท่านั้น) null = ปิดหมด
   openEmojiPicker: null,
+  // แคชคำแปลคอมเมนต์เป็นไทย (key = item.id) — { text, loading, error } กันแปลซ้ำทุกครั้งที่กดเปิด/ปิด
+  commentTranslations: {},
+  // item.id ที่กำลังโชว์คำแปลคอมเมนต์อยู่ (กดซ้ำเพื่อซ่อน ไม่ต้องแปลใหม่เพราะมีแคชแล้ว)
+  translateOpenIds: new Set(),
+  // ตัวอย่างคำแปลข้อความที่พิมพ์ตอบ (key = item.id) ก่อนกดใช้จริง — { text, loading, error, lang }
+  // ไม่ auto-แทนที่ข้อความในกล่องตอบกลับทันที ให้ดูตัวอย่างก่อนแล้วค่อยกด "ใช้คำแปลนี้" เอง กันแปลผิด
+  // แล้วส่งออกไปโดยไม่ได้ตรวจก่อน
+  replyTranslatePreview: {},
   soundMuted: getSoundMuted(), // อ่านค่าที่ปิด/เปิดไว้ล่าสุดจาก localStorage ตั้งแต่เริ่มโหลดหน้า
   soundVolume: getSoundVolume(), // 0-1 อ่านค่าที่ปรับไว้ล่าสุด (ดีฟอลต์ 100% ถ้าไม่เคยปรับ)
   soundType: getSoundType(), // แบบเสียงที่เลือกไว้ (key ของ SOUND_PRESETS)
@@ -2367,6 +2403,26 @@ function rowActions(item){
   `;
 }
 
+// กล่องตัวอย่างคำแปลข้อความที่พิมพ์ตอบ (โชว์เฉพาะตอนมีการกดแปลแล้วเท่านั้น) — ไม่แทนที่ข้อความในกล่อง
+// ตอบกลับให้อัตโนมัติ ต้องกด "ใช้คำแปลนี้" เองก่อน กันกรณีแปลผิดความหมายแล้วส่งออกไปโดยไม่ทันเห็น
+function renderReplyTranslatePreview(item){
+  const p = state.replyTranslatePreview[item.id];
+  if (!p) return '';
+  if (p.loading) return `<div class="opt" style="margin:4px 0;">กำลังแปล...</div>`;
+  if (p.error) return `<div class="opt" style="margin:4px 0; color:var(--red-text);">แปลไม่สำเร็จ: ${p.error}</div>`;
+  if (!p.text) return '';
+  return `
+    <div style="margin:4px 0; padding:8px 10px; background:var(--hover-bg); border-radius:8px;">
+      <div class="opt" style="margin-bottom:4px;">ตัวอย่างคำแปล (${langLabel(p.lang)}):</div>
+      <div style="font-size:13px; white-space:pre-wrap;">${p.text}</div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <span class="btn" style="padding:3px 8px; font-size:11px;" data-action="use-translated-reply" data-id="${item.id}">✓ ใช้คำแปลนี้</span>
+        <span class="btn" style="padding:3px 8px; font-size:11px;" data-action="dismiss-translate-preview" data-id="${item.id}">ปิด</span>
+      </div>
+    </div>
+  `;
+}
+
 function renderExpandPanel(item){
   const page = pageById(item.pageId);
   let inner = '';
@@ -2401,6 +2457,7 @@ function renderExpandPanel(item){
           <span class="btn" style="padding:4px 9px; font-size:11px;" data-action="toggle-emoji-picker" data-id="${item.id}">${ICONS.smile} อิโมจิ</span>
           <span class="btn" style="padding:4px 9px; font-size:11px;" data-action="pick-image" data-id="${item.id}">${ICONS.image} แนบรูป</span>
           <span class="btn" style="padding:4px 9px; font-size:11px;" data-action="insert-signature" data-id="${item.id}">${ICONS.copy} แทรกลายเซ็น</span>
+          ${page.replyLang && page.replyLang !== 'th' ? `<span class="btn" style="padding:4px 9px; font-size:11px;" data-action="translate-reply-draft" data-id="${item.id}">🌐 แปลเป็น${langLabel(page.replyLang)}</span>` : ''}
         </span>
       </div>
       ${state.openEmojiPicker === item.id ? `
@@ -2409,6 +2466,7 @@ function renderExpandPanel(item){
         </div>
       ` : ''}
       <textarea id="replyBox-${item.id}" placeholder="พิมพ์ข้อความตอบกลับ... (ต้องใช้สรรพนาม “${page.pronoun}” สำหรับเพจนี้ — วางลิงก์ในนี้ได้เลย ส่งเป็นข้อความปกติ, วางรูปด้วย Ctrl+V ได้เหมือนกัน)">${state.replyDrafts[item.id] !== undefined ? state.replyDrafts[item.id] : signatureFor(page)}</textarea>
+      ${renderReplyTranslatePreview(item)}
       <input type="file" id="imageInput-${item.id}" accept="image/*" style="display:none;" />
       <div id="composerLinkZone-${item.id}"></div>
       ${state.replyImages[item.id] ? `
@@ -2433,6 +2491,28 @@ function renderExpandPanel(item){
   return `<div class="expand-panel">${inner}</div>`;
 }
 
+// ปุ่ม/กล่องแปลคอมเมนต์เป็นไทย — ไม่แปลอัตโนมัติทุกคอมเมนต์ (เปลืองโควต้าบริการแปลฟรีโดยไม่จำเป็น ถ้า
+// ข้อความสั้นๆ ภาษาไทยอยู่แล้วก็ไม่ต้องแปล) ให้กดเองตอนอยากรู้ความหมาย โชว์ผลแปลเก็บไว้ในแคชกันแปลซ้ำ
+function renderCommentTranslate(item){
+  if (!item.text || !item.text.trim()) return '';
+  const isOpen = state.translateOpenIds.has(item.id);
+  const cached = state.commentTranslations[item.id];
+  let box = '';
+  if (isOpen) {
+    if (cached && cached.loading) {
+      box = `<div class="opt" style="margin-top:4px;">กำลังแปล...</div>`;
+    } else if (cached && cached.error) {
+      box = `<div class="opt" style="margin-top:4px; color:var(--red-text);">แปลไม่สำเร็จ: ${cached.error}</div>`;
+    } else if (cached && cached.text) {
+      box = `<div class="translated-text" style="margin-top:4px; padding:8px 10px; background:var(--hover-bg); border-radius:8px; font-size:13px;">🌐 ${cached.text}</div>`;
+    }
+  }
+  return `
+    <div class="copy-link" data-action="translate-comment" data-id="${item.id}" style="margin-top:4px;">🌐 ${isOpen ? 'ซ่อนคำแปล' : 'แปลเป็นไทย'}</div>
+    ${box}
+  `;
+}
+
 function renderRow(item){
   const page = pageById(item.pageId);
   const checked = state.selected.has(item.id);
@@ -2449,6 +2529,7 @@ function renderRow(item){
         </div>
         <div class="row-content">
           <div class="row-text">${item.text}${tagFor(item)}</div>
+          ${renderCommentTranslate(item)}
           ${item.attachmentImageUrl ? `
             <img src="${item.attachmentImageUrl}" alt="รูปที่แนบมากับคอมเมนต์" loading="lazy"
               data-action="view-post" data-id="${item.id}" title="คลิกเพื่อดูขนาดเต็ม"
@@ -2971,6 +3052,7 @@ function captureAdminFormDraft(){
     ending: val('pa-ending'), tag: val('pa-tag'), hashtag: val('pa-hashtag'),
     accessToken: val('pa-accessToken'), appId: val('pa-appId'), appSecret: val('pa-appSecret'),
     isActive: checked('pa-isActive'), needsPolling: checked('pa-needsPolling'),
+    replyLang: val('pa-replyLang'),
   };
 }
 
@@ -3016,6 +3098,7 @@ async function savePageAdmin(){
     hashtag: document.getElementById('pa-hashtag').value.trim(),
     isActive: document.getElementById('pa-isActive').checked,
     needsPolling: document.getElementById('pa-needsPolling').checked,
+    replyLang: document.getElementById('pa-replyLang').value,
   };
   state.pagesAdmin.saving = true;
   captureAdminFormDraft(); // เก็บค่าที่พิมพ์ไว้ก่อน render() เผื่อบันทึกไม่สำเร็จจะได้ไม่ต้องพิมพ์ใหม่
@@ -3101,6 +3184,12 @@ function renderPagesAdminForm(){
         <div class="form-row">
           <label>ชื่อเกม <span class="opt">(ไม่บังคับ)</span></label>
           <input id="pa-gameName" type="text" value="${dv('gameName', editing ? (editing.game_name || '') : '')}" />
+        </div>
+        <div class="form-row">
+          <label>ภาษาที่ใช้ตอบ <span class="opt">(เลือก "ไทย" ถ้าตอบไทยตรงๆ ตามปกติ — ภาษาอื่นจะมีปุ่ม "แปลก่อนส่ง" ขึ้นในกล่องตอบกลับให้)</span></label>
+          <select id="pa-replyLang">
+            ${Object.entries(REPLY_LANG_LABELS).map(([code, label]) => `<option value="${code}" ${dv('replyLang', editing ? editing.reply_lang : 'th') === code ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
         </div>
         <div class="form-row" style="display:flex; gap:10px;">
           <div style="flex:1;">
@@ -4567,6 +4656,66 @@ document.getElementById('app').addEventListener('click', (e) => {
       updateComposerState(item, box, page);
       break;
     }
+
+    // เปิด/ปิดคำแปลคอมเมนต์นี้เป็นไทย — ถ้าเคยแปลแล้ว (มีแคช) แค่ toggle โชว์/ซ่อน ไม่ยิงขอแปลซ้ำ
+    case 'translate-comment': {
+      if (!item) break;
+      if (state.translateOpenIds.has(id)) {
+        state.translateOpenIds.delete(id);
+        render();
+        break;
+      }
+      state.translateOpenIds.add(id);
+      if (state.commentTranslations[id] && state.commentTranslations[id].text) {
+        render(); // มีแคชอยู่แล้ว แค่โชว์เลย ไม่ต้องแปลใหม่
+        break;
+      }
+      state.commentTranslations[id] = { loading: true };
+      render();
+      callTranslateApi(item.text, 'th').then((result) => {
+        state.commentTranslations[id] = result.ok ? { text: result.translated } : { error: result.error };
+        render();
+      });
+      break;
+    }
+
+    // แปลข้อความที่พิมพ์ค้างไว้ในกล่องตอบกลับ (ภาษาไทย) เป็นภาษาที่เพจนี้ตั้งไว้ ("ภาษาที่ใช้ตอบ" ในหน้า
+    // จัดการเพจ) — โชว์เป็นตัวอย่างก่อน ไม่ได้แทนที่ข้อความในกล่องทันที (ดู renderReplyTranslatePreview)
+    case 'translate-reply-draft': {
+      if (!item) break;
+      const page = pageById(item.pageId);
+      const box = document.getElementById('replyBox-' + id);
+      const draftText = (box ? box.value : state.replyDrafts[id]) || '';
+      if (!draftText.trim()) { showToast('พิมพ์ข้อความที่จะตอบก่อนถึงจะแปลได้', 'error'); break; }
+      const targetLang = page.replyLang || 'th';
+      state.replyTranslatePreview[id] = { loading: true, lang: targetLang };
+      render();
+      callTranslateApi(draftText, targetLang, 'th').then((result) => {
+        state.replyTranslatePreview[id] = result.ok
+          ? { text: result.translated, lang: targetLang }
+          : { error: result.error, lang: targetLang };
+        render();
+      });
+      break;
+    }
+
+    // เอาคำแปลตัวอย่างมาแทนที่ข้อความในกล่องตอบกลับจริง — ยังแก้ไขต่อได้ก่อนกดส่งตามปกติ
+    case 'use-translated-reply': {
+      if (!item) break;
+      const p = state.replyTranslatePreview[id];
+      if (!p || !p.text) break;
+      const box = document.getElementById('replyBox-' + id);
+      state.replyDrafts[id] = p.text;
+      if (box) box.value = p.text;
+      delete state.replyTranslatePreview[id];
+      render();
+      break;
+    }
+
+    case 'dismiss-translate-preview':
+      delete state.replyTranslatePreview[id];
+      render();
+      break;
 
     // เปิด/ปิดแผงเลือกอิโมจิของคอมเมนต์นี้ — เปิดได้ทีละอันเท่านั้น (openEmojiPicker เก็บแค่ id เดียว)
     case 'toggle-emoji-picker':

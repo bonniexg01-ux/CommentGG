@@ -145,7 +145,7 @@ async function testFacebookToken(pageId, accessToken) {
 }
 
 async function listPages() {
-  const url = `${SUPABASE_URL}/rest/v1/pages?select=id,page_id,page_name,game_name,color_hex,emoji,tag,pronoun,ending,hashtag,is_active,needs_polling,created_at,access_token,app_id,app_secret&order=page_name.asc`;
+  const url = `${SUPABASE_URL}/rest/v1/pages?select=id,page_id,page_name,game_name,color_hex,emoji,tag,pronoun,ending,hashtag,is_active,needs_polling,reply_lang,created_at,access_token,app_id,app_secret&order=page_name.asc`;
   const r = await fetch(url, { headers: sbHeaders });
   if (!r.ok) throw new Error('โหลดรายชื่อเพจไม่สำเร็จ');
   const rows = await r.json();
@@ -318,7 +318,7 @@ export default async function handler(request) {
     }
 
     if (action === 'save') {
-      const { id, pageId, pageName, gameName, accessToken, emoji, colorHex, tag, pronoun, ending, hashtag, isActive, needsPolling } = body || {};
+      const { id, pageId, pageName, gameName, accessToken, emoji, colorHex, tag, pronoun, ending, hashtag, isActive, needsPolling, replyLang } = body || {};
       if (!pageId || !String(pageId).trim()) return json({ error: 'Page ID จำเป็นต้องมี' }, 400);
       if (!pageName || !String(pageName).trim()) return json({ error: 'ชื่อเพจจำเป็นต้องมี' }, 400);
       if (ending && !ALLOWED_ENDINGS.has(ending)) {
@@ -358,6 +358,9 @@ export default async function handler(request) {
         hashtag: hashtag ? String(hashtag).trim() : null,
         is_active: isActive !== false,
         needs_polling: !!needsPolling,
+        // ภาษาที่ใช้ตอบคอมเมนต์ของเพจนี้ — 'th' = ไม่ต้องแปล (ตอบไทยตรงๆ ตามปกติ) ภาษาอื่นจะเปิดปุ่ม
+        // "แปลก่อนส่ง" ในกล่องตอบกลับให้อัตโนมัติ (ดู frontend/index.html ส่วน reply composer)
+        reply_lang: replyLang ? String(replyLang).trim().toLowerCase() : 'th',
       };
       if (resolvedToken) {
         fields.access_token = resolvedToken;
