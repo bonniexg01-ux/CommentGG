@@ -3170,9 +3170,14 @@ function tokenHealthBadge(p){
   const color = colorByStatus[h.status] || 'var(--text-dim)';
   const icon = iconByStatus[h.status] || '';
   const fullMessage = h.message || h.status;
-  // ตัดส่วนในวงเล็บท้ายข้อความออกจากป้ายที่โชว์บนตาราง (ยาวเกินไป ทำให้ตารางดูรก/ตัดคำ) แต่ยังเก็บ
-  // ข้อความเต็มไว้ใน title ให้ hover ดูได้เหมือนเดิม ไม่ได้เสียข้อมูลอะไรไป แค่ซ่อนไว้เฉยๆ
-  const shortMessage = fullMessage.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  // ย่อป้ายที่โชว์บนตารางเฉพาะกรณี "ไม่มีวันหมดอายุ" เท่านั้น เพราะข้อความในวงเล็บของเคสนี้เป็นแค่
+  // คำเตือน/เงื่อนไขทั่วไป (ไม่ใช่วันที่จริง) ตัดออกได้โดยไม่เสียข้อมูลสำคัญ — เก็บข้อความเต็มไว้ใน
+  // title ให้ hover ดูได้เหมือนเดิม ส่วนเคสอื่นๆ ทั้งหมด (เช่น "ใช้ได้ (หมดอายุในอีก N วัน)",
+  // "Token จะหมดอายุในอีก N วัน") ข้อความในวงเล็บคือ "วันที่จริง/จำนวนวันที่เหลือจริง" ซึ่งเป็นสาระสำคัญ
+  // ต้องโชว์เต็มบนตารางเสมอ ห้ามตัดทิ้งเด็ดขาด
+  const shortMessage = (h.status === 'ok' && !h.expiresAt)
+    ? fullMessage.replace(/\s*\([^)]*\)\s*$/, '').trim()
+    : fullMessage;
   return `<span style="color:${color}; display:inline-flex; align-items:center; gap:4px;" title="${fullMessage.replace(/"/g, '&quot;')}">${icon} ${shortMessage}</span>`;
 }
 
