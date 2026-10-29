@@ -1573,8 +1573,14 @@ async function loadInboxFast(){
       fetch(`${SUPABASE_URL}/rest/v1/pages_public?select=*&order=created_at.asc`, { headers: sbAuthHeaders() }),
       fetch(`${SUPABASE_URL}/rest/v1/feed_items?select=*&folder=eq.inbox&order=created_at.desc`, { headers: sbAuthHeaders() }),
     ]);
+    // กันไว้อีกชั้น (เผื่อเรียกซ้ำ/ช้ากว่าที่คิด): ถ้า loadData() ตัวเต็มโหลดข้อมูลจริงเสร็จไปแล้ว
+    // ก่อนที่ fetch รอบเร็วนี้จะตอบกลับมา ห้ามเอาผลลัพธ์แบบ Inbox-only (ซึ่งน้อยกว่าของจริงเสมอ เพราะ
+    // ไม่รวม Archive/Bin) มาทับข้อมูลที่ครบถ้วนอยู่แล้ว ไม่งั้นตัวเลขคอมเมนต์บนจอจะวูบจากค่าถูกไปเป็น
+    // ค่าน้อยกว่าผิดๆ ทันที (บั๊กที่เคยเกิดจริง)
+    if (state.dataLoaded) return;
     if (pagesRes.ok) PAGES = (await pagesRes.json()).map(mapPage);
     if (itemsRes.ok) {
+      if (state.dataLoaded) return;
       ITEMS = (await itemsRes.json()).map(mapItem);
       state.dataLoaded = true;
       render();
@@ -4610,6 +4616,21 @@ document.getElementById('app').addEventListener('click', (e) => {
 // ไม่ว่าครั้งก่อนจะติ๊ก "จำฉันไว้" หรือไม่ก็ตาม) ก่อนตัดสินใจว่าจะโชว์หน้า login หรือแดชบอร์ดเลย
 // — แต่ถ้าข้ามวันมาแล้ว (เปิดเว็บ/เปิดคอมใหม่คนละวันกับที่ล็อกอินล่าสุด) ให้บังคับ sign out ออกไป
 // หน้า login ก่อนเสมอ แม้ session เดิมจะยังไม่หมดอายุจริงก็ตาม (ตามที่ขอให้ล็อกอินใหม่ทุกวัน)
+// กัน "โหลดข้อมูลรอบแรก" ยิงซ้ำสองครั้งพร้อมกัน — ทั้ง getSession().then() ด้านล่าง และ
+// onAuthStateChange() (ที่ฟังอยู่คู่กัน) ต่างก็เช็ค session ตอนเปิด/รีเฟรชหน้าเหมือนกัน ปกติ Supabase
+// จะยิง event ของทั้งสองตัวใกล้ๆ กันมาก (บางครั้งก่อน state.auth.session จะถูกตั้งค่าจากอีกฝั่งเสร็จ
+// ด้วยซ้ำ) ถ้าไม่กันไว้ จะกลายเป็นมี loadInboxFast()+loadData() วิ่งพร้อมกัน 2 ชุด แล้วชุดที่ทำงานช้า
+// กว่า (ซึ่งอาจจะเป็นชุด loadInboxFast ที่ดึงแค่ Inbox) มาเสร็จทีหลังและ render() ทับผลลัพธ์ที่ถูกต้อง
+// (ครบทุกโฟลเดอร์) ของอีกชุดทิ้ง ทำให้ตัวเลขคอมเมนต์ที่เห็นบนจอ "วูบ" จากค่าที่ถูกต้องไปเป็นค่าน้อยกว่า
+// ผิดๆ กะทันหัน (บั๊กที่เจอจริงหลัง deploy ฟีเจอร์โหลดเร็ว)
+let initialLoadKicked = false;
+function kickInitialLoad(){
+  if (initialLoadKicked) return;
+  initialLoadKicked = true;
+  loadInboxFast().then(() => loadData());
+  syncPollingPages();
+}
+
 sb.auth.getSession().then(({ data }) => {
   const session = data.session || null;
   if (session && !isLoginStillFreshToday()) {
@@ -4620,7 +4641,7 @@ sb.auth.getSession().then(({ data }) => {
   state.auth.session = session;
   state.auth.ready = true;
   render();
-  if (state.auth.session) { loadInboxFast().then(() => loadData()); syncPollingPages(); }
+  if (state.auth.session) { kickInitialLoad(); }
 });
 
 // ฟังการเปลี่ยนแปลงสถานะล็อกอิน (ล็อกอินสำเร็จ, ออกจากระบบ, token หมดอายุแล้วต่ออายุอัตโนมัติ ฯลฯ)
@@ -4638,7 +4659,7 @@ sb.auth.onAuthStateChange((event, session) => {
     window.localStorage.removeItem(LOGIN_DATE_KEY);
   }
   render();
-  if (session && !hadSession) { loadInboxFast().then(() => loadData()); syncPollingPages(); }
+  if (session && !hadSession) { kickInitialLoad(); }
 });
 
 // ระหว่างที่ผู้ใช้กำลังพิมพ์/แก้ไขอะไรอยู่ (กล่องตอบกลับ, แก้ไขคำตอบเดิม, หรือเปิด Account settings
