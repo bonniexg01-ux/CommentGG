@@ -4681,11 +4681,13 @@ document.getElementById('app').addEventListener('click', (e) => {
       break;
     }
 
-    // แปลข้อความที่พิมพ์ค้างไว้ในกล่องตอบกลับ (ภาษาไทย) เป็นภาษาเดียวกับคอมเมนต์ต้นฉบับ "อัตโนมัติ"
-    // โดยตรวจจับภาษาของคอมเมนต์นั้นให้เอง ไม่ต้องตั้งค่า "ภาษาที่ใช้ตอบ" ของเพจไว้ล่วงหน้าอีกต่อไป —
-    // ถ้าเคยกด "แปลเป็นไทย" ของคอมเมนต์นี้ไปแล้ว (มีแคชภาษาต้นฉบับอยู่) ใช้ค่านั้นเลยไม่ต้องยิงซ้ำ
-    // ถ้าคอมเมนต์เป็นไทยอยู่แล้วก็ไม่ต้องแปล แจ้งเตือนแล้วจบเลย — โชว์เป็นตัวอย่างก่อนส่ง ไม่ได้แทนที่
-    // ข้อความในกล่องทันที (ดู renderReplyTranslatePreview)
+    // แปลข้อความที่พิมพ์ค้างไว้ในกล่องตอบกลับ (ภาษาไทย) เป็น "ภาษาอังกฤษ" เสมอ (ตามที่ขอ — ทีมตอบ
+    // ผู้เล่นเป็นภาษาอังกฤษล้วนไม่ว่าคอมเมนต์ต้นฉบับจะเป็นภาษาอะไรก็ตาม ไม่ต้องแปลตามภาษาคอมเมนต์แล้ว
+    // ต่างจากฝั่ง "แปลเป็นไทย" (translate-comment ด้านบน) ที่ยังคงตรวจจับภาษาต้นฉบับอัตโนมัติเพื่อให้
+    // ทีมอ่านเข้าใจอยู่เหมือนเดิม) — ยังคงเช็คก่อนว่าคอมเมนต์ต้นฉบับเป็นไทยอยู่แล้วหรือเปล่า ถ้าใช่ก็ไม่ต้อง
+    // แปล (ตอบไทยตรงๆ ได้เลย) ถ้าเคยกด "แปลเป็นไทย" ของคอมเมนต์นี้ไปแล้ว (มีแคชภาษาต้นฉบับอยู่) ใช้ค่า
+    // นั้นเช็คได้เลยไม่ต้องยิงซ้ำ — โชว์เป็นตัวอย่างก่อนส่ง ไม่ได้แทนที่ข้อความในกล่องทันที (ดู
+    // renderReplyTranslatePreview)
     case 'translate-reply-draft': {
       if (!item) break;
       const box = document.getElementById('replyBox-' + id);
@@ -4717,12 +4719,13 @@ document.getElementById('app').addEventListener('click', (e) => {
           render();
           return;
         }
-        state.replyTranslatePreview[id] = { loading: true, lang: detectedLang };
+        const targetLang = 'en'; // แปลข้อความตอบเป็นอังกฤษเสมอ ไม่ตามภาษาคอมเมนต์ต้นฉบับ
+        state.replyTranslatePreview[id] = { loading: true, lang: targetLang };
         render();
-        callTranslateApi(draftText, detectedLang, 'th').then((result) => {
+        callTranslateApi(draftText, targetLang, 'th').then((result) => {
           state.replyTranslatePreview[id] = result.ok
-            ? { text: result.translated, lang: detectedLang }
-            : { error: result.error, lang: detectedLang };
+            ? { text: result.translated, lang: targetLang }
+            : { error: result.error, lang: targetLang };
           render();
         });
       });
