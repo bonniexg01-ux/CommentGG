@@ -3893,8 +3893,22 @@ function renderTeamAdminView(){
 /* ============================================================
    ROOT RENDER
 ============================================================ */
+// เจอจริง: ตอนเปิดป๊อบอัพ (modal-backdrop) ใดๆ ก็ตาม (ดูรายละเอียดโพสต์ / Account settings / ฟอร์ม
+// เพิ่ม-แก้เพจ/ทีม ฯลฯ) แล้วเลื่อนลูกกลิ้งเมาส์ขณะเมาส์อยู่เหนือป๊อบอัพ — หน้าเว็บด้านหลังป๊อบอัพก็
+// เลื่อนตามไปด้วย (เพราะ body ทั้งหน้ายังเลื่อนได้ปกติอยู่ ไม่ได้ถูกล็อกไว้ตอนมีป๊อบอัพเปิดอยู่) ทำให้
+// ข้อมูลพื้นหลังเปลี่ยนไปเรื่อยๆ ระหว่างที่ตั้งใจจะเลื่อนดูแค่ข้างในป๊อบอัพ — ล็อกการเลื่อนของ body
+// ไว้ทุกครั้งที่มีป๊อบอัพแบบนี้เปิดอยู่อย่างน้อย 1 อัน แล้วปลดล็อกคืนทันทีที่ปิดหมดทุกอันแล้ว
+function updateBodyScrollLock(){
+  const anyModalOpen = !!(
+    state.profileOpen || state.postPanel.open || state.pagesAdmin.formOpen || state.teamAdmin.formOpen
+    || (state.pagePosts && state.pagePosts.detailId)
+  );
+  document.body.style.overflow = anyModalOpen ? 'hidden' : '';
+}
+
 function render(){
   const app = document.getElementById('app');
+  updateBodyScrollLock();
 
   // ยังไม่รู้ผลว่าล็อกอินค้างไว้จาก session เดิมหรือเปล่า — ไม่โชว์อะไรเลยดีกว่าโชว์หน้า login
   // วาบแล้วหายไปทันทีถ้าจริงๆ มี session ค้างอยู่
