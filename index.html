@@ -2105,9 +2105,6 @@ function renderPagePostsView(){
         <button class="btn" data-action="close-page-posts">${ICONS.x} ปิด</button>
       </div>
     </div>
-    <div class="desc" style="margin-bottom:16px;">
-      โพสต์ล่าสุดจากทุกแฟนเพจ (${PAGES.length} เพจ) — ดึงมาจาก Facebook ทุกครั้งที่เปิดแท็บนี้ หรือกด "เช็คโพสต์ใหม่"
-    </div>
     ${renderPagePostsFilterCards()}
     ${!sorted.length ? `
       <div style="color:var(--text-dim); padding:24px; text-align:center;">ยังไม่พบโพสต์เลย ลองกด "เช็คโพสต์ใหม่" ดูนะคะ</div>
