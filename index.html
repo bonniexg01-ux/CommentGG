@@ -1068,6 +1068,8 @@ async function callTranslateApi(text, target, source){
 }
 
 let PAGES = [];
+// โพสต์เพจล่าสุดของทุกเพจ (จากตาราง page_posts) — ใช้ในหน้า "โพสต์เพจ" ใหม่เท่านั้น
+let PAGE_POSTS = [];
 let ITEMS = [];
 // แฮชแท็กของ "ฉัน" (คนที่ล็อกอินอยู่ตอนนี้) แยกตามเพจ — { [pageId]: hashtag } แต่ละคนในทีมตั้งของ
 // ตัวเองเองได้ต่อเพจ (มา 2 เพจ บริบทต่างกัน แต่ละคนใช้แฮชแท็กไม่เหมือนกันได้) เก็บใน Supabase
@@ -1205,6 +1207,13 @@ function categorizeComment(item){
 function mapPage(row){
   return { id: row.id, name: row.page_name, tag: row.tag || '', color: row.color_hex || '#2563eb',
     emoji: row.emoji || '🙂', pronoun: row.pronoun || '', ending: row.ending || 'ค่ะ', hashtag: row.hashtag || '' };
+}
+function mapPagePost(row){
+  return {
+    id: row.id, pageId: row.page_id, fbPostId: row.fb_post_id,
+    message: row.message || '', imageUrl: row.image_url || null, permalinkUrl: row.permalink_url || null,
+    postedAt: row.posted_at || row.created_at, createdAt: row.created_at,
+  };
 }
 function mapItem(row){
   return {
@@ -1597,7 +1606,7 @@ async function loadData(){
   // ยังไม่ล็อกอิน ไม่ต้องดึงข้อมูล (RLS ฝั่ง Supabase จะปฏิเสธอยู่แล้ว แต่กันไว้ตั้งแต่ต้นเลย)
   if (!state.auth.session) return;
   try {
-    const [pagesRes, itemsRes, hashtagsRes] = await Promise.all([
+    const [pagesRes, itemsRes, hashtagsRes, postsRes] = await Promise.all([
       // เรียงตาม created_at เสมอ (เพจที่เพิ่มก่อนอยู่หน้าก่อน) — เดิมไม่ได้ระบุ order เลย Postgres
       // จะคืนแถวมาตามลำดับภายในของมันเอง ไม่การันตีว่าจะตรงกับลำดับที่เพิ่มเพจจริง ทำให้แท็บเพจ
       // สลับที่ไปมาดูไม่เป็นระเบียบ (เช่น WarZ TH ซึ่งเพิ่มก่อน ดันไปโผล่ท้ายแถว)
@@ -1608,10 +1617,15 @@ async function loadData(){
       // ลำดับแถวที่ได้เลยแม้แต่น้อย — ปลอดภัยกว่าการเปลี่ยนวิธีดึงข้อมูลเหมือนที่เคยลองแล้วมีบั๊ก
       fetch(`${SUPABASE_URL}/rest/v1/feed_items?select=id,page_id,type,post_excerpt,author_name,message,status,folder,ai_reason,admin_reply,admin_reply_fb_id,admin_reply_by,fail_reason,replied_at,attachment_image_url,liked,blocked,created_at&order=created_at.desc`, { headers: sbAuthHeaders() }),
       fetch(`${SUPABASE_URL}/rest/v1/user_page_hashtags?select=page_id,hashtag`, { headers: sbAuthHeaders() }),
+      // โพสต์เพจล่าสุดของทุกเพจ (สำหรับแท็บ "โพสต์เพจ" + ตัวเลขแจ้งเตือนบน topbar) เรียงใหม่สุดก่อน
+      fetch(`${SUPABASE_URL}/rest/v1/page_posts?select=*&order=posted_at.desc.nullslast&limit=200`, { headers: sbAuthHeaders() }),
     ]);
     if (!pagesRes.ok || !itemsRes.ok) throw new Error('โหลดข้อมูลไม่สำเร็จ');
     PAGES = (await pagesRes.json()).map(mapPage);
     const freshItems = (await itemsRes.json()).map(mapItem);
+    if (postsRes.ok) {
+      PAGE_POSTS = (await postsRes.json()).map(mapPagePost);
+    }
 
     const freshIds = new Set(freshItems.map((it) => it.id));
     if (knownItemIds !== null) {
@@ -1709,8 +1723,12 @@ const state = {
   // ใน inbox ไหม) ใน renderPageChips() แทน ส่วนตรงนี้ auto หมดอายุตาม PAGE_FLASH_MAX_AGE_MS กันไฟ
   // "โดนถล่ม" ค้างงงถ้าทิ้งแท็บไว้นานๆ
   pageFlash: {},
-  // 'inbox' = หน้าแดชบอร์ดหลัก (รายการคอมเมนต์/ข้อความ), 'analytics' = หน้ารายงานสถิติ
+  // 'inbox' = หน้าแดชบอร์ดหลัก (รายการคอมเมนต์/ข้อความ), 'analytics' = หน้ารายงานสถิติ,
+  // 'page-posts' = หน้า "โพสต์เพจ" ใหม่ (แจ้งเตือนโพสต์ใหม่ของทุกเพจ)
   view: 'inbox',
+  // ตัวเลขแจ้งเตือน "โพสต์ใหม่" บน topbar อ้างจาก localStorage (เวลาที่เพิ่งเปิดดูแท็บนี้ครั้งล่าสุด)
+  // เทียบกับ created_at ของ PAGE_POSTS แต่ละแถว — ใหม่กว่าค่านี้ถือว่า "ยังไม่เห็น"
+  pagePosts: { syncing: false },
   // ตัวกรองของหน้ารายงานสถิติ — ค่าเริ่มต้น 30 วันล่าสุด (ตามเวลาไทย), pageIds: null = เลือกทุกเกม
   analytics: { startDate: addDaysStr(todayThaiStr(), -29), endDate: todayThaiStr(), pageIds: null },
   // หน้า "จัดการเพจ" — loaded/loading คุมสถานะโหลดรายชื่อเพจจาก /api/manage-pages (ไม่ได้อยู่ใน ITEMS/
@@ -1943,6 +1961,82 @@ function checkOwnHashtagViolation(text, page){
   return null;
 }
 
+/* ============================================================
+   โพสต์เพจ (page_posts) — แจ้งเตือนโพสต์ใหม่จากทุกแฟนเพจ
+============================================================ */
+const PAGE_POSTS_LAST_SEEN_KEY = 'commentgg_page_posts_last_seen_at';
+function pagePostsLastSeenAt(){
+  return window.localStorage.getItem(PAGE_POSTS_LAST_SEEN_KEY) || '1970-01-01T00:00:00.000Z';
+}
+function markPagePostsSeenNow(){
+  window.localStorage.setItem(PAGE_POSTS_LAST_SEEN_KEY, new Date().toISOString());
+}
+// จำนวนโพสต์ที่ "ยังไม่เห็น" — เทียบ created_at (เวลาที่ระบบเราเจอโพสต์นี้ครั้งแรก ไม่ใช่เวลาโพสต์จริง
+// บน Facebook) กับเวลาที่เพิ่งเปิดดูแท็บนี้ครั้งล่าสุด ใช้โชว์เป็นตัวเลขแจ้งเตือนบน topbar
+function unseenPagePostsCount(){
+  const lastSeen = pagePostsLastSeenAt();
+  return PAGE_POSTS.filter((p) => p.createdAt > lastSeen).length;
+}
+
+// เรียก /api/sync-posts เป็นระยะเพื่อไปดึงโพสต์ใหม่จาก Facebook มาเก็บ (เฉพาะตอนมีคนล็อกอินเปิด
+// แดชบอร์ดอยู่จริง แบบเดียวกับ syncPollingPages) ครอบคลุมทุกเพจที่ active ไม่ใช่แค่เพจที่ตั้ง
+// needs_polling ไว้สำหรับคอมเมนต์ (คนละสโคปกัน)
+async function syncPagePostsFromFb(){
+  if (!state.auth.session) return;
+  try {
+    const res = await fetch('/api/sync-posts', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${state.auth.session.access_token}` },
+    });
+    if (res.ok && !isUserEditingSomething()) loadData();
+  } catch (err) {
+    console.error('syncPagePostsFromFb ล้มเหลว:', err);
+  }
+}
+
+function renderPagePostsView(){
+  const sorted = [...PAGE_POSTS].sort((a, b) => (b.postedAt || '').localeCompare(a.postedAt || ''));
+  const lastSeen = pagePostsLastSeenAt();
+  return `
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+      <h1 style="margin:0;">📰 โพสต์เพจ</h1>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button class="btn" type="button" data-action="page-posts-sync" ${state.pagePosts.syncing ? 'disabled' : ''}>${state.pagePosts.syncing ? 'กำลังเช็ค...' : '🔄 เช็คโพสต์ใหม่'}</button>
+        <button class="btn" data-action="close-page-posts">${ICONS.x} ปิด</button>
+      </div>
+    </div>
+    <div class="desc" style="margin-bottom:16px;">
+      โพสต์ล่าสุดจากทุกแฟนเพจ (${PAGES.length} เพจ) — ดึงมาจาก Facebook ทุกครั้งที่เปิดแท็บนี้ หรือกด "เช็คโพสต์ใหม่"
+    </div>
+    ${!sorted.length ? `
+      <div style="color:var(--text-dim); padding:24px; text-align:center;">ยังไม่พบโพสต์เลย ลองกด "เช็คโพสต์ใหม่" ดูนะคะ</div>
+    ` : `
+      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px;">
+        ${sorted.map((p) => {
+          const page = pageById(p.pageId);
+          const isNew = p.createdAt > lastSeen;
+          return `
+          <div style="border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--surface); position:relative;">
+            ${isNew ? `<span style="position:absolute; top:8px; left:8px; background:var(--red); color:#fff; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:99px; z-index:1;">ใหม่</span>` : ''}
+            ${p.imageUrl ? `<img src="${p.imageUrl}" alt="" style="width:100%; height:160px; object-fit:cover; display:block; background:var(--surface-dim);" />` : `<div style="width:100%; height:160px; display:flex; align-items:center; justify-content:center; background:var(--surface-dim); color:var(--text-faint); font-size:28px;">📰</div>`}
+            <div style="padding:12px;">
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+                <span class="dot" style="width:8px;height:8px;border-radius:50%;background:${page ? page.color : '#999'}; display:inline-block;"></span>
+                <span style="font-size:12px; font-weight:600; color:var(--text-dim);">${page ? `${page.emoji} ${page.name}` : 'ไม่ทราบเพจ'}</span>
+              </div>
+              <div style="font-size:13.5px; line-height:1.5; white-space:pre-wrap; max-height:90px; overflow:auto; margin-bottom:8px;">${p.message ? p.message : '<span style="color:var(--text-faint);">(โพสต์นี้ไม่มีข้อความ)</span>'}</div>
+              <div style="display:flex; align-items:center; justify-content:space-between; font-size:11.5px; color:var(--text-faint);">
+                <span>${timeAgo(p.postedAt)}</span>
+                ${p.permalinkUrl ? `<a href="${p.permalinkUrl}" target="_blank" rel="noopener noreferrer" style="color:var(--text-dim);">ดูบน Facebook ↗</a>` : ''}
+              </div>
+            </div>
+          </div>
+        `; }).join('')}
+      </div>
+    `}
+  `;
+}
+
 // ไม่ใส่คำลงท้าย (ค่ะ/ครับ) อัตโนมัติแล้ว — ให้แอดมินพิมพ์เองตามที่เห็นในบรรทัด
 // "คำลงท้าย: ..." ด้านล่างกล่องพิมพ์ ใส่แฮชแท็ก "ของฉันเอง" สำหรับเพจนี้ให้อัตโนมัติ (ตั้งได้ที่
 // Profile > Account settings แยกต่อเพจ แต่ละคนในทีมใช้ของตัวเองได้)
@@ -1967,22 +2061,26 @@ function renderTopbar(){
         <div class="mark">${iconForTheme()}</div>
         CommentGG
       </div>
+      <div class="topbar-icon-btn" data-action="open-page-posts" title="โพสต์เพจ" style="margin-left:auto; margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center; position:relative;">
+        📰 <span style="font-size:12.5px;">โพสต์เพจ</span>
+        ${unseenPagePostsCount() > 0 ? `<span class="chip-pending-count" style="position:absolute; top:-6px; right:-6px;">${unseenPagePostsCount()}</span>` : ''}
+      </div>
       ${canViewAnalytics() ? `
-        <div class="topbar-icon-btn" data-action="open-analytics" title="รายงานสถิติ" style="margin-left:auto; margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
+        <div class="topbar-icon-btn" data-action="open-analytics" title="รายงานสถิติ" style="margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
           📊 <span style="font-size:12.5px;">รายงาน</span>
         </div>
       ` : ''}
       ${canManagePages() ? `
-        <div class="topbar-icon-btn" data-action="open-pages-admin" title="จัดการเพจ" style="${canViewAnalytics() ? '' : 'margin-left:auto;'} margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
+        <div class="topbar-icon-btn" data-action="open-pages-admin" title="จัดการเพจ" style="margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
           ⚙️ <span style="font-size:12.5px;">จัดการเพจ</span>
         </div>
       ` : ''}
       ${canManageTeam() ? `
-        <div class="topbar-icon-btn" data-action="open-team-admin" title="จัดการทีม" style="${canViewAnalytics() || canManagePages() ? '' : 'margin-left:auto;'} margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
+        <div class="topbar-icon-btn" data-action="open-team-admin" title="จัดการทีม" style="margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
           👥 <span style="font-size:12.5px;">จัดการทีม</span>
         </div>
       ` : ''}
-      <div class="sound-menu-wrap" style="${canViewAnalytics() || canManagePages() || canManageTeam() ? '' : 'margin-left:auto;'} margin-right:10px;">
+      <div class="sound-menu-wrap" style="margin-right:10px;">
         <div class="topbar-icon-btn" data-action="toggle-sound-menu" title="ตั้งค่าเสียงแจ้งเตือน">
           ${state.soundMuted || state.soundVolume <= 0 ? ICONS.volumeOff : ICONS.volumeOn}
         </div>
@@ -3655,6 +3753,21 @@ function render(){
     state.view = 'inbox';
   }
 
+  // หน้า "โพสต์เพจ" — แจ้งเตือนโพสต์ใหม่ของทุกเพจ แยก layout ออกจาก inbox ทั้งหมดเหมือนหน้ารายงาน
+  if (state.view === 'page-posts') {
+    app.innerHTML = `
+      ${renderTopbar()}
+      <div class="main">
+        <div class="content-card">
+          ${renderPagePostsView()}
+        </div>
+      </div>
+    `;
+    setFavicon();
+    updateTabTitle();
+    return;
+  }
+
   // หน้ารายงานสถิติ — แยก layout ออกจาก inbox ทั้งหมด (ไม่มี chips/tabs/toolbar ของ inbox)
   if (state.view === 'analytics') {
     const analyticsData = computeAnalyticsData();
@@ -4209,6 +4322,27 @@ document.getElementById('app').addEventListener('click', (e) => {
 
   switch (action) {
     case 'stop-propagation':
+      break;
+
+    case 'open-page-posts':
+      state.view = 'page-posts';
+      markPagePostsSeenNow(); // เปิดดูแล้ว เคลียร์ตัวเลขแจ้งเตือนบน topbar ทันที
+      render();
+      syncPagePostsFromFb(); // ไปเช็คโพสต์ใหม่จาก Facebook ทันทีที่เปิดแท็บนี้ ไม่ต้องรอ interval 90 วิ
+      break;
+
+    case 'close-page-posts':
+      state.view = 'inbox';
+      render();
+      break;
+
+    case 'page-posts-sync':
+      state.pagePosts.syncing = true;
+      render();
+      syncPagePostsFromFb().finally(() => {
+        state.pagePosts.syncing = false;
+        render();
+      });
       break;
 
     case 'open-analytics':
@@ -4852,6 +4986,7 @@ sb.auth.onAuthStateChange((event, session) => {
     // กรณีนี้ต้อง render() เสมอไม่มีเงื่อนไข เพราะต้องพาออกไปหน้า login จริงๆ
     PAGES = [];
     ITEMS = [];
+    PAGE_POSTS = [];
     state.auth.loginEmail = '';
     state.auth.loginError = null;
     window.localStorage.removeItem(LOGIN_DATE_KEY);
@@ -4908,6 +5043,10 @@ async function syncPollingPages(){
   }
 }
 setInterval(syncPollingPages, 90000);
+
+// เช็คโพสต์ใหม่ของทุกเพจ (ไม่ใช่แค่เพจ polling คอมเมนต์) เป็นระยะ — ถี่น้อยกว่าคอมเมนต์เพราะโพสต์ออก
+// ไม่บ่อยเท่า และต้องไล่ทุกเพจ (ไม่ได้กรองด้วย needs_polling) กันยิง Graph API ถี่เกินจำเป็น
+setInterval(syncPagePostsFromFb, 5 * 60 * 1000);
 </script>
 </body>
 </html>
