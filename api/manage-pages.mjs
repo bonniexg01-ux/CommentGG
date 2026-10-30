@@ -127,8 +127,10 @@ async function testFacebookToken(pageId, accessToken) {
     }
 
     // เช็คซ้ำอีกชั้นด้วย GET จริงแบบเดียวกับที่ api/reply.mjs ใช้ตอนตอบคอมเมนต์จริง (คำขอชนิดเดียวกัน
-    // เป๊ะๆ) ให้มั่นใจว่า token สุดท้ายที่จะบันทึก (ไม่ว่าจะของเดิมหรือที่เพิ่งแลกมา) ใช้งานได้จริง
-    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}?fields=id,name&access_token=${encodeURIComponent(finalToken)}`;
+    // เป๊ะๆ) ให้มั่นใจว่า token สุดท้ายที่จะบันทึก (ไม่ว่าจะของเดิมหรือที่เพิ่งแลกมา) ใช้งานได้จริง —
+    // ขอ picture.type(large) มาพร้อมกันในคำขอเดียวกันเลย เอาไว้ใช้เป็นโลโก้เพจอัตโนมัติ ไม่ต้องให้
+    // แอดมินไปคัดลอกลิงก์รูปโปรไฟล์มาวางเอง
+    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}?fields=id,name,picture.type(large)&access_token=${encodeURIComponent(finalToken)}`;
     const r = await fetchWithTimeout(url, { method: 'GET' });
     const data = await r.json();
     if (data.error) {
@@ -137,10 +139,28 @@ async function testFacebookToken(pageId, accessToken) {
     if (String(data.id) !== String(pageId)) {
       return { ok: false, error: `Token นี้ใช้ได้ แต่เป็นของเพจอื่น (id: ${data.id}) ไม่ตรงกับ Page ID ที่กรอกไว้ (${pageId})` };
     }
-    return { ok: true, name: data.name, fbId: data.id, finalToken, note };
+    const pictureUrl = data.picture && data.picture.data && !data.picture.data.is_silhouette ? data.picture.data.url : null;
+    return { ok: true, name: data.name, fbId: data.id, finalToken, note, pictureUrl };
   } catch (err) {
     const isTimeout = err && err.name === 'AbortError';
     return { ok: false, error: isTimeout ? 'Facebook ไม่ตอบสนอง (หมดเวลา) ลองใหม่อีกครั้ง' : `เชื่อมต่อ Facebook ไม่สำเร็จ: ${err.message || err}` };
+  }
+}
+
+// ดึงรูปโปรไฟล์เพจตรงๆ จาก Graph API (ใช้ตอน "ดึงรูปโปรไฟล์อัตโนมัติ" ย้อนหลังกับเพจที่มี token
+// บันทึกไว้อยู่แล้ว ไม่ต้องให้แอดมินมาวาง token ซ้ำ) — คืนค่า null เงียบๆ ถ้าดึงไม่สำเร็จ (เพจนั้นแค่
+// ไม่ได้โลโก้ใหม่ ไม่ควรทำให้เพจอื่นในล็อตเดียวกันพังไปด้วย)
+async function fetchPageProfilePicture(pageId, accessToken) {
+  try {
+    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}?fields=picture.type(large)&access_token=${encodeURIComponent(accessToken)}`;
+    const r = await fetchWithTimeout(url, { method: 'GET' });
+    const data = await r.json();
+    if (data.error) return null;
+    const pic = data.picture && data.picture.data;
+    if (!pic || pic.is_silhouette) return null; // is_silhouette = เพจยังไม่เคยตั้งรูปโปรไฟล์จริงเลย
+    return pic.url || null;
+  } catch {
+    return null;
   }
 }
 
@@ -330,6 +350,7 @@ export default async function handler(request) {
       let fbCheckedName = null;
       let fbNote = null;
       let resolvedToken = null;
+      let autoLogoUrl = null;
       if (accessToken && String(accessToken).trim()) {
         const testResult = await testFacebookToken(pageId, accessToken);
         if (!testResult.ok) {
@@ -340,6 +361,9 @@ export default async function handler(request) {
         // ถ้าที่วางมาเป็น user token เผลอวางผิด testFacebookToken จะแลกเป็น page token ที่ถูกต้องให้
         // แล้ว (ดูคอมเมนต์ในฟังก์ชันนั้น) — เก็บตัวที่แลกแล้วลงฐานข้อมูลเสมอ ไม่ใช่ตัวที่วางมาดิบๆ
         resolvedToken = testResult.finalToken;
+        // ดึงรูปโปรไฟล์เพจมาจาก Facebook ให้อัตโนมัติเลย (ไม่ต้องให้แอดมินไปคัดลอกลิงก์เอง) — ใช้
+        // เฉพาะตอนไม่ได้วาง logoUrl มาเองในฟอร์มเท่านั้น (ถ้าแอดมินตั้งเองไว้ ให้ของที่ตั้งเองชนะเสมอ)
+        autoLogoUrl = testResult.pictureUrl || null;
       } else if (!id) {
         // เพจใหม่ (ยังไม่มี id เดิม) บังคับต้องมี token ตั้งแต่แรกเลย ไม่งั้นเพิ่มเพจแล้วตอบคอมเมนต์
         // ไม่ได้ทันที เดี๋ยวจะงงว่าทำไมส่งไม่ออก
@@ -361,10 +385,19 @@ export default async function handler(request) {
         // ภาษาที่ใช้ตอบคอมเมนต์ของเพจนี้ — 'th' = ไม่ต้องแปล (ตอบไทยตรงๆ ตามปกติ) ภาษาอื่นจะเปิดปุ่ม
         // "แปลก่อนส่ง" ในกล่องตอบกลับให้อัตโนมัติ (ดู frontend/index.html ส่วน reply composer)
         reply_lang: replyLang ? String(replyLang).trim().toLowerCase() : 'th',
-        // ลิงก์รูปโปรไฟล์/โลโก้ของเพจ (วาง URL เอง เช่น ลิงก์รูปโปรไฟล์จากหน้าเพจ Facebook) — ใช้โชว์
-        // เป็นพื้นหลังการ์ดเลือกเพจแทน emoji เฉยๆ ว่างได้ ถ้าว่างจะ fallback ไปใช้สี+emoji เหมือนเดิม
-        logo_url: logoUrl ? String(logoUrl).trim() : null,
       };
+      // ลิงก์รูปโปรไฟล์/โลโก้ของเพจ — ใช้โชว์เป็นพื้นหลังการ์ดเลือกเพจแทน emoji เฉยๆ ลำดับความสำคัญ:
+      // 1) ถ้าแอดมินพิมพ์ logoUrl เองในฟอร์ม ใช้ตัวนั้นเสมอ (ให้ override อัตโนมัติได้)
+      // 2) ไม่งั้นถ้าเพิ่งวาง token ใหม่รอบนี้ ลองดึงรูปโปรไฟล์จาก Facebook ให้อัตโนมัติ (autoLogoUrl)
+      // 3) ไม่งั้น (แก้เพจเดิมแต่ไม่ได้แตะ token/logo เลย) ไม่ส่ง field นี้ไปเลย ให้ค่าที่บันทึกไว้เดิม
+      //    ในฐานข้อมูลอยู่เฉยๆ ไม่ถูกเผลอลบทิ้ง
+      if (logoUrl && String(logoUrl).trim()) {
+        fields.logo_url = String(logoUrl).trim();
+      } else if (autoLogoUrl) {
+        fields.logo_url = autoLogoUrl;
+      } else if (!id) {
+        fields.logo_url = null; // เพจใหม่ ไม่มีทั้งสองอย่าง ปล่อยว่างไว้ก่อน (fallback เป็นสี+emoji)
+      }
       if (resolvedToken) {
         fields.access_token = resolvedToken;
       }
@@ -407,6 +440,30 @@ export default async function handler(request) {
         safePage = { ...rest, has_token: !!access_token, has_webhook: !!app_secret };
       }
       return json({ ok: true, page: safePage, fbCheckedName, fbNote });
+    }
+
+    if (action === 'refresh-logos') {
+      // ดึงรูปโปรไฟล์จาก Facebook มาเติม logo_url ให้ "ทุกเพจที่มี access_token อยู่แล้ว" ในรอบเดียว —
+      // ใช้สำหรับเพจเก่าที่เพิ่มไว้ตั้งแต่ก่อนมีฟีเจอร์นี้ ไม่ต้องให้แอดมินมาวาง token ซ้ำทีละเพจ
+      const url = `${SUPABASE_URL}/rest/v1/pages?select=id,page_id,page_name,access_token&access_token=not.is.null`;
+      const r = await fetch(url, { headers: sbHeaders });
+      if (!r.ok) return json({ error: 'โหลดรายชื่อเพจไม่สำเร็จ' }, 502);
+      const rows = await r.json();
+
+      let updated = 0;
+      let skipped = 0;
+      for (const row of rows) {
+        const pictureUrl = await fetchPageProfilePicture(row.page_id, row.access_token);
+        if (!pictureUrl) { skipped += 1; continue; }
+        const patchUrl = `${SUPABASE_URL}/rest/v1/pages?id=eq.${encodeURIComponent(row.id)}`;
+        const patchR = await fetch(patchUrl, {
+          method: 'PATCH',
+          headers: { ...sbHeaders, Prefer: 'return=minimal' },
+          body: JSON.stringify({ logo_url: pictureUrl }),
+        });
+        if (patchR.ok) updated += 1; else skipped += 1;
+      }
+      return json({ ok: true, totalPages: rows.length, updated, skipped });
     }
 
     if (action === 'subscribe-webhook') {

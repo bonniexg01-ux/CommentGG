@@ -1764,7 +1764,7 @@ const state = {
   // แก้บั๊กที่เจอจริง: ปุ่ม "ทดสอบ Token" เรียก render() เองตอนกำลังทดสอบ/ทดสอบเสร็จ ซึ่ง render()
   // สร้าง input ใหม่ทั้งหมดจาก value="${editing ? ... : ''}" (ไม่ได้ผูกกับสิ่งที่พิมพ์ไว้) ทำให้ค่าที่
   // เพิ่งวาง (เช่น Page ID, Access Token) หายไปทันทีที่กดทดสอบ หรือสลับหน้าไปคัดลอกค่าถัดมาแล้วกลับมา
-  pagesAdmin: { loaded: false, loading: false, items: [], formOpen: false, editingId: null, testResult: null, testing: false, saving: false, webhookSubscribing: false, webhookResult: null, tokenHealth: {}, tokenHealthLoading: false, formDraft: null },
+  pagesAdmin: { loaded: false, loading: false, items: [], formOpen: false, editingId: null, testResult: null, testing: false, saving: false, webhookSubscribing: false, webhookResult: null, tokenHealth: {}, tokenHealthLoading: false, formDraft: null, refreshingLogos: false },
   // หน้า "จัดการทีม" — เพิ่ม/แก้/ลบสมาชิก + ตั้งสิทธิ์ (feature flags + เพจที่เห็นได้) ผ่าน
   // /api/manage-team โครงเดียวกับ pagesAdmin ด้านบนทุกอย่าง
   teamAdmin: { loaded: false, loading: false, items: [], selfId: null, formOpen: false, editingId: null, saving: false, deletingId: null },
@@ -3166,6 +3166,32 @@ async function loadPagesAdmin(){
   loadTokenHealth(); // แยกยิงต่างหาก ไม่บล็อกการโชว์รายชื่อเพจ (เช็คกับ Facebook จริงอาจช้ากว่า list ธรรมดา)
 }
 
+// ดึงรูปโปรไฟล์จาก Facebook มาเติม logo_url ให้ทุกเพจที่มี Token บันทึกไว้อยู่แล้วในรอบเดียว — ไม่ต้อง
+// ให้แอดมินเปิดฟอร์มทีละเพจแล้ววาง token ซ้ำ (จากนี้ไป เพจที่เพิ่ม/แก้ token ใหม่จะได้โลโก้อัตโนมัติ
+// อยู่แล้วตอนบันทึก ปุ่มนี้มีไว้สำหรับ "ไล่ย้อน" เพจเก่าที่เพิ่มไว้ก่อนมีฟีเจอร์นี้)
+async function refreshAllPageLogos(){
+  state.pagesAdmin.refreshingLogos = true;
+  render();
+  try {
+    const res = await fetch('/api/manage-pages', {
+      method: 'POST',
+      headers: apiAuthHeaders(),
+      body: JSON.stringify({ action: 'refresh-logos' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'ดึงรูปโปรไฟล์ไม่สำเร็จ');
+    showToast(`ดึงรูปโปรไฟล์สำเร็จ ${data.updated} เพจ${data.skipped ? ` (ข้าม ${data.skipped} เพจ — อาจยังไม่ได้ตั้งรูปโปรไฟล์บน Facebook หรือ token มีปัญหา)` : ''}`, 'success');
+    state.pagesAdmin.loaded = false;
+    await loadPagesAdmin();
+    await loadData(); // โหลด PAGES ใหม่ด้วย ให้การ์ดในหน้า "โพสต์เพจ" เห็นโลโก้ล่าสุดทันที
+  } catch (err) {
+    console.error('ดึงรูปโปรไฟล์ไม่สำเร็จ:', err);
+    showToast(err.message || 'ดึงรูปโปรไฟล์ไม่สำเร็จ', 'error');
+  }
+  state.pagesAdmin.refreshingLogos = false;
+  render();
+}
+
 // เช็คว่า token ของแต่ละเพจใกล้หมดอายุ/หมดอายุแล้ว/ใช้ไม่ได้แล้วหรือยัง — โชว์ป้ายเตือนไว้ที่หน้า
 // "จัดการเพจ" เลย ไม่ต้องรอให้ตอบคอมเมนต์ไม่ออกก่อนถึงจะรู้ตัว (ตามที่ขอ)
 async function loadTokenHealth(){
@@ -3345,7 +3371,7 @@ function renderPagesAdminForm(){
           <input id="pa-gameName" type="text" value="${dv('gameName', editing ? (editing.game_name || '') : '')}" />
         </div>
         <div class="form-row">
-          <label>โลโก้เพจ <span class="opt">(ไม่บังคับ — วางลิงก์รูปภาพ เช่น ลิงก์รูปโปรไฟล์จากหน้าเพจ Facebook ใช้เป็นพื้นหลังการ์ดเลือกเพจ ถ้าไม่ใส่จะใช้สี+อีโมจิแทน)</span></label>
+          <label>โลโก้เพจ <span class="opt">(ไม่บังคับ — ถ้าใส่ Access Token ด้านล่าง ระบบจะดึงรูปโปรไฟล์จาก Facebook มาใส่ให้อัตโนมัติตอนบันทึก ไม่ต้องกรอกช่องนี้เองก็ได้ ใส่ไว้เฉพาะถ้าอยากใช้รูปอื่นแทน)</span></label>
           <input id="pa-logoUrl" type="text" value="${dv('logoUrl', editing ? (editing.logo_url || '') : '')}" placeholder="https://..." />
         </div>
         <div class="form-row" style="display:flex; gap:10px;">
@@ -3474,6 +3500,7 @@ function renderPagesAdminView(){
     <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
       <h1 style="margin:0;">⚙️ จัดการเพจ</h1>
       <div style="display:flex; align-items:center; gap:8px;">
+        <button class="btn" type="button" data-action="pages-admin-refresh-logos" ${state.pagesAdmin.refreshingLogos ? 'disabled' : ''} title="ดึงรูปโปรไฟล์จาก Facebook มาใส่ให้ทุกเพจที่มี Token บันทึกไว้แล้ว">${state.pagesAdmin.refreshingLogos ? 'กำลังดึงรูป...' : '📸 ดึงรูปโปรไฟล์เพจอัตโนมัติ'}</button>
         <button class="btn primary" data-action="pages-admin-add">+ เพิ่มเพจใหม่</button>
         <button class="btn" data-action="close-pages-admin">${ICONS.x} ปิด</button>
       </div>
@@ -4434,6 +4461,10 @@ document.getElementById('app').addEventListener('click', (e) => {
     case 'close-pages-admin':
       state.view = 'inbox';
       render();
+      break;
+
+    case 'pages-admin-refresh-logos':
+      refreshAllPageLogos();
       break;
 
     case 'pages-admin-add':
