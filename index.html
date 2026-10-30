@@ -428,15 +428,26 @@
   }
   h1{font-size:29px; margin:0 0 16px;}
 
-  .page-chips{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px;}
+  /* การ์ดเลือกเพจ (แทนชิปแบบเดิม) — การ์ดสี่เหลี่ยมมีรูปโลโก้เพจเป็นพื้นหลัง + ชื่อเพจทับด้านล่าง
+     คล้ายการ์ดเลือกบอร์ดงาน ดูง่ายไม่สับสนเวลามีหลายเพจ (ถ้าเพจไหนยังไม่ได้ตั้งโลโก้ไว้ จะ fallback
+     ไปใช้สีประจำเพจ + อีโมจิตัวใหญ่แทน) */
+  .page-chips{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;}
   .page-chip{
-    display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:6px 12px;
-    border-radius:99px; border:1.5px solid var(--border); background:var(--surface); color:var(--text-dim); cursor:pointer;
+    position:relative; display:flex; align-items:flex-end; width:148px; height:92px; flex:none;
+    border-radius:14px; overflow:hidden; cursor:pointer; background-size:cover; background-position:center;
+    border:2px solid var(--border); background-color:var(--hover-bg);
+    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
   }
-  .page-chip .dot{width:8px; height:8px; border-radius:50%;}
-  .page-chip.active{border-color:transparent; background:var(--navy); color:#fff;}
-  .page-chip.active .dot{outline:2px solid rgba(255,255,255,.5); background:#fff !important;}
-  /* เพจนี้ยังมีคอมเมนต์ค้างตอบอยู่ (pending, ใน inbox, ไม่ถูกบล็อก) — เรืองแสงรอบชิปด้วยสีของเพจเอง
+  .page-chip:hover{ transform:translateY(-2px); }
+  .page-chip.all-card{ display:flex; align-items:center; justify-content:center; background:var(--navy); }
+  .page-chip.all-card .page-chip-label{ position:static; width:auto; background:none; padding:0 10px; font-size:13px; font-weight:700; color:#fff; text-align:center; white-space:normal; }
+  .page-chip-emoji-fallback{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:34px; opacity:.9; }
+  .page-chip-label{
+    position:relative; width:100%; padding:8px 10px 7px; font-size:12.5px; font-weight:700; color:#fff;
+    background:linear-gradient(to top, rgba(0,0,0,.72), rgba(0,0,0,0)); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .page-chip.active{ border-color:var(--navy); box-shadow:0 0 0 2px var(--navy); }
+  /* เพจนี้ยังมีคอมเมนต์ค้างตอบอยู่ (pending, ใน inbox, ไม่ถูกบล็อก) — เรืองแสงรอบการ์ดด้วยสีของเพจเอง
      (--flash-rgb ตั้งไว้ inline ตอน render, ใช้ rgba() ธรรมดาแทน color-mix() เพื่อให้แน่ใจว่าเห็นได้ใน
      ทุกเบราว์เซอร์) กระพริบวนไปเรื่อยๆ ไม่หยุดเอง — ยึดจากข้อมูลจริงของคอมเมนต์เพจนั้น ไม่ใช่สถานะ
      เซสชัน ดังนั้นจะหายกระพริบเองทันทีที่คอมเมนต์นั้นถูกตอบ/ย้าย/ลบ (ไม่ว่าจะทำจากอุปกรณ์ไหนก็ตาม) */
@@ -451,13 +462,13 @@
     0%, 100% { box-shadow: 0 0 0 0 rgba(var(--flash-rgb), 0); transform: scale(1); }
     50% { box-shadow: 0 0 0 9px rgba(var(--flash-rgb), .8); transform: scale(1.06); }
   }
-  .page-chip.chip-surge{ animation: chipSurge .8s ease-in-out infinite; border-color: var(--flash-color); border-width:2.5px; font-weight:800; }
-  /* ตัวเลขจำนวนคอมเมนต์ที่ยังค้างตอบของเพจนั้น (แสดงเฉพาะตอน > 0) — ให้เห็นเลขคร่าวๆ โดยไม่ต้องกดเข้าไปดู */
+  .page-chip.chip-surge{ animation: chipSurge .8s ease-in-out infinite; border-color: var(--flash-color); border-width:2.5px; }
+  /* ตัวเลขแจ้งเตือนอื่นๆ ที่ยังใช้สไตล์นี้อยู่ (เช่น ป้าย "โพสต์ใหม่" บน topbar) — ไม่ได้ใช้ในการ์ดเลือก
+     เพจแล้วตามที่ขอ (เอาแค่รูป+ชื่อพอ ไม่ต้องมีตัวเลข) แต่คง class เดิมไว้ให้ที่อื่นยังใช้ได้ */
   .chip-pending-count{
     display:inline-flex; align-items:center; justify-content:center; min-width:16px; height:16px; padding:0 4px;
-    border-radius:99px; background:rgba(0,0,0,.18); font-size:10.5px; font-weight:800; line-height:1;
+    border-radius:99px; background:var(--red); color:#fff; font-size:10.5px; font-weight:800; line-height:1;
   }
-  .page-chip.active .chip-pending-count{ background:rgba(255,255,255,.3); }
 
   .toprow-tabs{display:flex; gap:26px; border-bottom:1px solid var(--border); margin-bottom:14px;}
   .toprow-tab{padding:10px 2px 12px; font-size:14.5px; font-weight:600; color:var(--text-faint); cursor:pointer; border-bottom:2.5px solid transparent; display:flex; gap:6px;}
@@ -714,8 +725,10 @@
     .main{ padding:14px 10px 32px; }
     .content-card{ padding:14px 12px 6px; border-radius:16px; }
     h1{ font-size:22px; margin-bottom:12px; }
-    .page-chips{ gap:6px; margin-bottom:14px; }
-    .page-chip{ font-size:12px; padding:5px 10px; }
+    .page-chips{ gap:8px; margin-bottom:14px; }
+    .page-chip{ width:112px; height:72px; }
+    .page-chip-label{ font-size:11.5px; padding:6px 8px 5px; }
+    .page-chip-emoji-fallback{ font-size:26px; }
     .toprow-tabs{ gap:18px; }
     .subnav{ gap:16px; overflow-x:auto; }
 
@@ -1206,7 +1219,8 @@ function categorizeComment(item){
 
 function mapPage(row){
   return { id: row.id, name: row.page_name, tag: row.tag || '', color: row.color_hex || '#2563eb',
-    emoji: row.emoji || '🙂', pronoun: row.pronoun || '', ending: row.ending || 'ค่ะ', hashtag: row.hashtag || '' };
+    emoji: row.emoji || '🙂', pronoun: row.pronoun || '', ending: row.ending || 'ค่ะ', hashtag: row.hashtag || '',
+    logoUrl: row.logo_url || null };
 }
 function mapPagePost(row){
   return {
@@ -2018,7 +2032,7 @@ function renderPagePostsView(){
           return `
           <div style="border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--surface); position:relative;">
             ${isNew ? `<span style="position:absolute; top:8px; left:8px; background:var(--red); color:#fff; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:99px; z-index:1;">ใหม่</span>` : ''}
-            ${p.imageUrl ? `<img src="${p.imageUrl}" alt="" style="width:100%; height:160px; object-fit:cover; display:block; background:var(--surface-dim);" />` : `<div style="width:100%; height:160px; display:flex; align-items:center; justify-content:center; background:var(--surface-dim); color:var(--text-faint); font-size:28px;">📰</div>`}
+            ${p.imageUrl ? `<img src="${p.imageUrl}" alt="" style="width:100%; height:160px; object-fit:cover; display:block; background:var(--hover-bg);" />` : `<div style="width:100%; height:160px; display:flex; align-items:center; justify-content:center; background:var(--hover-bg); color:var(--text-faint); font-size:28px;">📰</div>`}
             <div style="padding:12px;">
               <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
                 <span class="dot" style="width:8px;height:8px;border-radius:50%;background:${page ? page.color : '#999'}; display:inline-block;"></span>
@@ -2272,8 +2286,8 @@ function renderPageChips(){
   const allActive = state.pageFilter === 'all';
   return `
     <div class="page-chips">
-      <div class="page-chip ${allActive ? 'active' : ''}" data-action="select-page" data-page="all">
-        <span class="dot" style="background:#A89A8D"></span> ทุกเพจ (${PAGES.length})
+      <div class="page-chip all-card ${allActive ? 'active' : ''}" data-action="select-page" data-page="all">
+        <span class="page-chip-label">🗂️ ทุกเพจ (${PAGES.length})</span>
       </div>
       ${PAGES.map(p => {
         const active = state.pageFilter === p.id;
@@ -2294,9 +2308,12 @@ function renderPageChips(){
         // ตรงๆ — เข้ากันได้กว้างกว่า color-mix() ที่เบราว์เซอร์บางตัวยังไม่รองรับ)
         const flashClass = isSurging ? 'chip-surge' : (pendingCount > 0 ? 'chip-flash' : '');
         const flashRgb = hexToRgbTriplet(p.color);
+        // มีโลโก้ตั้งไว้ → ใช้เป็นพื้นหลังการ์ดจริง ไม่งั้น fallback เป็นสีประจำเพจ + อีโมจิตัวใหญ่ตรงกลาง
+        const bgStyle = p.logoUrl ? `background-image:url('${p.logoUrl.replace(/'/g, "%27")}');` : `background-color:${p.color};`;
         return `
-        <div class="page-chip ${active ? 'active' : ''} ${flashClass}" data-action="select-page" data-page="${p.id}" style="${active ? `background:${p.color};` : ''} --flash-color:${p.color}; --flash-rgb:${flashRgb};">
-          <span class="dot" style="background:${active ? '#fff' : p.color}"></span> ${p.emoji} ${p.name}${pendingCount > 0 ? ` <span class="chip-pending-count">${pendingCount}</span>` : ''}
+        <div class="page-chip ${active ? 'active' : ''} ${flashClass}" data-action="select-page" data-page="${p.id}" style="${bgStyle} --flash-color:${p.color}; --flash-rgb:${flashRgb};" title="${p.name}">
+          ${!p.logoUrl ? `<div class="page-chip-emoji-fallback">${p.emoji}</div>` : ''}
+          <span class="page-chip-label">${p.emoji} ${p.name}</span>
         </div>
       `;
       }).join('')}
@@ -3154,6 +3171,7 @@ function captureAdminFormDraft(){
   if (!byId('pa-pageId')) return; // ฟอร์มไม่ได้เปิดอยู่จริง (เผื่อเรียกผิดจังหวะ) ไม่ต้องทำอะไร
   state.pagesAdmin.formDraft = {
     pageId: val('pa-pageId'), pageName: val('pa-pageName'), gameName: val('pa-gameName'),
+    logoUrl: val('pa-logoUrl'),
     emoji: val('pa-emoji'), colorHex: val('pa-colorHex'), pronoun: val('pa-pronoun'),
     ending: val('pa-ending'), tag: val('pa-tag'), hashtag: val('pa-hashtag'),
     accessToken: val('pa-accessToken'), appId: val('pa-appId'), appSecret: val('pa-appSecret'),
@@ -3194,6 +3212,7 @@ async function savePageAdmin(){
     pageId: document.getElementById('pa-pageId').value.trim(),
     pageName: document.getElementById('pa-pageName').value.trim(),
     gameName: document.getElementById('pa-gameName').value.trim(),
+    logoUrl: document.getElementById('pa-logoUrl').value.trim(),
     accessToken: document.getElementById('pa-accessToken').value.trim(),
     emoji: document.getElementById('pa-emoji').value.trim() || '🎮',
     colorHex: document.getElementById('pa-colorHex').value.trim() || '#2563eb',
@@ -3288,6 +3307,10 @@ function renderPagesAdminForm(){
         <div class="form-row">
           <label>ชื่อเกม <span class="opt">(ไม่บังคับ)</span></label>
           <input id="pa-gameName" type="text" value="${dv('gameName', editing ? (editing.game_name || '') : '')}" />
+        </div>
+        <div class="form-row">
+          <label>โลโก้เพจ <span class="opt">(ไม่บังคับ — วางลิงก์รูปภาพ เช่น ลิงก์รูปโปรไฟล์จากหน้าเพจ Facebook ใช้เป็นพื้นหลังการ์ดเลือกเพจ ถ้าไม่ใส่จะใช้สี+อีโมจิแทน)</span></label>
+          <input id="pa-logoUrl" type="text" value="${dv('logoUrl', editing ? (editing.logo_url || '') : '')}" placeholder="https://..." />
         </div>
         <div class="form-row" style="display:flex; gap:10px;">
           <div style="flex:1;">
