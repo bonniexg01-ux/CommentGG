@@ -48,20 +48,52 @@ async function requireAuth(request) {
   }
 }
 
-// เรียกบริการแปลฟรี (endpoint สาธารณะที่ไม่ต้องใช้ API key) — รูปแบบผลลัพธ์เป็น nested array แปลกๆ
-// ตามธรรมชาติของ endpoint นี้ (ไม่ใช่ REST ปกติ) ต้องแกะเอาประโยคที่แปลแล้วมาต่อกันเอง เพราะข้อความยาว
-// อาจถูกตัดเป็นหลายท่อนกลับมา
-async function translateViaFree(text, target, source) {
+// เรียกบริการแปลฟรีตัวหลัก (endpoint สาธารณะที่ไม่ต้องใช้ API key, คุณภาพดี) — รูปแบบผลลัพธ์เป็น nested
+// array แปลกๆ ตามธรรมชาติของ endpoint นี้ (ไม่ใช่ REST ปกติ) ต้องแกะเอาประโยคที่แปลแล้วมาต่อกันเอง
+// เพราะข้อความยาวอาจถูกตัดเป็นหลายท่อนกลับมา
+//
+// เจอจริง: endpoint นี้บางครั้งตอบ HTTP 429 (Too Many Requests) กับทราฟฟิกที่มาจาก IP ของผู้ให้บริการ
+// คลาวด์ (เช่น Vercel Edge) เพราะเป็น endpoint ไม่เป็นทางการที่ไม่ได้ออกแบบมาให้ยิงจากเซิร์ฟเวอร์จำนวน
+// มากพร้อมกัน — ไม่ได้เกิดจากเรายิงถี่เกินไปเอง แก้ด้วยการมีบริการสำรอง (translateViaMyMemory) ไว้สลับ
+// ใช้อัตโนมัติทันทีถ้าตัวหลักล้ม ไม่ต้องรอให้ผู้ใช้กดลองใหม่เอง
+async function translateViaGoogleFree(text, target, source) {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(source || 'auto')}&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(text)}`;
   const r = await fetchWithTimeout(url, { method: 'GET' });
-  if (!r.ok) throw new Error(`บริการแปลตอบกลับผิดพลาด (HTTP ${r.status})`);
+  if (!r.ok) throw new Error(`บริการแปลหลักตอบกลับผิดพลาด (HTTP ${r.status})`);
   const data = await r.json();
   // data[0] = array ของ [แปลแล้ว, ต้นฉบับ, ...] ต่อ 1 ท่อน, data[2] = ภาษาต้นฉบับที่ตรวจพบ
   const chunks = Array.isArray(data?.[0]) ? data[0] : [];
   const translated = chunks.map((c) => (Array.isArray(c) ? c[0] : '')).join('');
   const detectedSource = typeof data?.[2] === 'string' ? data[2] : (source || 'auto');
-  if (!translated) throw new Error('แปลไม่สำเร็จ (ไม่มีข้อความแปลกลับมา)');
+  if (!translated) throw new Error('บริการแปลหลักไม่คืนข้อความแปลมา');
   return { translated, detectedSource };
+}
+
+// บริการแปลฟรีสำรอง (MyMemory) — โควต้าฟรีพอสมควรต่อวันและออกแบบมาให้เรียกผ่านโปรแกรม/เซิร์ฟเวอร์ได้
+// โดยตรงอยู่แล้ว (ไม่ค่อยบล็อก IP คลาวด์เหมือนตัวหลัก) ใช้เป็นตัวสำรองตอนตัวหลักล่ม/โดนจำกัด
+async function translateViaMyMemory(text, target, source) {
+  const langpair = `${source && source !== 'auto' ? source : 'autodetect'}|${target}`;
+  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${encodeURIComponent(langpair)}`;
+  const r = await fetchWithTimeout(url, { method: 'GET' });
+  if (!r.ok) throw new Error(`บริการแปลสำรองตอบกลับผิดพลาด (HTTP ${r.status})`);
+  const data = await r.json();
+  const translated = data?.responseData?.translatedText;
+  if (!translated) throw new Error('บริการแปลสำรองไม่คืนข้อความแปลมา');
+  return { translated, detectedSource: source || 'auto' };
+}
+
+// ลองตัวหลักก่อนเสมอ (คุณภาพดีกว่า) ล้มแล้วค่อยสลับไปตัวสำรองอัตโนมัติ — คืน error จากตัวหลักถ้าตัวสำรอง
+// ก็ล้มด้วย (ข้อความ error จะได้สื่อถึงปัญหาจริงมากกว่า)
+async function translateText(text, target, source) {
+  try {
+    return await translateViaGoogleFree(text, target, source);
+  } catch (primaryErr) {
+    try {
+      return await translateViaMyMemory(text, target, source);
+    } catch {
+      throw primaryErr;
+    }
+  }
 }
 
 export default async function handler(request) {
@@ -86,7 +118,7 @@ export default async function handler(request) {
   if (text.length > 4000) return json({ error: 'ข้อความยาวเกินไป (จำกัด 4000 ตัวอักษรต่อครั้ง)' }, 400);
 
   try {
-    const result = await translateViaFree(text, target, source);
+    const result = await translateText(text, target, source);
     return json({ ok: true, translated: result.translated, detectedSource: result.detectedSource });
   } catch (err) {
     const isTimeout = err && err.name === 'AbortError';
