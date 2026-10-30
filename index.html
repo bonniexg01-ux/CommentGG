@@ -1519,40 +1519,43 @@ function playBubbleNote(ctx, startTime, freqFrom, freqTo, duration, gainPeak, ty
 // เสียงแจ้งเตือนให้เลือกได้หลายแบบ (ยังสังเคราะห์เองผ่าน Web Audio API เหมือนเดิม ไม่ต้องมีไฟล์เสียง
 // แนบเพิ่ม) แต่ละแบบรับ ctx/startTime/volume (0-1, มาจาก state.soundVolume คูณเข้ากับ gainPeak ของ
 // ทุกโน้ต) — "bubble" คือเสียงเดิมที่ทำไว้ตอนแรก ที่เหลือเพิ่มมาให้เลือกตามที่ขอ
+// เจอจริง: ทีมงานบอกว่าเสียงแจ้งเตือนของเราเบากว่าเว็บอื่นมาก จนไม่รู้ตัวว่ามีคอมเมนต์/โพสต์ใหม่เข้ามา
+// — ปรับ gainPeak ของทุกเสียงให้ดังขึ้นเกือบ 2 เท่าจากเดิมทั้งชุด (ยังคูณกับ state.soundVolume ตามเดิม
+// ลดเสียงเองได้จาก dropdown ลำโพง แค่ "ดังสุด" ตอนนี้ดังขึ้นกว่าเดิมมาก)
 const SOUND_PRESETS = {
   bubble: {
     label: '🫧 ฟองสบู่',
     play(ctx, now, vol){
-      playBubbleNote(ctx, now, 620, 900, 0.09, 0.12 * vol);
-      playBubbleNote(ctx, now + 0.1, 900, 1300, 0.07, 0.09 * vol);
+      playBubbleNote(ctx, now, 620, 900, 0.09, 0.22 * vol);
+      playBubbleNote(ctx, now + 0.1, 900, 1300, 0.07, 0.17 * vol);
     },
   },
   chime: {
     label: '🔔 ระฆังหวาน',
     play(ctx, now, vol){
-      playBubbleNote(ctx, now, 784, 784, 0.16, 0.11 * vol, 'triangle');
-      playBubbleNote(ctx, now + 0.09, 988, 988, 0.16, 0.10 * vol, 'triangle');
-      playBubbleNote(ctx, now + 0.18, 1318, 1318, 0.22, 0.09 * vol, 'triangle');
+      playBubbleNote(ctx, now, 784, 784, 0.16, 0.20 * vol, 'triangle');
+      playBubbleNote(ctx, now + 0.09, 988, 988, 0.16, 0.18 * vol, 'triangle');
+      playBubbleNote(ctx, now + 0.18, 1318, 1318, 0.22, 0.17 * vol, 'triangle');
     },
   },
   ding: {
     label: '📯 ติ๊งเดียว',
     play(ctx, now, vol){
-      playBubbleNote(ctx, now, 1046, 1046, 0.3, 0.14 * vol, 'sine');
+      playBubbleNote(ctx, now, 1046, 1046, 0.3, 0.26 * vol, 'sine');
     },
   },
   pop: {
     label: '🔵 ป็อบทุ้ม',
     play(ctx, now, vol){
-      playBubbleNote(ctx, now, 220, 140, 0.1, 0.18 * vol, 'square');
+      playBubbleNote(ctx, now, 220, 140, 0.1, 0.32 * vol, 'square');
     },
   },
   marimba: {
     label: '🎶 มาริมบา',
     play(ctx, now, vol){
-      playBubbleNote(ctx, now, 523, 523, 0.12, 0.13 * vol, 'triangle');
-      playBubbleNote(ctx, now + 0.1, 659, 659, 0.12, 0.11 * vol, 'triangle');
-      playBubbleNote(ctx, now + 0.2, 784, 784, 0.18, 0.10 * vol, 'triangle');
+      playBubbleNote(ctx, now, 523, 523, 0.12, 0.23 * vol, 'triangle');
+      playBubbleNote(ctx, now + 0.1, 659, 659, 0.12, 0.20 * vol, 'triangle');
+      playBubbleNote(ctx, now + 0.2, 784, 784, 0.18, 0.18 * vol, 'triangle');
     },
   },
 };
@@ -1567,6 +1570,26 @@ function playNotificationSound(){
     preset.play(ctx, ctx.currentTime, state.soundVolume);
   } catch (err) {
     console.error('เล่นเสียงแจ้งเตือนไม่สำเร็จ:', err);
+  }
+}
+
+// เสียงแจ้งเตือน "มีโพสต์ใหม่" โดยเฉพาะ — ต้องฟังแล้วแยกออกจากเสียงคอมเมนต์ใหม่ทันที (ตามที่ขอ "คนละ
+// เสียงกับคอมเมนท์") จงใจทำเป็นเสียงเตือนจังหวะคู่ (beep-beep แบบปลุกเบาๆ) โทนต่ำ-กลาง ไม่ใช้ชุดโน้ต
+// ไล่เสียงสูงแบบฟองสบู่ที่ใช้กับคอมเมนต์เลย กันสับสนว่าเป็นเสียงเดียวกัน และตั้งใจให้ดังกว่าเสียง
+// คอมเมนต์เล็กน้อยด้วย เพราะเป็นเรื่องสำคัญกว่า (เช่น "เซิร์ฟเวอร์ปิดให้บริการ") ที่ทีมงานไม่อยากพลาด
+function playNewPostAlertSound(){
+  if (state.soundMuted || state.soundVolume <= 0) return;
+  try {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume();
+    const vol = state.soundVolume;
+    const now = ctx.currentTime;
+    playBubbleNote(ctx, now, 440, 440, 0.14, 0.34 * vol, 'square');
+    playBubbleNote(ctx, now + 0.19, 440, 440, 0.14, 0.34 * vol, 'square');
+    playBubbleNote(ctx, now + 0.38, 659, 659, 0.22, 0.30 * vol, 'square');
+  } catch (err) {
+    console.error('เล่นเสียงแจ้งเตือนโพสต์ใหม่ไม่สำเร็จ:', err);
   }
 }
 
@@ -1623,6 +1646,9 @@ primeAudioOnFirstInteraction();
 // ครั้งแรกตอนเพิ่งเปิดหน้า) แปลว่ามีคอมเมนต์/ข้อความใหม่เข้ามาจริงๆ ระหว่างที่เปิดแดชบอร์ดค้างไว้
 // ถึงเล่นเสียงแจ้งเตือน (ไม่เล่นตอนโหลดครั้งแรกที่มีของเก่าอยู่แล้วเต็มไปหมด)
 let knownItemIds = null;
+// เหมือนกันแต่สำหรับ "โพสต์เพจ" (page_posts) — ใช้ตรวจจับโพสต์ใหม่ที่เพิ่งถูก sync เข้ามาระหว่างที่
+// เปิดแดชบอร์ดค้างไว้ แยกออกจาก knownItemIds ของคอมเมนต์โดยเฉพาะ เพราะต้องเล่นคนละเสียงกัน
+let knownPagePostIds = null;
 
 // หมายเหตุ: เคยลองใส่ loadInboxFast() (โหลดเฉพาะ Inbox ก่อน แล้วค่อยโหลดข้อมูลเต็มตาม) เพื่อให้เห็น
 // ข้อมูลเร็วขึ้น แต่พบว่าทำให้ตัวเลขคอมเมนต์วูบผิดพลาดได้ (แสดงค่าน้อยกว่าความจริงชั่วขณะ) — ถอดออกแล้ว
@@ -1650,6 +1676,28 @@ async function loadData(){
     const freshItems = (await itemsRes.json()).map(mapItem);
     if (postsRes.ok) {
       PAGE_POSTS = (await postsRes.json()).map(mapPagePost);
+      // แจ้งเตือนโพสต์ใหม่ — คนละเสียงกับคอมเมนต์ใหม่ตามที่ขอ (playNewPostAlertSound ไม่ใช่
+      // playNotificationSound) แยก toast ต่อเพจเหมือนกับที่ทำให้คอมเมนต์ กันพลาดประกาศสำคัญ เช่น
+      // "เซิร์ฟเวอร์ปิดให้บริการ" ที่โพสต์ลงเพจแทนที่จะมาเป็นคอมเมนต์
+      const freshPostIds = new Set(PAGE_POSTS.map((p) => p.id));
+      if (knownPagePostIds !== null) {
+        const newPostsByPage = {};
+        let hasNewPost = false;
+        for (const p of PAGE_POSTS) {
+          if (!knownPagePostIds.has(p.id)) {
+            hasNewPost = true;
+            newPostsByPage[p.pageId] = (newPostsByPage[p.pageId] || 0) + 1;
+          }
+        }
+        if (hasNewPost) {
+          playNewPostAlertSound();
+          for (const [pid, count] of Object.entries(newPostsByPage)) {
+            const pageName = (PAGES.find((p) => p.id === pid) || {}).name || 'เพจนี้';
+            showToast(`📰 มีโพสต์ใหม่จากเพจ "${pageName}"${count > 1 ? ` (${count} โพสต์)` : ''} — ดูที่แท็บ "โพสต์เพจ"`, 'success');
+          }
+        }
+      }
+      knownPagePostIds = freshPostIds;
     }
 
     const freshIds = new Set(freshItems.map((it) => it.id));
