@@ -569,6 +569,7 @@
   .copy-link{font-size:11.5px; color:var(--text-faint); margin-top:6px; cursor:pointer; display:inline-flex; align-items:center; gap:4px;}
   .copy-link:hover{color:var(--text-dim); text-decoration:underline;}
   .copy-link svg{width:11px; height:11px;}
+  .translated-text svg{width:14px; height:14px;}
 
   .row-actions{display:flex; gap:6px; flex:none; align-items:flex-start; padding-top:1px;}
   .row-actions .icon-btn.active-like{background:var(--green-soft); border-color:#EFC3CE; color:var(--green-text);}
@@ -838,6 +839,7 @@ const ICONS = {
   restore: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`,
   pencil: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`,
   copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+  globe: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
   inbox: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>`,
   chevronDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
   userCircle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M6.5 19a5.5 5.5 0 0 1 11 0"/></svg>`,
@@ -2375,9 +2377,19 @@ function renderReplyQuote(item){
   `;
 }
 
+// ปุ่มไอคอน "แปลเป็นไทย" — ย้ายมาอยู่แถวปุ่มไอคอนเดียวกับ ดูโพสต์/ตอบกลับ/ซ่อน/ลบ ฯลฯ (เดิมเคยเป็น
+// ลิงก์ข้อความแยกอยู่ใต้คอมเมนต์ติดกับ "Copy to clipboard" ดูรกตา — ย้ายมาเป็นไอคอนกลมแบบเดียวกับ
+// ปุ่มอื่นๆ ให้ดูเป็นระเบียบเดียวกันทั้งแถว) ไฮไลต์ไว้ (active-like) ตอนกำลังเปิดคำแปลอยู่
+function translateIconBtn(item){
+  if (!item.text || !item.text.trim()) return '';
+  const isOpen = state.translateOpenIds.has(item.id);
+  return `<div class="icon-btn${isOpen ? ' active-like' : ''}" data-action="translate-comment" data-id="${item.id}" title="${isOpen ? 'ซ่อนคำแปล' : 'แปลเป็นไทย'}">${ICONS.globe}</div>`;
+}
+
 function rowActions(item){
   if (item.folder === 'bin') {
     return `
+      ${translateIconBtn(item)}
       <div class="icon-btn" data-action="restore" data-id="${item.id}" title="กู้คืน">${ICONS.restore}</div>
       <div class="icon-btn" data-action="delete-forever" data-id="${item.id}" title="ลบถาวร">${ICONS.trash}</div>
     `;
@@ -2395,6 +2407,7 @@ function rowActions(item){
     : `<div class="icon-btn" data-action="archive" data-id="${item.id}" title="ย้ายไป Archive">${ICONS.archive}</div>`;
 
   return `
+    ${translateIconBtn(item)}
     <div class="icon-btn" data-action="view-post" data-id="${item.id}" title="ดูโพสต์และคอมเมนต์จาก Facebook">${ICONS.search}</div>
     <div class="icon-btn" data-action="toggle-expand" data-id="${item.id}" data-focus="1" title="ตอบกลับ">${ICONS.reply}</div>
     ${hideBtn}
@@ -2491,26 +2504,17 @@ function renderExpandPanel(item){
   return `<div class="expand-panel">${inner}</div>`;
 }
 
-// ปุ่ม/กล่องแปลคอมเมนต์เป็นไทย — ไม่แปลอัตโนมัติทุกคอมเมนต์ (เปลืองโควต้าบริการแปลฟรีโดยไม่จำเป็น ถ้า
-// ข้อความสั้นๆ ภาษาไทยอยู่แล้วก็ไม่ต้องแปล) ให้กดเองตอนอยากรู้ความหมาย โชว์ผลแปลเก็บไว้ในแคชกันแปลซ้ำ
+// กล่องแสดงคำแปลคอมเมนต์เป็นไทย (โชว์เฉพาะตอนกดปุ่มไอคอนแปล 🌐 ในแถวปุ่มไอคอนแล้วเท่านั้น — ดู
+// translateIconBtn()) ไม่แปลอัตโนมัติทุกคอมเมนต์ เพื่อไม่เปลืองโควต้าบริการแปลฟรีโดยไม่จำเป็น
 function renderCommentTranslate(item){
-  if (!item.text || !item.text.trim()) return '';
-  const isOpen = state.translateOpenIds.has(item.id);
+  if (!state.translateOpenIds.has(item.id)) return '';
   const cached = state.commentTranslations[item.id];
-  let box = '';
-  if (isOpen) {
-    if (cached && cached.loading) {
-      box = `<div class="opt" style="margin-top:4px;">กำลังแปล...</div>`;
-    } else if (cached && cached.error) {
-      box = `<div class="opt" style="margin-top:4px; color:var(--red-text);">แปลไม่สำเร็จ: ${cached.error}</div>`;
-    } else if (cached && cached.text) {
-      box = `<div class="translated-text" style="margin-top:4px; padding:8px 10px; background:var(--hover-bg); border-radius:8px; font-size:13px;">🌐 ${cached.text}</div>`;
-    }
+  if (cached && cached.loading) return `<div class="opt" style="margin-top:4px;">กำลังแปล...</div>`;
+  if (cached && cached.error) return `<div class="opt" style="margin-top:4px; color:var(--red-text);">แปลไม่สำเร็จ: ${cached.error}</div>`;
+  if (cached && cached.text) {
+    return `<div class="translated-text" style="margin-top:4px; padding:8px 10px; background:var(--hover-bg); border-radius:8px; font-size:13px; display:flex; align-items:flex-start; gap:6px;"><span style="flex:none; margin-top:1px; opacity:.6; display:flex;">${ICONS.globe}</span><span>${cached.text}</span></div>`;
   }
-  return `
-    <div class="copy-link" data-action="translate-comment" data-id="${item.id}" style="margin-top:4px;">🌐 ${isOpen ? 'ซ่อนคำแปล' : 'แปลเป็นไทย'}</div>
-    ${box}
-  `;
+  return '';
 }
 
 function renderRow(item){
