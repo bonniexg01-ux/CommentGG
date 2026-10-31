@@ -313,6 +313,7 @@
   .user-dropdown-item.danger{color:var(--red);}
   .user-dropdown-item.danger:hover{background:var(--red-soft);}
   .user-dropdown-sep{height:1px; background:var(--border); margin:6px 4px;}
+  .user-dropdown .mobile-only{ display:none; }
 
   /* dropdown ปรับระดับเสียงเล็กๆ ที่เปิดจากปุ่มลำโพงบน topbar — ใช้โครงเดียวกับ .user-dropdown */
   .sound-menu-wrap{position:relative;}
@@ -745,6 +746,12 @@
       display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:6px;
     }
     .topbar-actions > .tb-btn, .topbar-actions .sound-menu-wrap{ margin:0 !important; }
+    /* เมนูผู้ดูแล (รายงาน/จัดการเพจ/จัดการทีม) ย้ายไปอยู่ในเมนูผู้ใช้มุมขวาบนแทน — แถวปุ่มเหลือแค่ที่ใช้บ่อย */
+    .topbar-actions [data-action="open-analytics"],
+    .topbar-actions [data-action="open-pages-admin"],
+    .topbar-actions [data-action="open-team-admin"]{ display:none !important; }
+    .user-dropdown .mobile-only{ display:flex; }
+    .user-dropdown .user-dropdown-sep.mobile-only{ display:block; }
     .topbar-actions .tb-btn{
       width:100% !important; height:46px !important; padding:4px 2px !important;
       flex-direction:column; justify-content:center; gap:2px !important;
@@ -2661,6 +2668,13 @@ function renderUserDropdown(){
     <div class="user-dropdown">
       <div class="user-dropdown-item" data-action="open-profile" data-tab="profile">${ICONS.userCircle} Profile</div>
       <div class="user-dropdown-item" data-action="open-profile" data-tab="settings">${ICONS.gear} Settings</div>
+      ${(canViewAnalytics() || canManagePages() || canManageTeam()) ? `
+        <!-- จอมือถือเท่านั้น: ย้ายเมนูผู้ดูแลมาไว้ตรงนี้แทนแถวปุ่มด้านบน กันแถบรก (จอคอมยังอยู่บนแถบเหมือนเดิม) -->
+        <div class="user-dropdown-sep mobile-only"></div>
+        ${canViewAnalytics() ? `<div class="user-dropdown-item mobile-only" data-action="open-analytics">📊 รายงาน</div>` : ''}
+        ${canManagePages() ? `<div class="user-dropdown-item mobile-only" data-action="open-pages-admin">⚙️ จัดการเพจ</div>` : ''}
+        ${canManageTeam() ? `<div class="user-dropdown-item mobile-only" data-action="open-team-admin">👥 จัดการทีม</div>` : ''}
+      ` : ''}
       <div class="user-dropdown-sep"></div>
       <div class="user-dropdown-item danger" data-action="sign-out">${ICONS.logOut} Sign out</div>
     </div>
@@ -4999,6 +5013,7 @@ document.getElementById('app').addEventListener('click', (e) => {
       break;
 
     case 'open-analytics':
+      state.userMenuOpen = false;
       if (!canViewAnalytics()) { showToast('คุณไม่มีสิทธิ์เข้าหน้านี้', 'error'); break; }
       state.view = 'analytics';
       analyticsLoadedKey = ''; // เข้าหน้ารายงานใหม่ทุกครั้ง ดึงตัวเลขล่าสุดใหม่
@@ -5016,6 +5031,7 @@ document.getElementById('app').addEventListener('click', (e) => {
       break;
 
     case 'open-pages-admin':
+      state.userMenuOpen = false;
       if (!canManagePages()) { showToast('คุณไม่มีสิทธิ์เข้าหน้านี้', 'error'); break; }
       state.view = 'pages-admin';
       render();
@@ -5070,6 +5086,7 @@ document.getElementById('app').addEventListener('click', (e) => {
       break;
 
     case 'open-team-admin':
+      state.userMenuOpen = false;
       if (!canManageTeam()) { showToast('คุณไม่มีสิทธิ์เข้าหน้านี้', 'error'); break; }
       state.view = 'team-admin';
       render();
