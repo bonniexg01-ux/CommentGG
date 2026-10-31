@@ -1814,7 +1814,9 @@ const state = {
   // filterPageId: 'all' = ดูโพสต์ของทุกเพจ, หรือ id ของเพจที่เลือกกรองไว้ (เลือกจากแถบการ์ดรูปเพจ
   // ในหน้า "โพสต์เพจ" เท่านั้น — คนละอันกับ state.pageFilter ที่ใช้กรองหน้า Inbox)
   // detailId: id ของโพสต์ที่กำลังเปิดดูแบบป๊อบอัพเต็มๆ (null = ไม่มีป๊อบอัพเปิดอยู่)
-  pagePosts: { syncing: false, filterPageId: 'all', detailId: null },
+  pagePosts: { syncing: false, filterPageId: 'all', detailId: null,
+    // video: ผลจาก /api/post-detail?pagePostId=... ของโพสต์ที่เปิดป๊อบอัพอยู่ (null = ยังโหลดอยู่/ยังไม่ได้ขอ)
+    video: null },
   // ตัวกรองของหน้ารายงานสถิติ — ค่าเริ่มต้น 30 วันล่าสุด (ตามเวลาไทย), pageIds: null = เลือกทุกเกม
   analytics: { startDate: addDaysStr(todayThaiStr(), -29), endDate: todayThaiStr(), pageIds: null },
   // หน้า "จัดการเพจ" — loaded/loading คุมสถานะโหลดรายชื่อเพจจาก /api/manage-pages (ไม่ได้อยู่ใน ITEMS/
@@ -2127,6 +2129,7 @@ function renderPagePostsView(){
           return `
           <div class="page-post-card" data-action="open-page-post-detail" data-id="${p.id}" style="border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--surface); position:relative; cursor:pointer;">
             ${isNew ? `<span style="position:absolute; top:8px; left:8px; background:var(--red); color:#fff; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:99px; z-index:1;">ใหม่</span>` : ''}
+            ${looksLikeVideoPost(p) ? `<span style="position:absolute; top:58px; left:50%; transform:translateX(-50%); width:44px; height:44px; border-radius:50%; background:rgba(0,0,0,.55); color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; z-index:1; pointer-events:none;">▶</span>` : ''}
             ${p.imageUrl ? `<img src="${p.imageUrl}" alt="" style="width:100%; height:160px; object-fit:cover; display:block; background:var(--hover-bg);" />` : `<div style="width:100%; height:160px; display:flex; align-items:center; justify-content:center; background:var(--hover-bg); color:var(--text-faint); font-size:28px;">📰</div>`}
             <div style="padding:12px;">
               <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
@@ -2147,6 +2150,43 @@ function renderPagePostsView(){
   `;
 }
 
+// โพสต์ที่เป็นคลิป (Reels/วิดีโอ) ดูจากลิงก์โพสต์ได้ทันทีโดยไม่ต้องรอถาม Facebook — ใช้โชว์ปุ่ม ▶ บนการ์ด
+// และขึ้น "กำลังโหลดวิดีโอ" ในป๊อบอัพระหว่างรอ
+function looksLikeVideoPost(post){
+  return /\/(reel|videos)\//.test(post.permalinkUrl || '');
+}
+
+// ขอ URL วิดีโอสดๆ ตอนเปิดป๊อบอัพ (ไฟล์วิดีโอของ Facebook มีวันหมดอายุ เก็บไว้ล่วงหน้าไม่ได้)
+async function loadPagePostVideo(postId){
+  let result = { isVideo: false, videoUrl: null, embedUrl: null };
+  try {
+    const res = await fetch(`/api/post-detail?pagePostId=${encodeURIComponent(postId)}`, { headers: apiAuthHeaders() });
+    if (res.ok) result = await res.json();
+  } catch (err) {
+    console.error('loadPagePostVideo ล้มเหลว:', err);
+  }
+  if (state.pagePosts.detailId !== postId) return; // ปิด/เปลี่ยนโพสต์ไปแล้วระหว่างรอ
+  state.pagePosts.video = result;
+  if (result.isVideo) render(); // ไม่ใช่วิดีโอ = รูปเดิมถูกต้องอยู่แล้ว ไม่ต้องวาดใหม่
+}
+
+const POST_MEDIA_STYLE = 'width:100%; max-height:70vh; border-radius:10px; background:#000; display:block; margin-bottom:14px;';
+
+function renderPagePostMedia(post){
+  const v = state.pagePosts.video;
+  const img = post.imageUrl ? `<img src="${post.imageUrl}" alt="" style="width:100%; max-height:420px; object-fit:contain; border-radius:10px; background:var(--hover-bg); display:block; margin-bottom:14px;" />` : '';
+  if (v && v.isVideo && v.videoUrl) {
+    return `<video src="${v.videoUrl}" ${post.imageUrl ? `poster="${post.imageUrl}"` : ''} controls autoplay playsinline style="${POST_MEDIA_STYLE} object-fit:contain;"></video>`;
+  }
+  if (v && v.isVideo && v.embedUrl) {
+    return `<iframe src="${v.embedUrl}" style="${POST_MEDIA_STYLE} height:70vh; border:0;" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>`;
+  }
+  if (!v && looksLikeVideoPost(post)) {
+    return `<div style="position:relative;">${img}<div style="position:absolute; inset:0 0 14px 0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; background:rgba(0,0,0,.35); border-radius:10px;">กำลังโหลดวิดีโอ…</div></div>`;
+  }
+  return img;
+}
+
 // ป๊อบอัพดูโพสต์เต็มๆ — กดการ์ดในหน้า "โพสต์เพจ" แล้วเด้งมาตรงนี้ โชว์รูปเต็มขนาด (ไม่ถูกครอปแบบใน
 // การ์ด) + ข้อความเต็มไม่ถูกตัด เอาไว้ตรวจสอบเนื้อหาโพสต์ได้ละเอียดจริงๆ ก่อนตัดสินใจทำอะไรต่อ
 function renderPagePostDetailModal(){
@@ -2165,7 +2205,7 @@ function renderPagePostDetailModal(){
         </div>
         <div class="modal-scroll">
           <div class="modal-body">
-            ${post.imageUrl ? `<img src="${post.imageUrl}" alt="" style="width:100%; max-height:420px; object-fit:contain; border-radius:10px; background:var(--hover-bg); display:block; margin-bottom:14px;" />` : ''}
+            ${renderPagePostMedia(post)}
             <div style="font-size:14.5px; line-height:1.7; white-space:pre-wrap; margin-bottom:14px;">${post.message ? post.message : '<span style="color:var(--text-faint);">(โพสต์นี้ไม่มีข้อความ)</span>'}</div>
             <div style="font-size:12.5px; color:var(--text-faint);">โพสต์เมื่อ ${formatThaiDateTime(post.postedAt)} (${timeAgo(post.postedAt)})</div>
           </div>
@@ -4527,11 +4567,14 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'open-page-post-detail':
       state.pagePosts.detailId = id;
+      state.pagePosts.video = null;
       render();
+      loadPagePostVideo(id);
       break;
 
     case 'close-page-post-detail':
       state.pagePosts.detailId = null;
+      state.pagePosts.video = null;
       render();
       break;
 
@@ -5223,7 +5266,9 @@ function isUserEditingSomething(){
   // ขึ้นใหม่จาก template เปล่าๆ (ไม่มี value ผูกไว้กับ state เลย) สิ่งที่พิมพ์/วางไว้เลยหายหมดโดยไม่รู้ตัว
   // — เพิ่มเงื่อนไขทั้งสองฟอร์มนี้เข้ามา กัน poll ทับระหว่างที่ฟอร์มเปิดอยู่
   return !!state.expandedId || !!state.editingReplyId || state.profileOpen || state.postPanel.open || searchFocused
-    || state.pagesAdmin.formOpen || state.teamAdmin.formOpen;
+    || state.pagesAdmin.formOpen || state.teamAdmin.formOpen
+    // ป๊อบอัพโพสต์เพจเปิดอยู่ — ถ้ารีเฟรชหน้าจอ วิดีโอที่กำลังเล่นจะเด้งกลับไปเริ่มใหม่ เลยงดรีเฟรชไว้ก่อน
+    || !!(state.pagePosts && state.pagePosts.detailId);
 }
 setInterval(() => {
   // เผื่อกรณีเปิดแท็บทิ้งไว้ข้ามวัน (ไม่ได้ปิดคอม/ปิดเว็บเลย) ก็ยังบังคับให้ล็อกอินใหม่ตอนข้ามวันด้วย

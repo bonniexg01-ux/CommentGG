@@ -72,6 +72,13 @@ export default async function handler(request) {
     }
 
     const { searchParams } = new URL(request.url);
+
+    // โหมดวิดีโอของ "โพสต์เพจ" — ป๊อบอัพในหน้าโพสต์เพจขอ URL ไฟล์วิดีโอสดๆ ตอนกดเปิด (ลิงก์ไฟล์วิดีโอ
+    // ของ Facebook มีวันหมดอายุ เก็บลงฐานข้อมูลไว้ล่วงหน้าไม่ได้) รวมไว้ในไฟล์นี้แทนแยกไฟล์ใหม่ เพราะ
+    // แผน Hobby ของ Vercel จำกัดจำนวน serverless function ไว้ 12 ตัว
+    const pagePostId = searchParams.get('pagePostId');
+    if (pagePostId) return json(await fetchPagePostVideo(pagePostId));
+
     const itemId = searchParams.get('itemId');
     if (!itemId) return json({ error: 'itemId จำเป็นต้องมี' }, 400);
 
@@ -172,4 +179,83 @@ async function fetchPost(postId, accessToken) {
   const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(postId)}?fields=message,full_picture&access_token=${encodeURIComponent(accessToken)}`;
   const r = await fetchWithTimeout(url, { method: 'GET' });
   return r.json();
+}
+
+// ---------- วิดีโอของโพสต์เพจ (page_posts) ----------
+// คืน { isVideo, videoUrl, embedUrl }:
+//  - videoUrl = ไฟล์ mp4 ตรงจาก Facebook (เล่นด้วย <video> ในป๊อบอัพได้เลย)
+//  - embedUrl = ตัวเล่นฝังของ Facebook ไว้ใช้สำรองถ้าดึงไฟล์ตรงไม่ได้
+// ไม่ throw ออกไป — ถ้า Facebook มีปัญหา ป๊อบอัพแค่ตกไปใช้ embed/รูปปกแทน
+function videoIdFromPermalink(permalink) {
+  const m = String(permalink || '').match(/\/(?:reel|videos)\/(\d+)/);
+  return m ? m[1] : null;
+}
+
+function fbEmbedUrl(permalink) {
+  if (!permalink) return null;
+  return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(permalink)}&show_text=false&autoplay=true`;
+}
+
+async function fetchPagePostVideo(pagePostId) {
+  const empty = { isVideo: false, videoUrl: null, embedUrl: null };
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/page_posts?id=eq.${encodeURIComponent(pagePostId)}&select=fb_post_id,permalink_url,page_id`,
+      { headers: sbHeaders }
+    );
+    if (!r.ok) return empty;
+    const post = (await r.json())[0];
+    if (!post) return empty;
+
+    let videoId = videoIdFromPermalink(post.permalink_url);
+    let isVideo = !!videoId;
+    let videoUrl = null;
+
+    const pr = await fetch(
+      `${SUPABASE_URL}/rest/v1/pages?id=eq.${encodeURIComponent(post.page_id)}&select=access_token`,
+      { headers: sbHeaders }
+    );
+    const page = pr.ok ? (await pr.json())[0] : null;
+    const token = page && page.access_token;
+
+    if (token && post.fb_post_id) {
+      try {
+        const fields = 'attachments{media_type,type,media,target}';
+        const ar = await fetchWithTimeout(
+          `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(post.fb_post_id)}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(token)}`,
+          { method: 'GET' }
+        );
+        const data = await ar.json();
+        const att = data && data.attachments && Array.isArray(data.attachments.data) ? data.attachments.data[0] : null;
+        if (att) {
+          if (/video/i.test(att.media_type || '') || /video/i.test(att.type || '')) isVideo = true;
+          if (isVideo && att.media && att.media.source) videoUrl = att.media.source;
+          if (isVideo && att.target && att.target.id) videoId = videoId || att.target.id;
+        } else if (data && data.error) {
+          console.error('post-detail video: attachments error', data.error);
+        }
+      } catch (err) {
+        console.error('post-detail video: attachments ล้มเหลว', err);
+      }
+
+      if (isVideo && !videoUrl && videoId) {
+        try {
+          const vr = await fetchWithTimeout(
+            `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(videoId)}?fields=source&access_token=${encodeURIComponent(token)}`,
+            { method: 'GET' }
+          );
+          const v = await vr.json();
+          if (v && v.source) videoUrl = v.source;
+          else if (v && v.error) console.error('post-detail video: source error', v.error);
+        } catch (err) {
+          console.error('post-detail video: source ล้มเหลว', err);
+        }
+      }
+    }
+
+    return { isVideo, videoUrl, embedUrl: isVideo ? fbEmbedUrl(post.permalink_url) : null };
+  } catch (err) {
+    console.error('post-detail video error', err);
+    return empty;
+  }
 }
