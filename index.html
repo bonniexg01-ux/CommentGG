@@ -4350,8 +4350,20 @@ function updateBodyScrollLock(){
     state.profileOpen || state.postPanel.open || state.pagesAdmin.formOpen || state.teamAdmin.formOpen
     || (state.pagePosts && state.pagePosts.detailId) || state.pagePicker.open
   );
-  document.body.style.overflow = anyModalOpen ? 'hidden' : '';
+  // เจอจริง: บน iPhone (โดยเฉพาะแอปที่ติดตั้งลงหน้าจอโฮม) การล็อกด้วย overflow:hidden อย่างเดียวทำให้ตำแหน่ง
+  // ที่นิ้วแตะเพี้ยนจากปุ่มที่เห็นในป๊อบอัพ (กดกากบาท/ปิดไม่ได้) ถ้าเลื่อนหน้าลงมาก่อนเปิดป๊อบอัพ — ใช้วิธี
+  // ตรึง body ไว้ที่ตำแหน่งเดิม (position:fixed + top ติดลบ) แล้วเลื่อนคืนตำแหน่งเดิมตอนปิด ซึ่ง iPhone รองรับถูกต้อง
+  if (anyModalOpen && !bodyScrollLockY.locked) {
+    bodyScrollLockY.y = window.scrollY || 0;
+    bodyScrollLockY.locked = true;
+    Object.assign(document.body.style, { overflow: 'hidden', position: 'fixed', top: `-${bodyScrollLockY.y}px`, left: '0', right: '0', width: '100%' });
+  } else if (!anyModalOpen && bodyScrollLockY.locked) {
+    bodyScrollLockY.locked = false;
+    Object.assign(document.body.style, { overflow: '', position: '', top: '', left: '', right: '', width: '' });
+    window.scrollTo(0, bodyScrollLockY.y);
+  }
 }
+var bodyScrollLockY = { locked: false, y: 0 };
 
 function render(){
   const app = document.getElementById('app');
@@ -4882,6 +4894,24 @@ const rememberPressTarget = (e) => { lastMouseDownTarget = e.target.closest('[da
 document.getElementById('app').addEventListener('pointerdown', rememberPressTarget);
 document.getElementById('app').addEventListener('touchstart', rememberPressTarget, { passive: true });
 document.getElementById('app').addEventListener('mousedown', rememberPressTarget);
+
+// สำรองสำหรับ iPhone: แตะปุ่มปิดป๊อบอัพ (กากบาท/ปุ่ม "ปิด" — ไม่รวมพื้นหลัง) แล้ว Safari ไม่ส่ง click มา
+// ให้ปิดจากการแตะเลย (ถ้านิ้วไม่ได้ลาก) และกัน click ซ้ำที่อาจตามมาด้วย preventDefault
+let closeTouchStart = null;
+document.getElementById('app').addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  closeTouchStart = t ? { x: t.clientX, y: t.clientY } : null;
+}, { passive: true });
+document.getElementById('app').addEventListener('touchend', (e) => {
+  const el = e.target.closest && e.target.closest('[data-action]');
+  if (!el || !BACKDROP_CLOSE_ACTIONS.has(el.dataset.action)) return;
+  if (el.classList.contains('modal-backdrop') || el.classList.contains('menu-backdrop') || el.classList.contains('post-panel-backdrop')) return;
+  const t = e.changedTouches[0];
+  if (closeTouchStart && t && (Math.abs(t.clientX - closeTouchStart.x) > 10 || Math.abs(t.clientY - closeTouchStart.y) > 10)) return;
+  e.preventDefault();
+  lastMouseDownTarget = el;
+  el.click();
+}, { passive: false });
 
 // select/input[type=date] ในแผง Filters ใช้ event "change" (ไม่ใช่ "click" เหมือน data-action อื่นๆ
 // ทั้งหมด) เลยแยก listener ต่างหาก แต่ยังใช้ data-action="set-filter" + data-key ตัวเดียวกันเพื่อให้
