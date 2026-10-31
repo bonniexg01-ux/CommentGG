@@ -1048,6 +1048,28 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 // header สำหรับยิงตรงไปที่ Supabase REST (/rest/v1/...) — ต้องมี apikey เสมอ และใช้ access_token
 // ของผู้ใช้ที่ล็อกอินแล้วแทน anon key ตรงๆ เพื่อให้นับเป็น role "authenticated" (ดูนโยบาย RLS ที่ตั้งไว้
 // ว่าต้องล็อกอินก่อนถึงจะอ่าน/เขียนข้อมูลได้ — เดิมเปิดให้ anon ทำได้หมดเลย ไม่ปลอดภัย)
+// เจอจริง (จาก log ของ Supabase): แท็บที่เปิดค้างไว้เบื้องหลัง (ย่อหน้าต่าง/สลับไปแท็บอื่น) นานเกิน ~1 ชม.
+// ถูกปฏิเสธ 401 รัวๆ ทุก 20 วิไปหลายชั่วโมง = ไม่ได้ข้อมูลใหม่ ไม่มีแจ้งเตือนเลยระหว่างนั้น สาเหตุคือ
+// supabase-js หยุดต่ออายุ token อัตโนมัติตอนแท็บถูกซ่อน (ต่อให้อีกทีตอนกลับมาดูหน้าเว็บ) token 1 ชม.
+// เลยหมดอายุค้างอยู่ — แก้โดยเช็คก่อนยิงคำขอเป็นระยะทุกครั้ง ถ้าเหลืออายุน้อยกว่า 2 นาทีให้ขอ session
+// ใหม่ (getSession() ต่ออายุด้วย refresh token ให้เองถ้าใกล้หมด)
+async function ensureFreshSession(){
+  const s0 = state.auth.session;
+  if (!s0) return;
+  if (s0.expires_at && s0.expires_at * 1000 - Date.now() > 120000) return;
+  try {
+    let { data } = await sb.auth.getSession();
+    let fresh = data && data.session;
+    if (fresh && fresh.expires_at && fresh.expires_at * 1000 - Date.now() <= 120000) {
+      const r = await sb.auth.refreshSession();
+      fresh = (r.data && r.data.session) || fresh;
+    }
+    if (fresh) state.auth.session = fresh;
+  } catch (err) {
+    console.error('ต่ออายุ session ไม่สำเร็จ:', err);
+  }
+}
+
 function sbAuthHeaders(){
   const token = state.auth.session ? state.auth.session.access_token : SUPABASE_KEY;
   return { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}` };
@@ -1637,6 +1659,7 @@ function applyFreshPagePosts(rows){
 // เช็คเฉพาะโพสต์ใหม่โดยไม่วาดหน้าจอใหม่ — ใช้ตอนที่ loadData() ถูกงดไว้ (มีคนพิมพ์ตอบค้าง/เปิดป๊อบอัพอยู่)
 // ไม่งั้นถ้าเปิดกล่องตอบทิ้งไว้แล้วไปทำอย่างอื่น จะไม่มีแจ้งเตือนโพสต์ใหม่เลยจนกว่าจะกลับมาปิดกล่อง
 async function checkNewPagePostsOnly(){
+  await ensureFreshSession();
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/page_posts?select=*&order=posted_at.desc.nullslast&limit=200`, { headers: sbAuthHeaders() });
     if (res.ok) applyFreshPagePosts(await res.json());
@@ -1796,6 +1819,7 @@ let knownPagePostIds = null;
 async function loadData(){
   // ยังไม่ล็อกอิน ไม่ต้องดึงข้อมูล (RLS ฝั่ง Supabase จะปฏิเสธอยู่แล้ว แต่กันไว้ตั้งแต่ต้นเลย)
   if (!state.auth.session) return;
+  await ensureFreshSession();
   try {
     const [pagesRes, itemsRes, hashtagsRes, postsRes] = await Promise.all([
       // เรียงตาม created_at เสมอ (เพจที่เพิ่มก่อนอยู่หน้าก่อน) — เดิมไม่ได้ระบุ order เลย Postgres
@@ -2182,6 +2206,7 @@ function unseenPagePostsCount(){
 // needs_polling ไว้สำหรับคอมเมนต์ (คนละสโคปกัน)
 async function syncPagePostsFromFb(){
   if (!state.auth.session) return;
+  await ensureFreshSession();
   try {
     const res = await fetch('/api/sync-posts', {
       method: 'POST',
@@ -5490,6 +5515,7 @@ setInterval(() => {
 // ฝั่งเบราว์เซอร์แทน (ทำงานเฉพาะตอนมีคนล็อกอินเปิดแดชบอร์ดค้างอยู่จริง)
 async function syncPollingPages(){
   if (!state.auth.session) return;
+  await ensureFreshSession();
   try {
     const res = await fetch('/api/sync-comments', {
       method: 'POST',
