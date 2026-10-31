@@ -4876,9 +4876,12 @@ function updateComposerState(item, box, page){
 // แล้วปล่อยเมาส์ออกไปโดนพื้นหลังนอกกล่อง จะถูกนับเป็น "คลิกที่พื้นหลัง" แล้วปิด modal ทันที ทั้งที่
 // ผู้ใช้แค่ลากเลือกข้อความอยู่ ไม่ได้ตั้งใจปิดกล่องเลย
 let lastMouseDownTarget = null;
-document.getElementById('app').addEventListener('mousedown', (e) => {
-  lastMouseDownTarget = e.target.closest('[data-action]');
-});
+// ใช้ pointerdown (+ touchstart สำรอง) แทน mousedown — เจอจริง: บน iPhone (โดยเฉพาะแอปที่ติดตั้งลงหน้าจอโฮม)
+// mousedown ส่งมาไม่ครบ ทำให้กดกากบาท/ปุ่ม "ปิด" ในป๊อบอัพแล้วไม่มีอะไรเกิดขึ้น
+const rememberPressTarget = (e) => { lastMouseDownTarget = e.target.closest('[data-action]'); };
+document.getElementById('app').addEventListener('pointerdown', rememberPressTarget);
+document.getElementById('app').addEventListener('touchstart', rememberPressTarget, { passive: true });
+document.getElementById('app').addEventListener('mousedown', rememberPressTarget);
 
 // select/input[type=date] ในแผง Filters ใช้ event "change" (ไม่ใช่ "click" เหมือน data-action อื่นๆ
 // ทั้งหมด) เลยแยก listener ต่างหาก แต่ยังใช้ data-action="set-filter" + data-key ตัวเดียวกันเพื่อให้
@@ -4943,7 +4946,9 @@ document.getElementById('app').addEventListener('click', (e) => {
 
   // ปิด modal/dropdown จากการคลิกพื้นหลังได้ ก็ต่อเมื่อ mousedown กับ click จบที่จุดเดียวกันจริงๆ
   // (กันลากเลือกข้อความข้างในกล่องแล้วปล่อยเมาส์นอกกล่อง ไม่ให้นับเป็นการคลิกปิด)
-  if (BACKDROP_CLOSE_ACTIONS.has(action) && lastMouseDownTarget !== el) {
+  // เช็คเฉพาะตอนคลิก "พื้นหลัง" เท่านั้น — ปุ่มกากบาท/ปุ่ม "ปิด" ที่ตั้งใจกดต้องปิดได้เสมอ
+  const isBackdropEl = el.classList.contains('modal-backdrop') || el.classList.contains('menu-backdrop') || el.classList.contains('post-panel-backdrop');
+  if (BACKDROP_CLOSE_ACTIONS.has(action) && isBackdropEl && lastMouseDownTarget !== el) {
     return;
   }
 
