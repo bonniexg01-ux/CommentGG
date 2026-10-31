@@ -300,6 +300,10 @@
   .topbar-user .chev.open{transform:rotate(180deg);}
 
   .menu-backdrop{position:fixed; inset:0; z-index:70;}
+  /* iPhone ส่ง click ให้เฉพาะสิ่งที่ "ดูกดได้" — ใส่ cursor:pointer ให้พื้นหลังของเมนู/ป๊อบอัพ ไม่งั้นแตะพื้นหลังแล้ว
+     ไม่มีอะไรเกิดขึ้น พื้นหลังใสค้างบังจอจนแตะอะไรไม่ได้ (ตัวกล่องข้างในกลับเป็น cursor ปกติ) */
+  .menu-backdrop, .modal-backdrop, .post-panel-backdrop, .modal-close{ cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .modal-backdrop > .modal-card{ cursor:auto; }
   .user-dropdown{
     position:absolute; top:calc(100% + 8px); right:0; background:var(--surface); border:1px solid var(--border);
     border-radius:12px; box-shadow:0 12px 32px rgba(43,33,29,.18); min-width:210px; padding:6px; z-index:80;
@@ -4890,13 +4894,15 @@ function updateComposerState(item, box, page){
 let lastMouseDownTarget = null;
 // ใช้ pointerdown (+ touchstart สำรอง) แทน mousedown — เจอจริง: บน iPhone (โดยเฉพาะแอปที่ติดตั้งลงหน้าจอโฮม)
 // mousedown ส่งมาไม่ครบ ทำให้กดกากบาท/ปุ่ม "ปิด" ในป๊อบอัพแล้วไม่มีอะไรเกิดขึ้น
-const rememberPressTarget = (e) => { lastMouseDownTarget = e.target.closest('[data-action]'); };
+let lastPressAt = 0;
+const rememberPressTarget = (e) => { lastMouseDownTarget = e.target.closest('[data-action]'); lastPressAt = Date.now(); };
 document.getElementById('app').addEventListener('pointerdown', rememberPressTarget);
 document.getElementById('app').addEventListener('touchstart', rememberPressTarget, { passive: true });
 document.getElementById('app').addEventListener('mousedown', rememberPressTarget);
 
-// สำรองสำหรับ iPhone: แตะปุ่มปิดป๊อบอัพ (กากบาท/ปุ่ม "ปิด" — ไม่รวมพื้นหลัง) แล้ว Safari ไม่ส่ง click มา
-// ให้ปิดจากการแตะเลย (ถ้านิ้วไม่ได้ลาก) และกัน click ซ้ำที่อาจตามมาด้วย preventDefault
+// สำรองสำหรับ iPhone: แตะปุ่มปิด/พื้นหลังของป๊อบอัพและเมนู แล้ว Safari ไม่ส่ง click มา (หรือส่งมาผิดตัว) — ปิดจากการแตะ
+// เลย ถ้านิ้วเริ่มและจบที่ปุ่ม/พื้นหลังอันเดียวกันโดยไม่ได้ลาก (touchend ชี้ไปที่ตัวที่เริ่มแตะเสมอ จึงกันเคสลากเลือกข้อความ
+// ข้างในกล่องแล้วไปปล่อยนอกกล่องได้ในตัว) แล้ว preventDefault กัน click ซ้ำที่อาจตามมา
 let closeTouchStart = null;
 document.getElementById('app').addEventListener('touchstart', (e) => {
   const t = e.touches[0];
@@ -4905,11 +4911,11 @@ document.getElementById('app').addEventListener('touchstart', (e) => {
 document.getElementById('app').addEventListener('touchend', (e) => {
   const el = e.target.closest && e.target.closest('[data-action]');
   if (!el || !BACKDROP_CLOSE_ACTIONS.has(el.dataset.action)) return;
-  if (el.classList.contains('modal-backdrop') || el.classList.contains('menu-backdrop') || el.classList.contains('post-panel-backdrop')) return;
   const t = e.changedTouches[0];
   if (closeTouchStart && t && (Math.abs(t.clientX - closeTouchStart.x) > 10 || Math.abs(t.clientY - closeTouchStart.y) > 10)) return;
   e.preventDefault();
   lastMouseDownTarget = el;
+  lastPressAt = Date.now();
   el.click();
 }, { passive: false });
 
@@ -4978,7 +4984,9 @@ document.getElementById('app').addEventListener('click', (e) => {
   // (กันลากเลือกข้อความข้างในกล่องแล้วปล่อยเมาส์นอกกล่อง ไม่ให้นับเป็นการคลิกปิด)
   // เช็คเฉพาะตอนคลิก "พื้นหลัง" เท่านั้น — ปุ่มกากบาท/ปุ่ม "ปิด" ที่ตั้งใจกดต้องปิดได้เสมอ
   const isBackdropEl = el.classList.contains('modal-backdrop') || el.classList.contains('menu-backdrop') || el.classList.contains('post-panel-backdrop');
-  if (BACKDROP_CLOSE_ACTIONS.has(action) && isBackdropEl && lastMouseDownTarget !== el) {
+  // กันเฉพาะเมื่อรู้แน่ว่าเพิ่งกดเริ่มที่อื่นจริง (กดเมื่อไม่เกิน 1.5 วิ) — ถ้าไม่มีข้อมูลการกดล่าสุด (เช่น iPhone
+  // ไม่ส่งสัญญาณกดมา) ให้ปิดได้ ดีกว่าพื้นหลังใสค้างบังจอจนแตะอะไรไม่ได้เลย
+  if (BACKDROP_CLOSE_ACTIONS.has(action) && isBackdropEl && lastMouseDownTarget !== el && Date.now() - lastPressAt < 1500) {
     return;
   }
 
