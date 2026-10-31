@@ -285,6 +285,10 @@
     display:flex; align-items:center; justify-content:center; cursor:pointer; flex:none; border:none;
   }
   .topbar-icon-btn:hover{filter:brightness(1.08);}
+  /* กลุ่มปุ่มเมนูบนแถบด้านบน — จอคอมเรียงแถวเดียวชิดขวาเหมือนเดิม จอมือถือจัดเป็นแถวปุ่มขนาดเท่ากัน (ดู @media) */
+  .topbar-actions{ display:flex; align-items:center; margin-left:auto; }
+  .tb-icon{ display:inline-flex; align-items:center; justify-content:center; }
+  .tb-label-mobile{ display:none; }
   .topbar-icon-btn svg{width:16px; height:16px;}
   .topbar-user{
     display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:600; background:var(--navy-2);
@@ -732,11 +736,23 @@
     .topbar-brand{ font-size:17px; gap:8px; }
     .topbar-brand .mark{ width:36px; height:36px; border-radius:10px; }
     .topbar-brand .mark svg{ width:24px; height:24px; }
-    /* "รายงาน"/"จัดการเพจ" — เหลือแค่อีโมจิ ซ่อนข้อความตัวหนังสือทิ้ง ประหยัดที่บนแถบแคบๆ */
-    [data-action="open-analytics"], [data-action="open-pages-admin"]{
-      padding:0 9px !important; margin-right:6px !important; margin-left:0 !important;
+    /* จอมือถือ: แถวบน = โลโก้ (ซ้าย) + เมนูผู้ใช้ (ขวา), แถวล่าง = ปุ่มเมนูทั้งหมดกว้างเท่ากันเต็มแถว
+       ไอคอนอยู่บน ชื่อเมนูตัวเล็กอยู่ล่าง — เดิมปุ่มขนาดไม่เท่ากันห่อบรรทัดมั่ว ดูไม่เป็นระเบียบ */
+    .topbar-brand{ order:1; }
+    .user-menu-wrap{ order:2; margin-left:auto; }
+    .topbar-actions{
+      order:3; width:100%; margin-left:0;
+      display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:6px;
     }
-    [data-action="open-analytics"] span, [data-action="open-pages-admin"] span{ display:none; }
+    .topbar-actions > .tb-btn, .topbar-actions .sound-menu-wrap{ margin:0 !important; }
+    .topbar-actions .tb-btn{
+      width:100% !important; height:46px !important; padding:4px 2px !important;
+      flex-direction:column; justify-content:center; gap:2px !important;
+    }
+    .topbar-actions .tb-icon{ font-size:17px; line-height:1; }
+    .topbar-actions .tb-icon svg{ width:17px; height:17px; }
+    .topbar-actions .tb-label{ display:block; font-size:10.5px !important; line-height:1.1; white-space:nowrap; }
+    .topbar-actions .chip-pending-count{ top:-5px !important; right:-3px !important; }
     .topbar-user-name{ display:none; } /* เหลือแค่ไอคอนคน + ลูกศร ชื่อยาวๆ กินที่บนจอแคบเกินไป */
     .topbar-user{ padding:6px 8px; }
 
@@ -2533,30 +2549,33 @@ function renderTopbar(){
         <div class="mark">${iconForTheme()}</div>
         CommentGG
       </div>
-      <div class="topbar-icon-btn" data-action="open-page-posts" title="โพสต์เพจ" style="margin-left:auto; margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center; position:relative;">
-        📰 <span style="font-size:12.5px;">โพสต์เพจ</span>
+      <div class="topbar-actions">
+      <div class="topbar-icon-btn tb-btn" data-action="open-page-posts" title="โพสต์เพจ" style="margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center; position:relative;">
+        <span class="tb-icon">📰</span> <span class="tb-label" style="font-size:12.5px;">โพสต์เพจ</span>
         ${unseenPagePostsCount() > 0 ? `<span class="chip-pending-count" style="position:absolute; top:-6px; right:-6px;">${unseenPagePostsCount()}</span>` : ''}
       </div>
       ${canViewAnalytics() ? `
-        <div class="topbar-icon-btn" data-action="open-analytics" title="รายงานสถิติ" style="margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
-          📊 <span style="font-size:12.5px;">รายงาน</span>
+        <div class="topbar-icon-btn tb-btn" data-action="open-analytics" title="รายงานสถิติ" style="margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
+          <span class="tb-icon">📊</span> <span class="tb-label" style="font-size:12.5px;">รายงาน</span>
         </div>
       ` : ''}
       ${canManagePages() ? `
-        <div class="topbar-icon-btn" data-action="open-pages-admin" title="จัดการเพจ" style="margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
-          ⚙️ <span style="font-size:12.5px;">จัดการเพจ</span>
+        <div class="topbar-icon-btn tb-btn" data-action="open-pages-admin" title="จัดการเพจ" style="margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
+          <span class="tb-icon">⚙️</span> <span class="tb-label" style="font-size:12.5px;">จัดการเพจ</span>
         </div>
       ` : ''}
       ${canManageTeam() ? `
-        <div class="topbar-icon-btn" data-action="open-team-admin" title="จัดการทีม" style="margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
-          👥 <span style="font-size:12.5px;">จัดการทีม</span>
+        <div class="topbar-icon-btn tb-btn" data-action="open-team-admin" title="จัดการทีม" style="margin-right:10px; width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
+          <span class="tb-icon">👥</span> <span class="tb-label" style="font-size:12.5px;">จัดการทีม</span>
         </div>
       ` : ''}
       <div class="sound-menu-wrap" style="margin-right:10px;">
-        <div class="topbar-icon-btn" data-action="toggle-sound-menu" title="ตั้งค่าเสียงแจ้งเตือน">
-          ${state.soundMuted || state.soundVolume <= 0 ? ICONS.volumeOff : ICONS.volumeOn}
+        <div class="topbar-icon-btn tb-btn" data-action="toggle-sound-menu" title="ตั้งค่าเสียงแจ้งเตือน">
+          <span class="tb-icon">${state.soundMuted || state.soundVolume <= 0 ? ICONS.volumeOff : ICONS.volumeOn}</span>
+          <span class="tb-label tb-label-mobile">เสียง</span>
         </div>
         ${state.soundMenuOpen ? renderSoundDropdown() : ''}
+      </div>
       </div>
       <div class="user-menu-wrap">
         <button class="topbar-user" data-action="toggle-user-menu">
