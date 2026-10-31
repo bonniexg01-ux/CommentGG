@@ -1816,6 +1816,66 @@ let knownPagePostIds = null;
 // หมายเหตุ: เคยลองใส่ loadInboxFast() (โหลดเฉพาะ Inbox ก่อน แล้วค่อยโหลดข้อมูลเต็มตาม) เพื่อให้เห็น
 // ข้อมูลเร็วขึ้น แต่พบว่าทำให้ตัวเลขคอมเมนต์วูบผิดพลาดได้ (แสดงค่าน้อยกว่าความจริงชั่วขณะ) — ถอดออกแล้ว
 // เพื่อความถูกต้องของข้อมูลเป็นหลัก เหลือไว้แค่ loadData() ตัวเดียวที่ดึงข้อมูลครบถ้วนทุกครั้ง
+// คอลัมน์ feed_items ที่หน้าเว็บใช้จริง (ไม่เอา fb_id/fb_post_id/author_fb_id — ฝั่ง backend ดึงเองตอนต้องใช้)
+const FEED_ITEM_COLUMNS = 'id,page_id,type,post_excerpt,author_name,message,status,folder,ai_reason,admin_reply,admin_reply_fb_id,admin_reply_by,fail_reason,replied_at,attachment_image_url,auto_archive_reason,liked,blocked,created_at';
+const FEED_PAGE_SIZE = 1000; // Supabase ส่งได้สูงสุดครั้งละ 1000 แถว (ค่า Max rows ของโปรเจกต์)
+
+// ดึงทุกแถวที่ตรงเงื่อนไข โดยไล่ทีละ 1000 แถว (offset) จนหมด — maxRows กันไม่ให้ดึงยาวเกินไป
+async function fetchAllRows(query, maxRows){
+  const rows = [];
+  for (let offset = 0; offset < maxRows; offset += FEED_PAGE_SIZE) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${query}&limit=${FEED_PAGE_SIZE}&offset=${offset}`, { headers: sbAuthHeaders() });
+    if (!res.ok) throw new Error('โหลดข้อมูลไม่สำเร็จ (' + res.status + ')');
+    const batch = await res.json();
+    rows.push(...batch);
+    if (batch.length < FEED_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+// เจอจริง: เดิมดึง feed_items ทั้งตารางในคำขอเดียว แต่ Supabase ตัดให้แค่ 1000 แถวล่าสุดเสมอ (ทั้งตารางมี
+// ~18,000 แถว) คอมเมนต์ "ต้องตอบกลับ" ที่เก่ากว่า 1000 แถวล่าสุดเลยหายไปจาก Inbox เงียบๆ (พบ 86 รายการ —
+// โพสต์กิจกรรมที่มีคอมเมนต์เข้ามาเยอะดันให้หลุด) — แยกเป็น 2 ชุด: Inbox ทั้งหมดไม่จำกัด (ต้องไม่หลุดสักอัน)
+// + Archive/Bin 1000 แถวล่าสุด (ไว้ดูย้อนหลัง; หน้ารายงานสถิติดึงของตัวเองแยกตามช่วงวันที่ ดู loadAnalyticsItems)
+async function fetchDashboardItems(){
+  try {
+    const [inbox, others] = await Promise.all([
+      fetchAllRows(`feed_items?select=${FEED_ITEM_COLUMNS}&folder=eq.inbox&order=created_at.desc`, 20000),
+      fetchAllRows(`feed_items?select=${FEED_ITEM_COLUMNS}&folder=neq.inbox&order=created_at.desc`, FEED_PAGE_SIZE),
+    ]);
+    return [...inbox, ...others].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  } catch (err) {
+    console.error('fetchDashboardItems ล้มเหลว:', err);
+    return null;
+  }
+}
+
+// หน้ารายงานสถิติ: ดึงทุกแถวในช่วงวันที่ที่เลือก (ทั้งที่เข้ามา และที่ตอบในช่วงนั้น) แยกจาก ITEMS ของแดชบอร์ด
+// ที่มีแค่ Inbox + 1000 แถวล่าสุด ไม่งั้นตัวเลขย้อนหลังจะขาด
+let ANALYTICS_ITEMS = null;      // null = ยังไม่ได้โหลดของช่วงนี้
+let analyticsLoadedKey = '';
+async function loadAnalyticsItems(){
+  const { startDate, endDate } = state.analytics;
+  const key = `${startDate}|${endDate}`;
+  if (analyticsLoadedKey === key || state.analyticsLoading) return;
+  state.analyticsLoading = true;
+  try {
+    await ensureFreshSession();
+    const from = new Date(`${startDate}T00:00:00+07:00`).toISOString();
+    const to = new Date(`${endDate}T23:59:59.999+07:00`).toISOString();
+    const range = `or=(and(created_at.gte.${from},created_at.lte.${to}),and(replied_at.gte.${from},replied_at.lte.${to}))`;
+    const rows = await fetchAllRows(`feed_items?select=${FEED_ITEM_COLUMNS}&${range}&order=created_at.desc`, 200000);
+    const visible = new Set(PAGES.map((p) => p.id));
+    ANALYTICS_ITEMS = rows.map(mapItem).filter((it) => visible.has(it.pageId));
+    analyticsLoadedKey = key;
+  } catch (err) {
+    console.error('loadAnalyticsItems ล้มเหลว:', err);
+    showToast('โหลดข้อมูลรายงานไม่ครบ ลองใหม่อีกครั้ง', 'error');
+  }
+  state.analyticsLoading = false;
+  if (state.view === 'analytics') render();
+}
+
 async function loadData(){
   // ยังไม่ล็อกอิน ไม่ต้องดึงข้อมูล (RLS ฝั่ง Supabase จะปฏิเสธอยู่แล้ว แต่กันไว้ตั้งแต่ต้นเลย)
   if (!state.auth.session) return;
@@ -1830,16 +1890,16 @@ async function loadData(){
       // ของ Facebook ที่ฝั่งหน้าเว็บไม่เคยอ่านไปใช้เลย ฝั่ง backend ที่ต้องใช้ตอนตอบ/ลบ/ซ่อนคอมเมนต์จะ
       // ไปดึงเองจากฐานข้อมูลตรงๆ อยู่แล้วตอนนั้น) ลดขนาดข้อมูลที่ต้องโหลดทุกครั้งลง โดยไม่เปลี่ยนจำนวน/
       // ลำดับแถวที่ได้เลยแม้แต่น้อย — ปลอดภัยกว่าการเปลี่ยนวิธีดึงข้อมูลเหมือนที่เคยลองแล้วมีบั๊ก
-      fetch(`${SUPABASE_URL}/rest/v1/feed_items?select=id,page_id,type,post_excerpt,author_name,message,status,folder,ai_reason,admin_reply,admin_reply_fb_id,admin_reply_by,fail_reason,replied_at,attachment_image_url,auto_archive_reason,liked,blocked,created_at&order=created_at.desc`, { headers: sbAuthHeaders() }),
+      fetchDashboardItems(),
       fetch(`${SUPABASE_URL}/rest/v1/user_page_hashtags?select=page_id,hashtag`, { headers: sbAuthHeaders() }),
       // โพสต์เพจล่าสุดของทุกเพจ (สำหรับแท็บ "โพสต์เพจ" + ตัวเลขแจ้งเตือนบน topbar) เรียงใหม่สุดก่อน
       fetch(`${SUPABASE_URL}/rest/v1/page_posts?select=*&order=posted_at.desc.nullslast&limit=200`, { headers: sbAuthHeaders() }),
     ]);
-    if (!pagesRes.ok || !itemsRes.ok) throw new Error('โหลดข้อมูลไม่สำเร็จ');
+    if (!pagesRes.ok || !itemsRes) throw new Error('โหลดข้อมูลไม่สำเร็จ');
     ALL_PAGES = (await pagesRes.json()).map(mapPage);
     const visiblePageIds = applyPageVisibility();
     // คอมเมนต์ของเพจที่ผู้ใช้ซ่อนไว้ไม่ต้องโหลดเข้ามาเลย — ไม่นับ ไม่กระพริบ ไม่ส่งเสียง
-    const freshItems = (await itemsRes.json()).map(mapItem).filter((it) => visiblePageIds.has(it.pageId));
+    const freshItems = itemsRes.map(mapItem).filter((it) => visiblePageIds.has(it.pageId));
     if (postsRes.ok) applyFreshPagePosts(await postsRes.json());
 
     const freshIds = new Set(freshItems.map((it) => it.id));
@@ -2473,7 +2533,7 @@ async function savePagePicker(){
     if (data && data.user && state.auth.session) state.auth.session.user = data.user;
     state.pagePicker.open = false;
     state.expandedId = null; state.selected.clear(); state.page = 1;
-    knownItemIds = null; knownPagePostIds = null; // เพจที่เพิ่งเปิดกลับมาไม่ต้องนับเป็น "คอมเมนต์/โพสต์ใหม่" แล้วส่งเสียงรัว
+    knownItemIds = null; knownPagePostIds = null; analyticsLoadedKey = ''; // เพจที่เพิ่งเปิดกลับมาไม่ต้องนับเป็น "คอมเมนต์/โพสต์ใหม่" แล้วส่งเสียงรัว
     showToast(hidden.length ? `แสดง ${ALL_PAGES.length - hidden.length} จาก ${ALL_PAGES.length} เพจ` : 'แสดงทุกเพจแล้ว', 'success');
     await loadData();
   } catch (err) {
@@ -3134,7 +3194,9 @@ function computeAnalyticsData(){
   const categoryMap = {};   // `${pageId}|${category}` -> count
   const personMap = {};     // `${pageId}|${person}` -> count
 
-  ITEMS.forEach((it) => {
+  // ใช้ข้อมูลที่ดึงมาครบตามช่วงวันที่ (loadAnalyticsItems) ถ้าโหลดเสร็จแล้ว ระหว่างรอใช้ ITEMS ไปก่อน
+  const source = (ANALYTICS_ITEMS && analyticsLoadedKey === `${startDate}|${endDate}`) ? ANALYTICS_ITEMS : ITEMS;
+  source.forEach((it) => {
     if (!inScopeSet.has(it.pageId)) return;
 
     const createdDate = toThaiDateStr(it.createdAt);
@@ -4215,6 +4277,7 @@ function render(){
       </div>
     `;
     drawAnalyticsCharts(analyticsData);
+    loadAnalyticsItems(); // ดึงข้อมูลครบตามช่วงวันที่ (ทำครั้งเดียวต่อช่วง เสร็จแล้ว render ใหม่เอง)
     setFavicon();
     updateTabTitle();
     return;
@@ -4823,6 +4886,7 @@ document.getElementById('app').addEventListener('click', (e) => {
     case 'open-analytics':
       if (!canViewAnalytics()) { showToast('คุณไม่มีสิทธิ์เข้าหน้านี้', 'error'); break; }
       state.view = 'analytics';
+      analyticsLoadedKey = ''; // เข้าหน้ารายงานใหม่ทุกครั้ง ดึงตัวเลขล่าสุดใหม่
       render();
       break;
 
