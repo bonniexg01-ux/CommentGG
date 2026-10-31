@@ -1438,7 +1438,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '31/10 23:58';
+const APP_VERSION = '01/11 00:30';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
@@ -6182,6 +6182,22 @@ async function syncPollingPages(){
   }
 }
 setInterval(syncPollingPages, 90000);
+
+// โหมดเร็วสำหรับเพจที่ Webhook ของ Facebook ส่งช้า/ไม่ส่ง (เพจ EXE) — ถามทุก 5 วิ ตอนเปิดหน้าเว็บดูอยู่
+// เซิร์ฟเวอร์มีล็อกกลางกันยิงซ้ำ (ทั้งระบบไม่เกิน 1 รอบ/4 วิ) คอมเมนต์ที่ได้มาจะเด้งขึ้นจอผ่าน Realtime เอง
+let fastPollBusy = false;
+async function fastPollComments(){
+  if (!state.auth.session || fastPollBusy || document.visibilityState !== 'visible') return;
+  fastPollBusy = true;
+  try {
+    await ensureFreshSession();
+    await fetch('/api/sync-comments?fast=1', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${state.auth.session.access_token}` },
+    });
+  } catch {} finally { fastPollBusy = false; }
+}
+setInterval(fastPollComments, 5000);
 
 // เช็คโพสต์ใหม่ของทุกเพจ (ไม่ใช่แค่เพจ polling คอมเมนต์) เป็นระยะ — ถี่น้อยกว่าคอมเมนต์เพราะโพสต์ออก
 // ไม่บ่อยเท่า และต้องไล่ทุกเพจ (ไม่ได้กรองด้วย needs_polling) กันยิง Graph API ถี่เกินจำเป็น

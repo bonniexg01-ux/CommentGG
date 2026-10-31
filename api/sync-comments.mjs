@@ -72,8 +72,23 @@ export default async function handler(request) {
       return json({ error: 'เซิร์ฟเวอร์ตั้งค่าไม่ครบ (ไม่มี service key)' }, 500);
     }
 
+    // โหมดเร็ว (?fast=1): หน้าเว็บเรียกทุก ~5 วิ — ใช้ล็อกกลางใน DB ให้ทั้งระบบยิง Facebook ได้ไม่เกิน
+    // 1 รอบต่อ 4 วิ ไม่ว่าจะมีกี่คนเปิดเว็บอยู่ (คนที่ชนล็อกได้ skipped กลับไปเฉยๆ) และยิงแค่ 1 call ต่อเพจ
+    const fast = new URL(request.url).searchParams.get('fast') === '1';
+    if (fast && !(await tryPollLock('fast_comments', 4000))) {
+      return json({ ok: true, skipped: true });
+    }
+
     const pages = await fetchPollingPages();
     if (!pages.length) return json({ ok: true, pagesChecked: 0, inserted: 0 });
+
+    if (fast) {
+      const counts = await Promise.all(pages.map((page) => fastSyncOnePage(page).catch((err) => {
+        console.error('sync-comments error: fastSyncOnePage ล้มเหลว', page.page_id, err);
+        return 0;
+      })));
+      return json({ ok: true, fast: true, pagesChecked: pages.length, inserted: counts.reduce((a, b) => a + b, 0) });
+    }
 
     let inserted = 0;
     for (const page of pages) {
@@ -89,6 +104,56 @@ export default async function handler(request) {
     console.error('sync-comments error', err);
     return json({ error: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' }, 500);
   }
+}
+
+async function tryPollLock(name, minIntervalMs) {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/try_poll_lock`, {
+      method: 'POST',
+      headers: sbHeaders,
+      body: JSON.stringify({ lock_name: name, min_interval_ms: minIntervalMs }),
+    });
+    if (!r.ok) return false;
+    return (await r.json()) === true;
+  } catch {
+    return false;
+  }
+}
+
+// ดึงแบบเบา: 1 call ต่อเพจ = 5 โพสต์ล่าสุด + 25 คอมเมนต์ใหม่สุดของแต่ละโพสต์ (รวมคอมเมนต์ตอบกลับ)
+// เอาเฉพาะคอมเมนต์ 30 นาทีล่าสุดไป upsert (ของเก่ากว่านั้นรอบปกติ 90 วิจัดการ รวมถึงการลบคอมเมนต์ที่หายไป)
+async function fastSyncOnePage(page) {
+  if (!page.access_token) return 0;
+  const fields = 'id,comments.filter(stream).order(reverse_chronological).limit(25){id,message,from,created_time}';
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(page.page_id)}/posts?fields=${encodeURIComponent(fields)}&limit=5&access_token=${encodeURIComponent(page.access_token)}`;
+  const r = await fetchWithTimeout(url, { method: 'GET' }, 8000);
+  const data = await r.json();
+  if (data.error) {
+    console.error('sync-comments error: fastSyncOnePage', page.page_id, data.error);
+    return 0;
+  }
+  const cutoff = Date.now() - 30 * 60 * 1000;
+  const records = [];
+  for (const post of data.data || []) {
+    for (const c of (post.comments && post.comments.data) || []) {
+      if (new Date(c.created_time).getTime() < cutoff) continue;
+      if (c.from && String(c.from.id) === String(page.page_id)) continue;
+      records.push({
+        page_id: page.id,
+        type: 'comment',
+        fb_id: toFbId(post.id, c.id),
+        fb_post_id: post.id,
+        author_fb_id: c.from && c.from.id,
+        author_name: c.from && c.from.name,
+        message: c.message || '',
+        status: 'pending',
+        folder: 'inbox',
+      });
+    }
+  }
+  let inserted = 0;
+  for (const rec of records) if (await insertFeedItem(rec)) inserted += 1;
+  return inserted;
 }
 
 async function fetchPollingPages() {
