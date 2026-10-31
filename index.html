@@ -285,7 +285,14 @@
   .presence-row{ display:flex; align-items:center; gap:10px; padding:6px 4px; border-radius:10px; }
   .presence-row + .presence-row{ border-top:1px solid var(--border); }
   .presence-avatar{ position:relative; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:19px; flex:none; }
-  .presence-dot{ position:absolute; right:-1px; bottom:-1px; width:11px; height:11px; border-radius:50%; border:2px solid var(--surface); }
+  /* แมวพิกเซลกระพริบตา: ตาเปิด ~2.5 วิ → ตาปิด ~0.19 วิ วนไม่สิ้นสุด (ตาปิด = 7% ของรอบ 2.7 วิ)
+     ตัวแมวโผล่เกินวงกลมด้านบนนิดหน่อยให้ดูน่ารัก ไม่ยืดภาพ (object-fit:contain + กำหนดขนาดตามสัดส่วนจริง 36x40) */
+  .pixel-cat{ position:absolute; left:50%; bottom:-1px; width:36px; height:40px; transform:translateX(-50%); pointer-events:none; }
+  .pixel-cat img{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; image-rendering:pixelated; -webkit-user-drag:none; user-select:none; }
+  .pixel-cat-closed{ opacity:0; animation:pixelCatBlink 2.7s steps(1, end) infinite; }
+  @keyframes pixelCatBlink{ 0%{ opacity:0; } 93%{ opacity:1; } 100%{ opacity:1; } }
+  @media (prefers-reduced-motion: reduce){ .pixel-cat-closed{ animation:none; } }
+  .presence-dot{ z-index:1; position:absolute; right:-1px; bottom:-1px; width:11px; height:11px; border-radius:50%; border:2px solid var(--surface); }
   .presence-dot.on{ background:#22C55E; animation:presencePulse 1.6s ease-in-out infinite; }
   .presence-dot.off{ background:#EF4444; }
   @keyframes presencePulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(34,197,94,.7);} 50%{ box-shadow:0 0 0 5px rgba(34,197,94,0);} }
@@ -1179,6 +1186,17 @@ let TEAM_PRESENCE = [];
 const PRESENCE_ONLINE_MS = 150000;
 const PRESENCE_AVATARS = ['🐻','🐱','🐶','🐰','🦊','🐼','🐨','🐯','🐸','🐵','🐧','🐹','🦁','🐮','🐷','🐙','🦄','🐥'];
 const PRESENCE_COLORS = ['#FDE2E4','#E2F0CB','#DCEBFF','#FFF1C9','#EADCF8','#D7F5EF','#FFE0CC','#E8E8E8'];
+// รูปโปรไฟล์พิเศษเฉพาะบางคน (ใช้แทนสัตว์สุ่ม) — ระบุด้วยอีเมล
+const PRESENCE_CUSTOM_AVATARS = { 'bonniexg01@gmail.com': 'pixel-cat' };
+// แมวพิกเซลกระพริบตา: ซ้อนภาพตาเปิด/ตาปิด แล้วสลับด้วย CSS animation (ดู .pixel-cat ใน <style>)
+// มีไฟล์ 3 ขนาด (1x/2x/3x) ให้เบราว์เซอร์เลือกตามความละเอียดจอ ภาพจึงคมทั้งคอมและมือถือ ไม่ยืด/บิดสัดส่วน
+function pixelCatHtml(){
+  const set = (f) => `/icons/cat-${f}-40.png 1x, /icons/cat-${f}-80.png 2x, /icons/cat-${f}-120.png 3x`;
+  return `<span class="pixel-cat" aria-hidden="true">
+    <img class="pixel-cat-open" src="/icons/cat-open-40.png" srcset="${set('open')}" alt="" width="36" height="40" draggable="false" />
+    <img class="pixel-cat-closed" src="/icons/cat-closed-40.png" srcset="${set('closed')}" alt="" width="36" height="40" draggable="false" />
+  </span>`;
+}
 function presenceHash(id){ let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
 function presenceDisplayName(row){ return row.display_name || (row.email ? row.email.split('@')[0] : 'ไม่ทราบชื่อ'); }
 function renderPresenceList(){
@@ -1197,7 +1215,7 @@ function renderPresenceList(){
     return `
       <div class="presence-row">
         <div class="presence-avatar" style="background:${PRESENCE_COLORS[h % PRESENCE_COLORS.length]};">
-          ${PRESENCE_AVATARS[h % PRESENCE_AVATARS.length]}
+          ${PRESENCE_CUSTOM_AVATARS[r.email] === 'pixel-cat' ? pixelCatHtml() : PRESENCE_AVATARS[h % PRESENCE_AVATARS.length]}
           <span class="presence-dot ${r.online ? 'on' : 'off'}"></span>
         </div>
         <div style="min-width:0;">
@@ -1233,7 +1251,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '31/10 16:49';
+const APP_VERSION = '31/10 16:57';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
