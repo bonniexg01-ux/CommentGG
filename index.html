@@ -4,6 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>CommentGG</title>
+<!-- ติดตั้งเป็นแอปบนมือถือ/คอม (PWA) — ไม่กระทบการเปิดผ่านเบราว์เซอร์ปกติ -->
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta name="theme-color" content="#02314B" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="CommentGG" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <style>
   :root{
     /* ---- ธีมสี "หมีเนวี่" (อ้างอิงจากพาเลต 泰兰德夏 — navy/blue/cream/red) — ธีม default ----
@@ -1679,27 +1687,44 @@ function isImportantAnnouncement(post){
 function showNewPostDesktopNotification(post){
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   if (!document.hidden && document.hasFocus()) return; // กำลังดูหน้าเว็บอยู่แล้ว มี toast ให้เห็น
+  const page = PAGES.find((p) => p.id === post.pageId);
+  const important = isImportantAnnouncement(post);
+  const title = `${important ? '⚠️ ประกาศสำคัญ' : '📰 โพสต์ใหม่'} — ${page ? page.name : 'เพจ'}`;
+  const options = {
+    body: (post.message || '(โพสต์นี้ไม่มีข้อความ)').slice(0, 180),
+    icon: (page && page.logoUrl) || post.imageUrl || '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: 'page-post-' + post.id,
+    requireInteraction: true,
+    data: { postId: post.id },
+  };
+  // บนมือถือ (Android/แอปที่ติดตั้งแล้ว) ต้องสั่งผ่าน service worker — new Notification() ใช้ไม่ได้ จะ error
+  // กดแจ้งเตือนแล้ว sw.js ส่งข้อความกลับมาให้เปิดโพสต์ (ดู openPostFromNotification ด้านล่าง)
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.ready
+      .then((reg) => reg.showNotification(title, options))
+      .catch((err) => console.error('แสดงแจ้งเตือนของระบบไม่สำเร็จ:', err));
+    return;
+  }
   try {
-    const page = PAGES.find((p) => p.id === post.pageId);
-    const important = isImportantAnnouncement(post);
-    const n = new Notification(`${important ? '⚠️ ประกาศสำคัญ' : '📰 โพสต์ใหม่'} — ${page ? page.name : 'เพจ'}`, {
-      body: (post.message || '(โพสต์นี้ไม่มีข้อความ)').slice(0, 180),
-      icon: (page && page.logoUrl) || post.imageUrl || undefined,
-      tag: 'page-post-' + post.id,
-      requireInteraction: true,
-    });
-    n.onclick = () => {
-      window.focus();
-      n.close();
-      state.view = 'page-posts';
-      state.pagePosts.detailId = post.id;
-      state.pagePosts.video = null;
-      render();
-      loadPagePostVideo(post.id);
-    };
+    const n = new Notification(title, options);
+    n.onclick = () => { window.focus(); n.close(); openPostFromNotification(post.id); };
   } catch (err) {
     console.error('แสดงแจ้งเตือนของระบบไม่สำเร็จ:', err);
   }
+}
+
+function openPostFromNotification(postId){
+  state.view = 'page-posts';
+  state.pagePosts.detailId = postId;
+  state.pagePosts.video = null;
+  render();
+  loadPagePostVideo(postId);
+}
+if (navigator.serviceWorker) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'open-post' && e.data.postId) openPostFromNotification(e.data.postId);
+  });
 }
 
 // กระพริบชื่อแท็บเบราว์เซอร์ระหว่างที่ไม่ได้ดูหน้าเว็บ หยุดเองทันทีที่กลับมาดู
@@ -5595,6 +5620,13 @@ setInterval(syncPollingPages, 90000);
 // เช็คโพสต์ใหม่ของทุกเพจ (ไม่ใช่แค่เพจ polling คอมเมนต์) เป็นระยะ — ถี่น้อยกว่าคอมเมนต์เพราะโพสต์ออก
 // ไม่บ่อยเท่า และต้องไล่ทุกเพจ (ไม่ได้กรองด้วย needs_polling) กันยิง Graph API ถี่เกินจำเป็น
 setInterval(syncPagePostsFromFb, 5 * 60 * 1000);
+
+// ลงทะเบียน service worker ให้ติดตั้งเป็นแอปได้ (ดู sw.js — ไม่แคชอะไร ไม่กระทบการโหลดเว็บ)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => console.error('ลงทะเบียน service worker ไม่สำเร็จ:', err));
+  });
+}
 </script>
 </body>
 </html>
