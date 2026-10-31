@@ -1150,7 +1150,7 @@ async function callTranslateApi(text, target, source){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '31/10 16:23';
+const APP_VERSION = '31/10 16:28';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
@@ -2092,8 +2092,26 @@ async function loadData(){
     console.error('โหลดข้อมูลจาก Supabase ไม่สำเร็จ:', err);
     showToast('โหลดข้อมูลคอมเมนต์ไม่สำเร็จ ลองรีเฟรชอีกครั้ง', 'error');
   }
+  const firstLoad = !state.dataLoaded;
   state.dataLoaded = true; // ไม่ว่าจะสำเร็จหรือพลาด ก็ถือว่า "ลองโหลดรอบแรกแล้ว" ไม่ใช่สถานะ "กำลังโหลด" อีกต่อไป
+  // ข้อมูลเหมือนรอบก่อนทุกอย่าง → ไม่ต้องวาดหน้าจอใหม่ (วาดใหม่ทั้งหน้าทุก 20 วิทำให้มือถือหน่วง/จอวูบ รูปโหลดซ้ำ)
+  // ยกเว้นผ่านไปเกิน 2 นาที ให้วาดใหม่สักครั้ง เวลาแบบ "x นาทีที่แล้ว" จะได้อัปเดต
+  const sig = dataSignature();
+  if (!firstLoad && sig === lastDataSignature && Date.now() - lastDataRenderAt < 120000) return;
+  lastDataSignature = sig;
+  lastDataRenderAt = Date.now();
   render();
+}
+let lastDataSignature = '';
+let lastDataRenderAt = 0;
+function dataSignature(){
+  const parts = [
+    PAGES.map((p) => p.id + (p.logoUrl || '')).join(','),
+    ITEMS.map((it) => `${it.id}${it.status}${it.folder}${it.blocked ? 1 : 0}${it.liked ? 1 : 0}${(it.adminReply || '').length}`).join(','),
+    PAGE_POSTS.map((p) => p.id).join(','),
+    JSON.stringify(MY_HASHTAGS || {}),
+  ];
+  return parts.join('|');
 }
 
 // ปุ่มรีเฟรชคอมเมนต์ที่กดเอง (topbar) — เรียก loadData() ตัวเดียวกับที่ poll อัตโนมัติทุก 20 วิใช้
@@ -2435,6 +2453,9 @@ function renderPagePostsFilterCards(){
   `;
 }
 
+// แสดงโพสต์ทีละ 24 อัน (กด "แสดงเพิ่ม") — เจอจริง: บน iPhone การ์ดพร้อมรูปเป็นร้อยใบในหน้าเดียว + วาดหน้าใหม่เป็นระยะ
+// ทำให้เลื่อนหน่วง/จอว่างเป็นช่วงๆ
+const PAGE_POSTS_PAGE_SIZE = 24;
 function renderPagePostsView(){
   const filterId = state.pagePosts.filterPageId || 'all';
   const sorted = [...PAGE_POSTS]
@@ -2455,20 +2476,20 @@ function renderPagePostsView(){
       <div style="color:var(--text-dim); padding:24px; text-align:center;">ยังไม่พบโพสต์เลย ลองกด "เช็คโพสต์ใหม่" ดูนะคะ</div>
     ` : `
       <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px;">
-        ${sorted.map((p) => {
+        ${sorted.slice(0, state.pagePosts.limit || PAGE_POSTS_PAGE_SIZE).map((p) => {
           const page = pageById(p.pageId);
           const isNew = p.createdAt > lastSeen;
           return `
           <div class="page-post-card" data-action="open-page-post-detail" data-id="${p.id}" style="border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--surface); position:relative; cursor:pointer;">
             ${isNew ? `<span style="position:absolute; top:8px; left:8px; background:var(--red); color:#fff; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:99px; z-index:1;">ใหม่</span>` : ''}
             ${looksLikeVideoPost(p) ? `<span style="position:absolute; top:58px; left:50%; transform:translateX(-50%); width:44px; height:44px; border-radius:50%; background:rgba(0,0,0,.55); color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; z-index:1; pointer-events:none;">▶</span>` : ''}
-            ${p.imageUrl ? `<img src="${p.imageUrl}" alt="" style="width:100%; height:160px; object-fit:cover; display:block; background:var(--hover-bg);" />` : `<div style="width:100%; height:160px; display:flex; align-items:center; justify-content:center; background:var(--hover-bg); color:var(--text-faint); font-size:28px;">📰</div>`}
+            ${p.imageUrl ? `<img src="${p.imageUrl}" alt="" loading="lazy" decoding="async" style="width:100%; height:160px; object-fit:cover; display:block; background:var(--hover-bg);" />` : `<div style="width:100%; height:160px; display:flex; align-items:center; justify-content:center; background:var(--hover-bg); color:var(--text-faint); font-size:28px;">📰</div>`}
             <div style="padding:12px;">
               <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
                 <span class="dot" style="width:8px;height:8px;border-radius:50%;background:${page ? page.color : '#999'}; display:inline-block;"></span>
                 <span style="font-size:12px; font-weight:600; color:var(--text-dim);">${page ? `${page.emoji} ${page.name}` : 'ไม่ทราบเพจ'}</span>
               </div>
-              <div style="font-size:13.5px; line-height:1.5; white-space:pre-wrap; max-height:90px; overflow:auto; margin-bottom:8px;">${p.message ? p.message : '<span style="color:var(--text-faint);">(โพสต์นี้ไม่มีข้อความ)</span>'}</div>
+              <div style="font-size:13.5px; line-height:1.5; white-space:pre-wrap; overflow:hidden; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; margin-bottom:8px;">${p.message ? p.message : '<span style="color:var(--text-faint);">(โพสต์นี้ไม่มีข้อความ)</span>'}</div>
               <div style="display:flex; align-items:center; justify-content:space-between; font-size:11.5px; color:var(--text-faint);">
                 <span title="${timeAgo(p.postedAt)}">${formatThaiDateTime(p.postedAt)}</span>
                 ${p.permalinkUrl ? `<a href="${p.permalinkUrl}" target="_blank" rel="noopener noreferrer" data-action="stop-propagation" style="color:var(--text-dim);" onclick="event.stopPropagation()">ดูบน Facebook ↗</a>` : ''}
@@ -2477,6 +2498,10 @@ function renderPagePostsView(){
           </div>
         `; }).join('')}
       </div>
+      ${sorted.length > (state.pagePosts.limit || PAGE_POSTS_PAGE_SIZE) ? `
+        <div style="text-align:center; margin:16px 0 4px;">
+          <button class="btn" type="button" data-action="page-posts-more">แสดงเพิ่ม (${sorted.length - (state.pagePosts.limit || PAGE_POSTS_PAGE_SIZE)} โพสต์)</button>
+        </div>` : ''}
     `}
     ${state.pagePosts.detailId ? renderPagePostDetailModal() : ''}
   `;
@@ -5030,6 +5055,11 @@ document.getElementById('app').addEventListener('click', (e) => {
         state.pagePosts.video = null;
         render();
       }, 400);
+      break;
+
+    case 'page-posts-more':
+      state.pagePosts.limit = (state.pagePosts.limit || PAGE_POSTS_PAGE_SIZE) + PAGE_POSTS_PAGE_SIZE;
+      render();
       break;
 
     case 'open-page-picker':
