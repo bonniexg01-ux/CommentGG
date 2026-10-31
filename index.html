@@ -1138,6 +1138,16 @@ function timeAgo(iso){
   return `${Math.floor(hr / 24)} วันที่แล้ว`;
 }
 
+// วันเวลาโพสต์แบบเต็ม ตามเวลาไทยเสมอ (ไม่ขึ้นกับโซนเวลาที่ตั้งในเครื่อง) เช่น "31 ต.ค. 2569 เวลา 00:01 น."
+function formatThaiDateTime(iso){
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const date = d.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', year: 'numeric' });
+  const time = d.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${date} เวลา ${time} น.`;
+}
+
 /* ============================================================
    วันที่ล้วนๆ สำหรับหน้ารายงานสถิติ (analytics) — ทำงานกับสตริง 'YYYY-MM-DD' ผ่าน UTC เท่านั้น
    (ไม่ใช้ Date ธรรมดาบวก/ลบวันแล้วค่อยแปลงกลับ เพราะโซนเวลาเครื่องผู้ใช้แต่ละคนไม่เท่ากัน จะทำให้
@@ -2125,7 +2135,7 @@ function renderPagePostsView(){
               </div>
               <div style="font-size:13.5px; line-height:1.5; white-space:pre-wrap; max-height:90px; overflow:auto; margin-bottom:8px;">${p.message ? p.message : '<span style="color:var(--text-faint);">(โพสต์นี้ไม่มีข้อความ)</span>'}</div>
               <div style="display:flex; align-items:center; justify-content:space-between; font-size:11.5px; color:var(--text-faint);">
-                <span>${timeAgo(p.postedAt)}</span>
+                <span title="${timeAgo(p.postedAt)}">${formatThaiDateTime(p.postedAt)}</span>
                 ${p.permalinkUrl ? `<a href="${p.permalinkUrl}" target="_blank" rel="noopener noreferrer" data-action="stop-propagation" style="color:var(--text-dim);" onclick="event.stopPropagation()">ดูบน Facebook ↗</a>` : ''}
               </div>
             </div>
@@ -2157,7 +2167,7 @@ function renderPagePostDetailModal(){
           <div class="modal-body">
             ${post.imageUrl ? `<img src="${post.imageUrl}" alt="" style="width:100%; max-height:420px; object-fit:contain; border-radius:10px; background:var(--hover-bg); display:block; margin-bottom:14px;" />` : ''}
             <div style="font-size:14.5px; line-height:1.7; white-space:pre-wrap; margin-bottom:14px;">${post.message ? post.message : '<span style="color:var(--text-faint);">(โพสต์นี้ไม่มีข้อความ)</span>'}</div>
-            <div style="font-size:12.5px; color:var(--text-faint);">โพสต์เมื่อ ${timeAgo(post.postedAt)}</div>
+            <div style="font-size:12.5px; color:var(--text-faint);">โพสต์เมื่อ ${formatThaiDateTime(post.postedAt)} (${timeAgo(post.postedAt)})</div>
           </div>
         </div>
         <div class="modal-foot">
