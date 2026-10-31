@@ -21,7 +21,8 @@ const SUPABASE_ANON_KEY = 'sb_publishable_i9A_PqJhrOb8kmP47x2OOg_Ma2AhTRn';
 const GRAPH_VERSION = 'v23.0';
 const FB_TIMEOUT_MS = 12000;
 const POSTS_PER_PAGE = 10;
-const COMMENTS_PER_POST = 50;
+const COMMENTS_PER_POST = 100;
+const MAX_COMMENT_PAGES = 5; // สูงสุด 500 คอมเมนต์ต่อโพสต์ต่อรอบ
 
 const sbHeaders = {
   apikey: SERVICE_KEY,
@@ -107,14 +108,17 @@ async function syncOnePage(page) {
   let inserted = 0;
 
   for (const post of posts) {
-    const comments = await fetchRecentComments(post.id, page.access_token);
+    const { comments, complete, sinceTs } = await fetchRecentComments(post.id, page.access_token);
     const liveFbIds = new Set();
 
     for (const c of comments) {
       const commenterId = c.from && String(c.from.id);
       // ข้ามคอมเมนต์ที่ "เพจตัวเอง" เป็นคนโพสต์ (echo ของคำตอบแอดมิน) แบบเดียวกับ webhook.js
       if (commenterId === String(page.page_id)) continue;
-      const fbId = `${post.id}_${c.id}`;
+      // ต้องเป็นรูปแบบเดียวกับ api/webhook.js เป๊ะๆ ("page_post_comment") — เดิมต่อ `${post.id}_${c.id}`
+      // ได้ "page_post_post_comment" (c.id ของ Graph มีเลขโพสต์นำหน้าอยู่แล้ว) ทำให้เพจที่เปิดทั้ง polling
+      // และ Webhook ได้คอมเมนต์ซ้ำ 2 แถว และ removeDeletedComments ลบแถวที่มาจาก Webhook ทิ้ง
+      const fbId = toFbId(post.id, c.id);
       liveFbIds.add(fbId);
       const ok = await insertFeedItem({
         page_id: page.id,
@@ -133,13 +137,33 @@ async function syncOnePage(page) {
     // ลูกค้าลบคอมเมนต์ตัวเองทิ้งไปจาก Facebook แล้ว แต่ยังค้างอยู่ในกล่อง "ต้องตอบกลับ" ของเรา —
     // เทียบรายการที่ยังไม่ตอบ (folder=inbox) ของโพสต์นี้กับชุดที่ดึงมาสดๆ ล่าสุด อันไหนไม่มีอยู่จริง
     // แล้วให้ลบทิ้งจากแดชบอร์ดไปด้วย (เฉพาะที่ยังไม่ตอบ ไม่ยุ่งกับ Archive/ประวัติที่ตอบไปแล้ว)
-    await removeDeletedComments(page.id, post.id, liveFbIds);
+    //
+    // ทำเฉพาะตอนดึงคอมเมนต์ของโพสต์นั้นมาได้ "ครบทุกหน้า" เท่านั้น และเทียบเฉพาะแถวที่เข้าระบบหลังช่วง
+    // since (+1 ชม. กันขอบ) — เดิมดึงแค่ 50 คอมเมนต์แรกแล้วลบทุกแถวที่ไม่อยู่ในชุดนั้น โพสต์กิจกรรมที่มี
+    // คอมเมนต์เป็นร้อยจะโดนลบคอมเมนต์จริงทิ้งไปด้วย
+    if (complete) await removeDeletedComments(page.id, post.id, liveFbIds, sinceTs);
   }
   return inserted;
 }
 
-async function removeDeletedComments(pageUuid, postId, liveFbIds) {
-  const existing = await fetchExistingInboxFbIds(pageUuid, postId);
+// แปลง comment id จาก Graph ให้เป็นรูปแบบ fb_id เดียวกับ api/webhook.js (คัดลอก logic มาตรงๆ)
+function toFbId(postId, rawId) {
+  const raw = String(rawId);
+  if (raw === postId || raw.startsWith(`${postId}_`)) return raw;
+  const underscoreIdx = postId.indexOf('_');
+  if (underscoreIdx > -1) {
+    const pageId = postId.slice(0, underscoreIdx);
+    const postNumericId = postId.slice(underscoreIdx + 1);
+    if (raw === postNumericId || raw.startsWith(`${postNumericId}_`)) return `${pageId}_${raw}`;
+  }
+  return `${postId}_${raw}`;
+}
+
+async function removeDeletedComments(pageUuid, postId, liveFbIds, sinceTs) {
+  const cutoffMs = (sinceTs + 3600) * 1000;
+  const existing = (await fetchExistingInboxFbIds(pageUuid, postId))
+    .filter((row) => new Date(row.created_at).getTime() >= cutoffMs)
+    .map((row) => row.fb_id);
   const toDelete = existing.filter((fbId) => !liveFbIds.has(fbId));
   for (const fbId of toDelete) {
     const url = `${SUPABASE_URL}/rest/v1/feed_items?fb_id=eq.${encodeURIComponent(fbId)}`;
@@ -151,11 +175,10 @@ async function removeDeletedComments(pageUuid, postId, liveFbIds) {
 }
 
 async function fetchExistingInboxFbIds(pageUuid, postId) {
-  const url = `${SUPABASE_URL}/rest/v1/feed_items?page_id=eq.${encodeURIComponent(pageUuid)}&fb_post_id=eq.${encodeURIComponent(postId)}&folder=eq.inbox&select=fb_id`;
+  const url = `${SUPABASE_URL}/rest/v1/feed_items?page_id=eq.${encodeURIComponent(pageUuid)}&fb_post_id=eq.${encodeURIComponent(postId)}&folder=eq.inbox&select=fb_id,created_at`;
   const r = await fetch(url, { headers: sbHeaders });
   if (!r.ok) return [];
-  const rows = await r.json();
-  return rows.map((row) => row.fb_id);
+  return r.json();
 }
 
 async function fetchRecentPosts(pageId, accessToken) {
@@ -177,14 +200,23 @@ async function fetchRecentComments(postId, accessToken) {
   // เป็นร้อยรายการเข้ามาพร้อมกันทีเดียว (เพจนี้มีคนเก่าคุยไว้เยอะแล้วผ่านเครื่องมืออื่น ไม่อยากให้ซ้ำ
   // เป็นภาระทีมตรวจซ้ำของเก่า เอาแค่ตามทันจากนี้ไปพอ)
   const sinceTs = Math.floor(Date.now() / 1000) - 48 * 3600;
-  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(postId)}/comments?fields=${encodeURIComponent(fields)}&filter=stream&since=${sinceTs}&limit=${COMMENTS_PER_POST}&access_token=${encodeURIComponent(accessToken)}`;
-  const r = await fetchWithTimeout(url, { method: 'GET' });
-  const data = await r.json();
-  if (data.error) {
+  // ไล่ตาม paging.next ให้ครบ (สูงสุด MAX_COMMENT_PAGES หน้า) — complete=true เฉพาะตอนได้ครบทุกหน้าจริง
+  let url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(postId)}/comments?fields=${encodeURIComponent(fields)}&filter=stream&since=${sinceTs}&limit=${COMMENTS_PER_POST}&access_token=${encodeURIComponent(accessToken)}`;
+  const comments = [];
+  for (let i = 0; i < MAX_COMMENT_PAGES && url; i++) {
+    let data;
+    try {
+      const r = await fetchWithTimeout(url, { method: 'GET' });
+      data = await r.json();
+    } catch {
+      return { comments, complete: false, sinceTs };
+    }
     // โพสต์บางอันอาจปิดคอมเมนต์/ถูกลบ ไม่ให้ทั้งงานพัง แค่ข้ามโพสต์นั้น
-    return [];
+    if (data.error) return { comments, complete: false, sinceTs };
+    if (Array.isArray(data.data)) comments.push(...data.data);
+    url = data.paging && data.paging.next ? data.paging.next : null;
   }
-  return Array.isArray(data.data) ? data.data : [];
+  return { comments, complete: !url, sinceTs };
 }
 
 // upsert เข้า feed_items แบบเดียวกับ api/webhook.js เป๊ะๆ (on_conflict=fb_id กันซ้ำ)
