@@ -1322,7 +1322,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '31/10 17:25';
+const APP_VERSION = '31/10 17:28';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
@@ -2665,7 +2665,7 @@ function renderPagePostsView(){
               </div>
               <div style="font-size:13.5px; line-height:1.5; white-space:pre-wrap; overflow:hidden; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; margin-bottom:8px;">${p.message ? p.message : '<span style="color:var(--text-faint);">(โพสต์นี้ไม่มีข้อความ)</span>'}</div>
               <div style="display:flex; align-items:center; justify-content:space-between; font-size:11.5px; color:var(--text-faint);">
-                <span title="${timeAgo(p.postedAt)}">${formatThaiDateTime(p.postedAt)}</span>
+                <span title="${formatThaiDateTime(p.postedAt)}">${timeAgo(p.postedAt)}</span>
                 ${p.permalinkUrl ? `<a href="${p.permalinkUrl}" target="_blank" rel="noopener noreferrer" data-action="stop-propagation" style="color:var(--text-dim);" onclick="event.stopPropagation()">ดูบน Facebook ↗</a>` : ''}
               </div>
             </div>
