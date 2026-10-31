@@ -296,9 +296,14 @@
   .presence-dot.on{ background:#22C55E; animation:presencePulse 1.6s ease-in-out infinite; }
   .presence-dot.off{ background:#EF4444; }
   @keyframes presencePulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(34,197,94,.7);} 50%{ box-shadow:0 0 0 5px rgba(34,197,94,0);} }
+  .avatar-grid{ display:flex; flex-wrap:wrap; gap:6px; }
+  .avatar-opt{ width:38px; height:38px; border-radius:50%; border:2px solid var(--border); background:var(--surface); font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; }
+  .avatar-color{ width:26px; height:26px; border-radius:50%; border:2px solid var(--border); cursor:pointer; padding:0; }
+  .avatar-opt.selected, .avatar-color.selected{ border-color:var(--navy); box-shadow:0 0 0 2px var(--navy); }
   .presence-name{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .presence-sub{ font-size:11.5px; color:var(--text-faint); }
   .presence-me{ font-size:10.5px; color:var(--text-faint); font-weight:500; }
+  .presence-change{ text-decoration:underline; cursor:pointer; color:var(--text-dim); }
   @keyframes spinIcon{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
   .spin-icon svg{ animation: spinIcon .7s linear infinite; }
   .spinner{
@@ -1187,7 +1192,9 @@ const PRESENCE_ONLINE_MS = 150000;
 const PRESENCE_AVATARS = ['🐻','🐱','🐶','🐰','🦊','🐼','🐨','🐯','🐸','🐵','🐧','🐹','🦁','🐮','🐷','🐙','🦄','🐥'];
 const PRESENCE_COLORS = ['#FDE2E4','#E2F0CB','#DCEBFF','#FFF1C9','#EADCF8','#D7F5EF','#FFE0CC','#E8E8E8'];
 // รูปโปรไฟล์พิเศษเฉพาะบางคน (ใช้แทนสัตว์สุ่ม) — ระบุด้วยอีเมล
-const PRESENCE_CUSTOM_AVATARS = { 'bonniexg01@gmail.com': 'pixel-cat' };
+// ปิดไว้ก่อนตามที่เจ้าของขอ (ไฟล์แมว icons/cat-*.png และ pixelCatHtml() ยังอยู่ในระบบ รอใช้ภายหลัง)
+// เปิดใช้: { 'อีเมล': 'pixel-cat' }
+const PRESENCE_CUSTOM_AVATARS = {};
 // แมวพิกเซลกระพริบตา: ซ้อนภาพตาเปิด/ตาปิด แล้วสลับด้วย CSS animation (ดู .pixel-cat ใน <style>)
 // มีไฟล์ 3 ขนาด (1x/2x/3x) ให้เบราว์เซอร์เลือกตามความละเอียดจอ ภาพจึงคมทั้งคอมและมือถือ ไม่ยืด/บิดสัดส่วน
 function pixelCatHtml(){
@@ -1196,6 +1203,46 @@ function pixelCatHtml(){
     <img class="pixel-cat-open" src="/icons/cat-open-40.png" srcset="${set('open')}" alt="" width="36" height="40" draggable="false" />
     <img class="pixel-cat-closed" src="/icons/cat-closed-40.png" srcset="${set('closed')}" alt="" width="36" height="40" draggable="false" />
   </span>`;
+}
+// เลือกรูปโปรไฟล์ของตัวเอง (ตัวการ์ตูน + สีพื้นหลัง) — เก็บใน user_metadata แล้วส่งเข้า team_presence รอบถัดไป
+// กดแล้วบันทึกทันที และอัปเดตเฉพาะปุ่มที่เลือก (ไม่วาดทั้งหน้าต่างใหม่ ชื่อที่พิมพ์ค้างไว้จะได้ไม่หาย)
+function myAvatarChoice(){
+  const user = state.auth.session && state.auth.session.user;
+  const meta = (user && user.user_metadata) || {};
+  const h = presenceHash(user ? user.id : '');
+  return { emoji: meta.avatar_emoji || PRESENCE_AVATARS[h % PRESENCE_AVATARS.length], color: meta.avatar_color || PRESENCE_COLORS[h % PRESENCE_COLORS.length] };
+}
+function renderAvatarPicker(){
+  const cur = myAvatarChoice();
+  return `
+    <div class="form-row">
+      <label>รูปโปรไฟล์ในแผง "ทีมตอนนี้"</label>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+        <div class="presence-avatar" id="avatarPreview" style="width:46px; height:46px; font-size:26px; background:${cur.color};">${cur.emoji}</div>
+        <div class="form-hint" style="margin:0;">กดเลือกได้เลย บันทึกให้อัตโนมัติ ทีมจะเห็นรูปใหม่ภายใน 1 นาที</div>
+      </div>
+      <div class="avatar-grid">
+        ${PRESENCE_AVATARS.map((e) => `<button type="button" class="avatar-opt ${e === cur.emoji ? 'selected' : ''}" data-action="set-avatar-emoji" data-value="${e}">${e}</button>`).join('')}
+      </div>
+      <div class="avatar-grid" style="margin-top:8px;">
+        ${PRESENCE_COLORS.map((c) => `<button type="button" class="avatar-color ${c === cur.color ? 'selected' : ''}" data-action="set-avatar-color" data-value="${c}" style="background:${c};" title="${c}"></button>`).join('')}
+      </div>
+    </div>`;
+}
+async function saveAvatarChoice(field, value){
+  const key = field === 'emoji' ? 'avatar_emoji' : 'avatar_color';
+  document.querySelectorAll(field === 'emoji' ? '.avatar-opt' : '.avatar-color').forEach((b) => b.classList.toggle('selected', b.dataset.value === value));
+  const prev = document.getElementById('avatarPreview');
+  if (prev) { if (field === 'emoji') prev.textContent = value; else prev.style.background = value; }
+  try {
+    const { data, error } = await sb.auth.updateUser({ data: { [key]: value } });
+    if (error) throw error;
+    if (data && data.user && state.auth.session) state.auth.session.user = data.user;
+    presenceHeartbeat();
+  } catch (err) {
+    console.error('บันทึกรูปโปรไฟล์ไม่สำเร็จ:', err);
+    showToast('บันทึกรูปโปรไฟล์ไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+  }
 }
 function presenceHash(id){ let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
 function presenceDisplayName(row){ return row.display_name || (row.email ? row.email.split('@')[0] : 'ไม่ทราบชื่อ'); }
@@ -1214,12 +1261,12 @@ function renderPresenceList(){
     const sub = r.online ? 'ออนไลน์อยู่' : (r.seen ? `ออฟไลน์ · ${timeAgo(r.last_seen_at)}` : 'ยังไม่เคยเข้าใช้');
     return `
       <div class="presence-row">
-        <div class="presence-avatar" style="background:${PRESENCE_COLORS[h % PRESENCE_COLORS.length]};">
-          ${PRESENCE_CUSTOM_AVATARS[r.email] === 'pixel-cat' ? pixelCatHtml() : PRESENCE_AVATARS[h % PRESENCE_AVATARS.length]}
+        <div class="presence-avatar" style="background:${r.avatar_color || PRESENCE_COLORS[h % PRESENCE_COLORS.length]};">
+          ${PRESENCE_CUSTOM_AVATARS[r.email] === 'pixel-cat' ? pixelCatHtml() : (r.avatar_emoji || PRESENCE_AVATARS[h % PRESENCE_AVATARS.length])}
           <span class="presence-dot ${r.online ? 'on' : 'off'}"></span>
         </div>
         <div style="min-width:0;">
-          <div class="presence-name">${name} ${r.user_id === myId ? '<span class="presence-me">(คุณ)</span>' : ''}</div>
+          <div class="presence-name">${name} ${r.user_id === myId ? '<span class="presence-me">(คุณ)</span> <span class="presence-me presence-change" data-action="open-profile" data-tab="profile">เปลี่ยนรูป</span>' : ''}</div>
           <div class="presence-sub">${sub}</div>
         </div>
       </div>`;
@@ -1241,9 +1288,10 @@ async function presenceHeartbeat(){
     await fetch(`${SUPABASE_URL}/rest/v1/team_presence?on_conflict=user_id`, {
       method: 'POST',
       headers: { ...sbAuthHeaders(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ user_id: user.id, display_name: displayName, email: user.email, last_seen_at: new Date().toISOString() }),
+      body: JSON.stringify({ user_id: user.id, display_name: displayName, email: user.email, last_seen_at: new Date().toISOString(),
+        avatar_emoji: meta.avatar_emoji || null, avatar_color: meta.avatar_color || null }),
     });
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/team_presence?select=user_id,display_name,email,last_seen_at`, { headers: sbAuthHeaders() });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/team_presence?select=user_id,display_name,email,last_seen_at,avatar_emoji,avatar_color`, { headers: sbAuthHeaders() });
     if (res.ok) { TEAM_PRESENCE = await res.json(); refreshPresencePanel(); }
   } catch (err) {
     console.error('อัปเดตสถานะออนไลน์ไม่สำเร็จ:', err);
@@ -1251,7 +1299,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '31/10 16:57';
+const APP_VERSION = '31/10 17:00';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
@@ -2886,6 +2934,7 @@ function renderProfileModal(){
       <label>Email <span class="opt">(login username)</span></label>
       <input id="pf-email" type="email" value="${emailVal}" disabled />
     </div>
+    ${renderAvatarPicker()}
     <div class="form-row">
       <label>แฮชแท็กของฉันในแต่ละเพจ <span class="opt">(ตั้งเองต่อบัญชี ต่อเพจ — เพื่อนร่วมทีมตั้งของตัวเองแยกได้ ไม่ต้องเหมือนกัน)</span></label>
       ${PAGES.map(page => `
@@ -5175,6 +5224,14 @@ document.getElementById('app').addEventListener('click', (e) => {
       render();
       break;
 
+    case 'set-avatar-emoji':
+      saveAvatarChoice('emoji', el.dataset.value);
+      break;
+
+    case 'set-avatar-color':
+      saveAvatarChoice('color', el.dataset.value);
+      break;
+
     case 'toggle-presence':
       state.presenceOpen = !state.presenceOpen;
       if (state.presenceOpen) presenceHeartbeat();
@@ -5391,6 +5448,7 @@ document.getElementById('app').addEventListener('click', (e) => {
       break;
 
     case 'open-profile':
+      state.presenceOpen = false;
       state.userMenuOpen = false;
       state.soundMenuOpen = false;
       state.profileOpen = true;
