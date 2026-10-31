@@ -1587,6 +1587,109 @@ function playNotificationSound(){
   }
 }
 
+// รับรายการ page_posts ชุดล่าสุด แล้วแจ้งเตือนถ้ามีโพสต์ใหม่ — คนละเสียงกับคอมเมนต์ใหม่ (playNewPostAlertSound)
+// + toast ต่อเพจ + แจ้งเตือนของระบบ (Windows/macOS) กันพลาดประกาศสำคัญ เช่น "ปิดเซิร์ฟ" ที่โพสต์ลงเพจ
+// แทนที่จะมาเป็นคอมเมนต์ ใช้ทั้งจาก loadData() และ checkNewPagePostsOnly()
+function applyFreshPagePosts(rows){
+  PAGE_POSTS = rows.map(mapPagePost);
+  const freshPostIds = new Set(PAGE_POSTS.map((p) => p.id));
+  if (knownPagePostIds !== null) {
+    const newPosts = PAGE_POSTS.filter((p) => !knownPagePostIds.has(p.id));
+    if (newPosts.length) {
+      playNewPostAlertSound();
+      const byPage = {};
+      for (const p of newPosts) (byPage[p.pageId] || (byPage[p.pageId] = [])).push(p);
+      for (const [pid, posts] of Object.entries(byPage)) {
+        const pageName = (PAGES.find((p) => p.id === pid) || {}).name || 'เพจนี้';
+        const important = posts.some(isImportantAnnouncement);
+        showToast(`${important ? '⚠️ ประกาศสำคัญ' : '📰 มีโพสต์ใหม่'}จากเพจ "${pageName}"${posts.length > 1 ? ` (${posts.length} โพสต์)` : ''} — ดูที่แท็บ "โพสต์เพจ"`, important ? 'error' : 'success');
+      }
+      newPosts.forEach(showNewPostDesktopNotification);
+      startTitleFlash(newPosts.some(isImportantAnnouncement) ? '⚠️ ประกาศสำคัญ!' : '📰 โพสต์ใหม่!');
+    }
+  }
+  knownPagePostIds = freshPostIds;
+}
+
+// เช็คเฉพาะโพสต์ใหม่โดยไม่วาดหน้าจอใหม่ — ใช้ตอนที่ loadData() ถูกงดไว้ (มีคนพิมพ์ตอบค้าง/เปิดป๊อบอัพอยู่)
+// ไม่งั้นถ้าเปิดกล่องตอบทิ้งไว้แล้วไปทำอย่างอื่น จะไม่มีแจ้งเตือนโพสต์ใหม่เลยจนกว่าจะกลับมาปิดกล่อง
+async function checkNewPagePostsOnly(){
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/page_posts?select=*&order=posted_at.desc.nullslast&limit=200`, { headers: sbAuthHeaders() });
+    if (res.ok) applyFreshPagePosts(await res.json());
+  } catch (err) {
+    console.error('checkNewPagePostsOnly ล้มเหลว:', err);
+  }
+}
+
+// โพสต์ที่น่าจะเป็นประกาศสำคัญ (ปิดเซิร์ฟ/ปิดปรับปรุง/ยุติบริการ ฯลฯ) — ขึ้นเป็น "⚠️ ประกาศสำคัญ" ให้เด่นกว่าโพสต์ทั่วไป
+const IMPORTANT_POST_RE = /(ปิดเซิร์ฟ|ปิดเซิฟ|ปิดเซริฟ|ปิดให้บริการ|ยุติการให้บริการ|ยุติให้บริการ|ปิดปรับปรุง|ปิดระบบ|ปิดเกม|ปิดตัว|server\s*close|shut\s*down|maintenance|เซิร์ฟเวอร์มีปัญหา|เซิฟล่ม|เซิร์ฟล่ม)/i;
+function isImportantAnnouncement(post){
+  return IMPORTANT_POST_RE.test(post.message || '');
+}
+
+// แจ้งเตือนของระบบปฏิบัติการ (มุมจอ Windows) — เด้งเฉพาะตอนที่ไม่ได้มองหน้าเว็บอยู่ (สลับแท็บ/ย่อ/
+// ไปใช้โปรแกรมอื่น) ค้างไว้จนกว่าจะกด (requireInteraction) กดแล้วพาไปเปิดโพสต์นั้นทันที
+function showNewPostDesktopNotification(post){
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!document.hidden && document.hasFocus()) return; // กำลังดูหน้าเว็บอยู่แล้ว มี toast ให้เห็น
+  try {
+    const page = PAGES.find((p) => p.id === post.pageId);
+    const important = isImportantAnnouncement(post);
+    const n = new Notification(`${important ? '⚠️ ประกาศสำคัญ' : '📰 โพสต์ใหม่'} — ${page ? page.name : 'เพจ'}`, {
+      body: (post.message || '(โพสต์นี้ไม่มีข้อความ)').slice(0, 180),
+      icon: (page && page.logoUrl) || post.imageUrl || undefined,
+      tag: 'page-post-' + post.id,
+      requireInteraction: true,
+    });
+    n.onclick = () => {
+      window.focus();
+      n.close();
+      state.view = 'page-posts';
+      state.pagePosts.detailId = post.id;
+      state.pagePosts.video = null;
+      render();
+      loadPagePostVideo(post.id);
+    };
+  } catch (err) {
+    console.error('แสดงแจ้งเตือนของระบบไม่สำเร็จ:', err);
+  }
+}
+
+// กระพริบชื่อแท็บเบราว์เซอร์ระหว่างที่ไม่ได้ดูหน้าเว็บ หยุดเองทันทีที่กลับมาดู
+let titleFlashTimer = null;
+function startTitleFlash(text){
+  if (!document.hidden && document.hasFocus()) return;
+  if (titleFlashTimer) clearInterval(titleFlashTimer);
+  let on = false;
+  titleFlashTimer = setInterval(() => {
+    on = !on;
+    if (on) document.title = text; else updateTabTitle();
+  }, 1000);
+}
+function stopTitleFlash(){
+  if (!titleFlashTimer) return;
+  clearInterval(titleFlashTimer);
+  titleFlashTimer = null;
+  updateTabTitle();
+}
+window.addEventListener('focus', stopTitleFlash);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) stopTitleFlash(); });
+
+// ขออนุญาตแจ้งเตือนของระบบ — เบราว์เซอร์ยอมให้ขอได้เฉพาะตอนผู้ใช้คลิกเท่านั้น เลยขอตอนคลิกครั้งแรกบนหน้าเว็บ
+function requestDesktopNotificationPermissionOnce(){
+  if (!('Notification' in window) || Notification.permission !== 'default') return;
+  const ask = () => {
+    document.removeEventListener('click', ask);
+    if (!state.auth.session) { document.addEventListener('click', ask); return; } // รอให้ล็อกอินก่อน
+    Notification.requestPermission().then((perm) => {
+      if (perm === 'granted') showToast('เปิดแจ้งเตือนแล้ว — มีโพสต์ใหม่ระหว่างทำอย่างอื่น จะเด้งที่มุมจอ', 'success');
+    }).catch(() => {});
+  };
+  document.addEventListener('click', ask);
+}
+requestDesktopNotificationPermissionOnce();
+
 // เสียงแจ้งเตือน "มีโพสต์ใหม่" โดยเฉพาะ — ต้องฟังแล้วแยกออกจากเสียงคอมเมนต์ใหม่ทันที (ตามที่ขอ "คนละ
 // เสียงกับคอมเมนท์") จงใจทำเป็นเสียงเตือนจังหวะคู่ (beep-beep แบบปลุกเบาๆ) โทนต่ำ-กลาง ไม่ใช้ชุดโน้ต
 // ไล่เสียงสูงแบบฟองสบู่ที่ใช้กับคอมเมนต์เลย กันสับสนว่าเป็นเสียงเดียวกัน และตั้งใจให้ดังกว่าเสียง
@@ -1688,31 +1791,7 @@ async function loadData(){
     if (!pagesRes.ok || !itemsRes.ok) throw new Error('โหลดข้อมูลไม่สำเร็จ');
     PAGES = (await pagesRes.json()).map(mapPage);
     const freshItems = (await itemsRes.json()).map(mapItem);
-    if (postsRes.ok) {
-      PAGE_POSTS = (await postsRes.json()).map(mapPagePost);
-      // แจ้งเตือนโพสต์ใหม่ — คนละเสียงกับคอมเมนต์ใหม่ตามที่ขอ (playNewPostAlertSound ไม่ใช่
-      // playNotificationSound) แยก toast ต่อเพจเหมือนกับที่ทำให้คอมเมนต์ กันพลาดประกาศสำคัญ เช่น
-      // "เซิร์ฟเวอร์ปิดให้บริการ" ที่โพสต์ลงเพจแทนที่จะมาเป็นคอมเมนต์
-      const freshPostIds = new Set(PAGE_POSTS.map((p) => p.id));
-      if (knownPagePostIds !== null) {
-        const newPostsByPage = {};
-        let hasNewPost = false;
-        for (const p of PAGE_POSTS) {
-          if (!knownPagePostIds.has(p.id)) {
-            hasNewPost = true;
-            newPostsByPage[p.pageId] = (newPostsByPage[p.pageId] || 0) + 1;
-          }
-        }
-        if (hasNewPost) {
-          playNewPostAlertSound();
-          for (const [pid, count] of Object.entries(newPostsByPage)) {
-            const pageName = (PAGES.find((p) => p.id === pid) || {}).name || 'เพจนี้';
-            showToast(`📰 มีโพสต์ใหม่จากเพจ "${pageName}"${count > 1 ? ` (${count} โพสต์)` : ''} — ดูที่แท็บ "โพสต์เพจ"`, 'success');
-          }
-        }
-      }
-      knownPagePostIds = freshPostIds;
-    }
+    if (postsRes.ok) applyFreshPagePosts(await postsRes.json());
 
     const freshIds = new Set(freshItems.map((it) => it.id));
     if (knownItemIds !== null) {
@@ -2081,7 +2160,10 @@ async function syncPagePostsFromFb(){
       method: 'POST',
       headers: { Authorization: `Bearer ${state.auth.session.access_token}` },
     });
-    if (res.ok && !isUserEditingSomething()) loadData();
+    if (res.ok) {
+      if (!isUserEditingSomething()) loadData();
+      else checkNewPagePostsOnly();
+    }
   } catch (err) {
     console.error('syncPagePostsFromFb ล้มเหลว:', err);
   }
