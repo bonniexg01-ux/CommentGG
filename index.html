@@ -2204,9 +2204,6 @@ function renderPagePostsFilterCards(){
       <div class="page-card all-card ${allActive ? 'active' : ''}" data-action="page-posts-select-page" data-page="all">
         <span class="page-card-label">🗂️ ทุกเพจ (${PAGES.length})</span>
       </div>
-      <div class="page-card all-card" data-action="open-page-picker" title="เลือกเพจที่แสดง">
-        <span class="page-card-label">⚙️ เลือกเพจ${PAGES.length < ALL_PAGES.length ? ` (${PAGES.length}/${ALL_PAGES.length})` : ''}</span>
-      </div>
       ${PAGES.map((p) => {
         const active = filterId === p.id;
         const bgStyle = p.logoUrl ? `background-image:url('${p.logoUrl.replace(/'/g, "%27")}');` : `background-color:${p.color};`;
@@ -2232,6 +2229,7 @@ function renderPagePostsView(){
       <h1 style="margin:0;">📰 โพสต์เพจ</h1>
       <div style="display:flex; align-items:center; gap:8px;">
         <button class="btn" type="button" data-action="page-posts-sync" ${state.pagePosts.syncing ? 'disabled' : ''}>${state.pagePosts.syncing ? 'กำลังเช็ค...' : '🔄 เช็คโพสต์ใหม่'}</button>
+        <button class="btn" type="button" data-action="open-page-picker" title="เลือกเพจที่แสดง">⚙️ เลือกเพจ${PAGES.length < ALL_PAGES.length ? ` (${PAGES.length}/${ALL_PAGES.length})` : ''}</button>
         <button class="btn" data-action="close-page-posts">${ICONS.x} ปิด</button>
       </div>
     </div>
