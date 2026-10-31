@@ -1093,6 +1093,29 @@ async function callTranslateApi(text, target, source){
 }
 
 let PAGES = [];
+// ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
+// ใช้ ALL_PAGES เฉพาะที่ต้องเห็นครบทุกเพจจริงๆ เช่น หน้าต่างเลือกเพจเอง และหน้าจัดการทีม (ตั้งสิทธิ์เพจให้คนอื่น)
+let ALL_PAGES = [];
+
+// เพจที่ผู้ใช้คนนี้ "ซ่อน" ไว้ (เลือกไม่แสดง) เก็บใน user_metadata ของบัญชี — ติดตัวบัญชีไปทุกเครื่อง/ทุกเบราว์เซอร์
+// เก็บเป็นรายการที่ "ซ่อน" แทนรายการที่ "แสดง" เพื่อให้เพจใหม่ที่เพิ่มเข้าระบบทีหลังโผล่ให้เห็นเองโดยไม่ต้องไปติ๊กเพิ่ม
+// (เป็นแค่การตั้งค่าการแสดงผล — สิทธิ์จริงว่าเห็นเพจไหนได้ยังบังคับที่ RLS ฝั่งฐานข้อมูลเหมือนเดิม)
+function hiddenPageIdSet(){
+  const meta = state.auth.session && state.auth.session.user && state.auth.session.user.user_metadata;
+  return new Set(Array.isArray(meta && meta.hidden_page_ids) ? meta.hidden_page_ids : []);
+}
+function applyPageVisibility(){
+  const hidden = hiddenPageIdSet();
+  const visible = ALL_PAGES.filter((p) => !hidden.has(p.id));
+  PAGES = visible.length ? visible : ALL_PAGES; // กันพลาดซ่อนหมดทุกเพจแล้วหน้าจอว่างเปล่า
+  const ids = new Set(PAGES.map((p) => p.id));
+  if (state.pageFilter !== 'all' && !ids.has(state.pageFilter)) state.pageFilter = 'all';
+  if (state.pagePosts && state.pagePosts.filterPageId !== 'all' && !ids.has(state.pagePosts.filterPageId)) state.pagePosts.filterPageId = 'all';
+  return ids;
+}
+function isPageVisible(pageId){
+  return PAGES.some((p) => p.id === pageId);
+}
 // โพสต์เพจล่าสุดของทุกเพจ (จากตาราง page_posts) — ใช้ในหน้า "โพสต์เพจ" ใหม่เท่านั้น
 let PAGE_POSTS = [];
 let ITEMS = [];
@@ -1591,7 +1614,7 @@ function playNotificationSound(){
 // + toast ต่อเพจ + แจ้งเตือนของระบบ (Windows/macOS) กันพลาดประกาศสำคัญ เช่น "ปิดเซิร์ฟ" ที่โพสต์ลงเพจ
 // แทนที่จะมาเป็นคอมเมนต์ ใช้ทั้งจาก loadData() และ checkNewPagePostsOnly()
 function applyFreshPagePosts(rows){
-  PAGE_POSTS = rows.map(mapPagePost);
+  PAGE_POSTS = rows.map(mapPagePost).filter((p) => isPageVisible(p.pageId));
   const freshPostIds = new Set(PAGE_POSTS.map((p) => p.id));
   if (knownPagePostIds !== null) {
     const newPosts = PAGE_POSTS.filter((p) => !knownPagePostIds.has(p.id));
@@ -1789,8 +1812,10 @@ async function loadData(){
       fetch(`${SUPABASE_URL}/rest/v1/page_posts?select=*&order=posted_at.desc.nullslast&limit=200`, { headers: sbAuthHeaders() }),
     ]);
     if (!pagesRes.ok || !itemsRes.ok) throw new Error('โหลดข้อมูลไม่สำเร็จ');
-    PAGES = (await pagesRes.json()).map(mapPage);
-    const freshItems = (await itemsRes.json()).map(mapItem);
+    ALL_PAGES = (await pagesRes.json()).map(mapPage);
+    const visiblePageIds = applyPageVisibility();
+    // คอมเมนต์ของเพจที่ผู้ใช้ซ่อนไว้ไม่ต้องโหลดเข้ามาเลย — ไม่นับ ไม่กระพริบ ไม่ส่งเสียง
+    const freshItems = (await itemsRes.json()).map(mapItem).filter((it) => visiblePageIds.has(it.pageId));
     if (postsRes.ok) applyFreshPagePosts(await postsRes.json());
 
     const freshIds = new Set(freshItems.map((it) => it.id));
@@ -1956,6 +1981,8 @@ const state = {
 
   userMenuOpen: false,
   profileOpen: false,
+  // หน้าต่าง "เลือกเพจที่แสดง" (ตั้งค่าของแต่ละคน ติดบัญชีไว้ เปิดเว็บครั้งต่อไปก็ยังเป็นแบบที่เลือก)
+  pagePicker: { open: false, saving: false },
   profileTab: 'profile',
   profile: {
     firstName: 'Bow',
@@ -2177,6 +2204,9 @@ function renderPagePostsFilterCards(){
       <div class="page-card all-card ${allActive ? 'active' : ''}" data-action="page-posts-select-page" data-page="all">
         <span class="page-card-label">🗂️ ทุกเพจ (${PAGES.length})</span>
       </div>
+      <div class="page-card all-card" data-action="open-page-picker" title="เลือกเพจที่แสดง">
+        <span class="page-card-label">⚙️ เลือกเพจ${PAGES.length < ALL_PAGES.length ? ` (${PAGES.length}/${ALL_PAGES.length})` : ''}</span>
+      </div>
       ${PAGES.map((p) => {
         const active = filterId === p.id;
         const bgStyle = p.logoUrl ? `background-image:url('${p.logoUrl.replace(/'/g, "%27")}');` : `background-color:${p.color};`;
@@ -2366,7 +2396,69 @@ function renderTopbar(){
     ${state.userMenuOpen ? `<div class="menu-backdrop" data-action="close-user-menu"></div>` : ''}
     ${state.soundMenuOpen ? `<div class="menu-backdrop" data-action="close-sound-menu"></div>` : ''}
     ${state.profileOpen ? renderProfileModal() : ''}
+    ${state.pagePicker.open ? renderPagePickerModal() : ''}
   `;
+}
+
+function renderPagePickerModal(){
+  const hidden = hiddenPageIdSet();
+  return `
+    <div class="modal-backdrop" data-action="close-page-picker">
+      <div class="modal-card" data-action="stop-propagation" style="max-width:460px;">
+        <div class="modal-head">
+          <h2>⚙️ เลือกเพจที่แสดง</h2>
+          <div class="modal-close" data-action="close-page-picker">${ICONS.x}</div>
+        </div>
+        <div class="modal-scroll">
+          <div class="modal-body">
+            <div class="form-hint" style="margin-bottom:12px;">ติ๊กเฉพาะเกมที่คุณดูแล — Inbox, ตัวเลขแจ้งเตือน, เสียง และหน้าโพสต์เพจจะแสดงแค่เพจที่เลือก ระบบจำไว้กับบัญชีนี้ เข้าใช้ครั้งต่อไป (เครื่องไหนก็ได้) ก็ยังเป็นแบบนี้ เพจใหม่ที่เพิ่มเข้าระบบทีหลังจะแสดงให้เองอัตโนมัติ</div>
+            <div style="display:flex; gap:8px; margin-bottom:10px;">
+              <button class="btn" type="button" data-action="page-picker-all">เลือกทั้งหมด</button>
+              <button class="btn" type="button" data-action="page-picker-none">ไม่เลือกเลย</button>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              ${ALL_PAGES.map((p) => `
+                <label style="display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; cursor:pointer;">
+                  <input type="checkbox" id="pp-page-${p.id}" ${hidden.has(p.id) ? '' : 'checked'} />
+                  ${p.logoUrl ? `<img src="${p.logoUrl}" alt="" style="width:26px; height:26px; border-radius:50%; object-fit:cover;" />` : `<span class="dot" style="width:10px;height:10px;border-radius:50%;background:${p.color};display:inline-block;"></span>`}
+                  <span style="font-weight:600;">${p.emoji} ${p.name}</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" data-action="close-page-picker">ยกเลิก</button>
+          <button class="btn primary" data-action="save-page-picker" ${state.pagePicker.saving ? 'disabled' : ''}>${state.pagePicker.saving ? 'กำลังบันทึก…' : 'บันทึก'}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function savePagePicker(){
+  const hidden = ALL_PAGES.filter((p) => {
+    const cb = document.getElementById('pp-page-' + p.id);
+    return cb && !cb.checked;
+  }).map((p) => p.id);
+  if (hidden.length === ALL_PAGES.length) { showToast('เลือกอย่างน้อย 1 เพจ', 'error'); return; }
+  state.pagePicker.saving = true;
+  render();
+  try {
+    const { data, error } = await sb.auth.updateUser({ data: { hidden_page_ids: hidden } });
+    if (error) throw error;
+    if (data && data.user && state.auth.session) state.auth.session.user = data.user;
+    state.pagePicker.open = false;
+    state.expandedId = null; state.selected.clear(); state.page = 1;
+    knownItemIds = null; knownPagePostIds = null; // เพจที่เพิ่งเปิดกลับมาไม่ต้องนับเป็น "คอมเมนต์/โพสต์ใหม่" แล้วส่งเสียงรัว
+    showToast(hidden.length ? `แสดง ${ALL_PAGES.length - hidden.length} จาก ${ALL_PAGES.length} เพจ` : 'แสดงทุกเพจแล้ว', 'success');
+    await loadData();
+  } catch (err) {
+    console.error('บันทึกเพจที่แสดงไม่สำเร็จ:', err);
+    showToast('บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+  }
+  state.pagePicker.saving = false;
+  render();
 }
 
 /* ============================================================
@@ -2544,6 +2636,7 @@ function renderPageChips(){
       <div class="page-chip ${allActive ? 'active' : ''}" data-action="select-page" data-page="all">
         <span class="dot" style="background:#A89A8D"></span> ทุกเพจ (${PAGES.length})
       </div>
+      <div class="page-chip" data-action="open-page-picker" title="เลือกเพจที่แสดง">⚙️ เลือกเพจ${PAGES.length < ALL_PAGES.length ? ` (${PAGES.length}/${ALL_PAGES.length})` : ''}</div>
       ${PAGES.map(p => {
         const active = state.pageFilter === p.id;
         // กระพริบค้างไว้ "ตราบใดที่เพจนี้ยังมีคอมเมนต์ค้างตอบอยู่จริง" (ยัง pending, อยู่ใน inbox,
@@ -3812,7 +3905,7 @@ async function saveTeamMember(){
     canManageTeam: document.getElementById('ta-canManageTeam').checked,
     canSeeAllPages: !scopeEl || scopeEl.value === 'all',
   };
-  const pageIds = permissions.canSeeAllPages ? [] : PAGES.filter((p) => {
+  const pageIds = permissions.canSeeAllPages ? [] : ALL_PAGES.filter((p) => {
     const cb = document.getElementById('ta-page-' + p.id);
     return cb && cb.checked;
   }).map((p) => p.id);
@@ -3903,7 +3996,7 @@ function permissionBadges(m){
 function pageAccessSummary(m){
   if (m.canSeeAllPages) return `<span style="color:var(--green-text); font-weight:600;">ทุกเพจ</span>`;
   if (!m.pageIds.length) return `<span style="color:var(--red-text);">- ยังไม่ได้เลือกเพจ</span>`;
-  const names = m.pageIds.map((pid) => { const p = PAGES.find((pp) => pp.id === pid); return p ? p.name : null; }).filter(Boolean);
+  const names = m.pageIds.map((pid) => { const p = ALL_PAGES.find((pp) => pp.id === pid); return p ? p.name : null; }).filter(Boolean);
   return names.length ? names.join(', ') : `${m.pageIds.length} เพจ`;
 }
 
@@ -3955,7 +4048,7 @@ function renderTeamAdminForm(){
                 <input type="radio" name="ta-pageScope" value="some" style="width:16px; height:16px; flex:none; padding:0; border:none;" ${!seeAll ? 'checked' : ''} onchange="document.getElementById('ta-page-list').style.opacity='1'; document.getElementById('ta-page-list').style.pointerEvents='auto';" /> เลือกเอง
               </label>
               <div id="ta-page-list" style="display:flex; flex-direction:column; gap:6px; margin-left:24px; ${seeAll ? 'opacity:.4; pointer-events:none;' : ''}">
-                ${PAGES.map((p) => `
+                ${ALL_PAGES.map((p) => `
                   <label style="display:flex; align-items:center; gap:8px;">
                     <input id="ta-page-${p.id}" type="checkbox" style="width:16px; height:16px; flex:none; padding:0; border:none;" ${editing && !editing.canSeeAllPages && editing.pageIds.includes(p.id) ? 'checked' : ''} />
                     <span class="dot" style="width:7px;height:7px;border-radius:50%;background:${p.color};display:inline-block;"></span> ${p.emoji} ${p.name}
@@ -4041,7 +4134,7 @@ function renderTeamAdminView(){
 function updateBodyScrollLock(){
   const anyModalOpen = !!(
     state.profileOpen || state.postPanel.open || state.pagesAdmin.formOpen || state.teamAdmin.formOpen
-    || (state.pagePosts && state.pagePosts.detailId)
+    || (state.pagePosts && state.pagePosts.detailId) || state.pagePicker.open
   );
   document.body.style.overflow = anyModalOpen ? 'hidden' : '';
 }
@@ -4613,7 +4706,7 @@ document.getElementById('app').addEventListener('change', (e) => {
   }
 });
 
-const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu', 'close-sound-menu', 'close-filters', 'pages-admin-close-form', 'team-admin-close-form', 'close-page-post-detail']);
+const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu', 'close-sound-menu', 'close-filters', 'pages-admin-close-form', 'team-admin-close-form', 'close-page-post-detail', 'close-page-picker']);
 
 // กดจัดการคอมเมนต์รายการนี้ (เปิดดู/ตอบ/ซ่อน/ย้ายถัง/เก็บ archive/กู้คืน/ลบถาวร) แปลว่า "เห็น/จัดการ
 // แล้ว" — เอาสถานะ "โดนถล่ม" (surge) ของเพจนั้นออกทันที (ไฟกระพริบพื้นฐานไม่ต้องเคลียร์ตรงนี้แล้ว
@@ -4653,6 +4746,28 @@ document.getElementById('app').addEventListener('click', (e) => {
     case 'close-page-posts':
       state.view = 'inbox';
       render();
+      break;
+
+    case 'open-page-picker':
+      state.pagePicker.open = true;
+      render();
+      break;
+
+    case 'close-page-picker':
+      state.pagePicker.open = false;
+      render();
+      break;
+
+    case 'page-picker-all':
+    case 'page-picker-none':
+      ALL_PAGES.forEach((p) => {
+        const cb = document.getElementById('pp-page-' + p.id);
+        if (cb) cb.checked = action === 'page-picker-all';
+      });
+      break;
+
+    case 'save-page-picker':
+      savePagePicker();
       break;
 
     case 'open-page-post-detail':
@@ -5327,6 +5442,7 @@ sb.auth.onAuthStateChange((event, session) => {
     // ออกจากระบบ (หรือ token ใช้ไม่ได้แล้ว) — เคลียร์ข้อมูลเก่าทิ้ง กันเห็นข้อมูลของบัญชีก่อนหน้า
     // กรณีนี้ต้อง render() เสมอไม่มีเงื่อนไข เพราะต้องพาออกไปหน้า login จริงๆ
     PAGES = [];
+    ALL_PAGES = [];
     ITEMS = [];
     PAGE_POSTS = [];
     state.auth.loginEmail = '';
@@ -5359,7 +5475,7 @@ function isUserEditingSomething(){
   return !!state.expandedId || !!state.editingReplyId || state.profileOpen || state.postPanel.open || searchFocused
     || state.pagesAdmin.formOpen || state.teamAdmin.formOpen
     // ป๊อบอัพโพสต์เพจเปิดอยู่ — ถ้ารีเฟรชหน้าจอ วิดีโอที่กำลังเล่นจะเด้งกลับไปเริ่มใหม่ เลยงดรีเฟรชไว้ก่อน
-    || !!(state.pagePosts && state.pagePosts.detailId);
+    || !!(state.pagePosts && state.pagePosts.detailId) || state.pagePicker.open;
 }
 setInterval(() => {
   // เผื่อกรณีเปิดแท็บทิ้งไว้ข้ามวัน (ไม่ได้ปิดคอม/ปิดเว็บเลย) ก็ยังบังคับให้ล็อกอินใหม่ตอนข้ามวันด้วย
