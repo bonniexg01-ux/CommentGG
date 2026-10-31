@@ -1149,6 +1149,9 @@ async function callTranslateApi(text, target, source){
   }
 }
 
+// เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
+const APP_VERSION = '31/10 16:23';
+
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
 // ใช้ ALL_PAGES เฉพาะที่ต้องเห็นครบทุกเพจจริงๆ เช่น หน้าต่างเลือกเพจเอง และหน้าจัดการทีม (ตั้งสิทธิ์เพจให้คนอื่น)
@@ -1835,6 +1838,18 @@ function stopTitleFlash(){
 }
 window.addEventListener('focus', stopTitleFlash);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) stopTitleFlash(); });
+
+// กลับเข้าแอปจากแอปอื่น (เช่น Facebook) — iPhone บางครั้งแตะหน้าจอเดิมไม่ติดหลังสลับแอป ปิดเมนูที่ค้าง แล้ววาด
+// หน้าจอใหม่ทั้งหมด (สร้างปุ่มชุดใหม่) ให้กลับมาแตะได้ปกติ ไม่แตะข้อความที่กำลังพิมพ์ค้างอยู่ (กล่องตอบ/ฟอร์ม)
+function refreshAfterResume(){
+  if (!state.auth || !state.auth.session) return;
+  state.userMenuOpen = false;
+  state.soundMenuOpen = false;
+  if (state.expandedId || state.editingReplyId || state.profileOpen || state.pagesAdmin.formOpen || state.teamAdmin.formOpen) return;
+  render();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(refreshAfterResume, 50); });
+window.addEventListener('pageshow', (e) => { if (e.persisted) setTimeout(refreshAfterResume, 50); });
 
 // ขออนุญาตแจ้งเตือนของระบบ — เบราว์เซอร์ยอมให้ขอได้เฉพาะตอนผู้ใช้คลิกเท่านั้น เลยขอตอนคลิกครั้งแรกบนหน้าเว็บ
 function requestDesktopNotificationPermissionOnce(){
@@ -2528,7 +2543,7 @@ function renderPagePostDetailModal(){
           </div>
         </div>
         <div class="modal-foot">
-          ${post.permalinkUrl ? `<a class="btn" href="${post.permalinkUrl}" target="_blank" rel="noopener noreferrer">ดูบน Facebook ↗</a>` : ''}
+          ${post.permalinkUrl ? `<a class="btn" href="${post.permalinkUrl}" target="_blank" rel="noopener noreferrer" data-action="open-fb-close-detail">ดูบน Facebook ↗</a>` : ''}
           <button class="btn primary" data-action="close-page-post-detail">ปิด</button>
         </div>
       </div>
@@ -2681,6 +2696,7 @@ function renderUserDropdown(){
       ` : ''}
       <div class="user-dropdown-sep"></div>
       <div class="user-dropdown-item danger" data-action="sign-out">${ICONS.logOut} Sign out</div>
+      <div style="font-size:10.5px; color:var(--text-faint); padding:4px 11px 2px;">เวอร์ชัน ${APP_VERSION}</div>
     </div>
   `;
 }
@@ -5004,6 +5020,16 @@ document.getElementById('app').addEventListener('click', (e) => {
     case 'close-page-posts':
       state.view = 'inbox';
       render();
+      break;
+
+    // เปิดโพสต์บน Facebook จากป๊อบอัพ — ปิดป๊อบอัพตามไปด้วย (ปล่อยให้ลิงก์เปิดตามปกติก่อน) เจอจริงบน iPhone:
+    // กลับจากแอป Facebook มาแล้วป๊อบอัพที่ค้างอยู่แตะไม่ติด กดปิดไม่ได้
+    case 'open-fb-close-detail':
+      setTimeout(() => {
+        state.pagePosts.detailId = null;
+        state.pagePosts.video = null;
+        render();
+      }, 400);
       break;
 
     case 'open-page-picker':
