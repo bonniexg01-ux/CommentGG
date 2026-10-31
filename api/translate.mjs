@@ -57,8 +57,14 @@ async function requireAuth(request) {
 // มากพร้อมกัน — ไม่ได้เกิดจากเรายิงถี่เกินไปเอง แก้ด้วยการมีบริการสำรอง (translateViaMyMemory) ไว้สลับ
 // ใช้อัตโนมัติทันทีถ้าตัวหลักล้ม ไม่ต้องรอให้ผู้ใช้กดลองใหม่เอง
 async function translateViaGoogleFree(text, target, source) {
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(source || 'auto')}&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(text)}`;
-  const r = await fetchWithTimeout(url, { method: 'GET' });
+  // ส่งข้อความใน body (POST) ไม่ใส่ใน URL — ภาษาไทย 1 ตัวเข้ารหัสใน URL ได้ 9 ไบต์ ข้อความยาวๆ (ใกล้ 4000 ตัว)
+  // ทำให้ URL ยาวเกินที่ Google รับ แปลไม่ได้ (ทดสอบแล้ว: GET พัง, POST ผ่าน)
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(source || 'auto')}&tl=${encodeURIComponent(target)}&dt=t`;
+  const r = await fetchWithTimeout(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+    body: new URLSearchParams({ q: text }),
+  });
   if (!r.ok) throw new Error(`บริการแปลหลักตอบกลับผิดพลาด (HTTP ${r.status})`);
   const data = await r.json();
   // data[0] = array ของ [แปลแล้ว, ต้นฉบับ, ...] ต่อ 1 ท่อน, data[2] = ภาษาต้นฉบับที่ตรวจพบ
