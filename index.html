@@ -331,6 +331,57 @@
     100%{ background-position:33.333% 0; }
   }
   @media (prefers-reduced-motion: reduce){ .wake-cat{ animation:none; } }
+
+  /* ---------- ระบบเข้างาน (คลิกแมว) ----------
+     body.needs-clockin = ล็อกอินแล้วแต่ยังไม่ได้คลิกแมว: แมวเปลี่ยนเป็นแมวหลับ (icons/sleepy-cat-*) ขึ้นมาอยู่บนสุด
+     กดได้ มีม่านบังหน้าจอทำงาน แตะม่าน = เด้งป๊อบอัพ "Go Online" — คลิกแมวแล้วกลับเป็นแมวไฟลุกตามเดิม */
+  body.needs-clockin .wake-cat{
+    z-index:1002; pointer-events:auto; cursor:pointer; width:clamp(170px, 18vw, 248px); aspect-ratio:248 / 164;
+    background-image:url('/icons/sleepy-cat-164.png');
+    background-image:-webkit-image-set(url('/icons/sleepy-cat-164.png') 1x, url('/icons/sleepy-cat-328.webp') 2x);
+    background-image:image-set(url('/icons/sleepy-cat-164.png') 1x, url('/icons/sleepy-cat-328.webp') 2x);
+    animation:sleepyCat 4.625s step-end infinite;
+    filter:drop-shadow(0 0 10px rgba(255,255,255,.85));
+  }
+  body.needs-clockin .wake-cat:hover{ filter:drop-shadow(0 0 14px rgba(255,214,102,1)); }
+  body.needs-clockin .wake-cat.attention{ animation:sleepyCat 4.625s step-end infinite, catAttention .5s ease-in-out 3; }
+  @keyframes catAttention{ 0%,100%{ translate:0 0; } 50%{ translate:0 -14px; } }
+  @keyframes sleepyCat{
+    0%{ background-position:0% 0; }
+    21.62%{ background-position:33.333% 0; }
+    35.14%{ background-position:66.667% 0; }
+    43.24%{ background-position:100% 0; }
+    51.35%{ background-position:66.667% 0; }
+    59.46%{ background-position:100% 0; }
+    67.57%{ background-position:66.667% 0; }
+    75.68%{ background-position:100% 0; }
+    78.38%{ background-position:66.667% 0; }
+    81.08%{ background-position:100% 0; }
+    83.78%{ background-position:66.667% 0; }
+    91.89%{ background-position:100% 0; }
+    100%{ background-position:100% 0; }
+  }
+  .clockin-overlay{ display:none; position:fixed; inset:0; z-index:1000; background:rgba(2,33,52,.42); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); cursor:not-allowed; }
+  body.needs-clockin .clockin-overlay{ display:block; }
+  .clockin-hint{
+    display:none; position:fixed; z-index:1002; right:clamp(16px, 3vw, 40px); bottom:calc(clamp(8px, 2vh, 24px) + clamp(170px, 18vw, 248px) * 164 / 248 + 8px);
+    background:#fff; color:#5a2b2b; font-weight:700; font-size:14px; padding:8px 14px; border-radius:14px; border:2px solid #f3a6b5;
+    box-shadow:0 6px 18px rgba(0,0,0,.18); pointer-events:none; animation:hintBob 1.6s ease-in-out infinite;
+  }
+  body.needs-clockin .clockin-hint{ display:block; }
+  @keyframes hintBob{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-5px); } }
+  .clockin-popup{ display:none; position:fixed; z-index:1003; left:50%; top:45%; transform:translate(-50%, -50%); width:min(92vw, 420px); }
+  .clockin-popup.show{ display:block; animation:popIn .22s ease-out; }
+  .clockin-popup img{ display:block; width:100%; height:auto; image-rendering:pixelated; user-select:none; -webkit-user-drag:none; }
+  @keyframes popIn{ from{ transform:translate(-50%, -50%) scale(.85); opacity:0; } to{ transform:translate(-50%, -50%) scale(1); opacity:1; } }
+  .clockin-hot{ position:absolute; background:transparent; border:0; padding:0; cursor:pointer; border-radius:14px; -webkit-tap-highlight-color:transparent; }
+  .clockin-hot:focus-visible{ outline:3px solid #f3a6b5; }
+  .clockin-hot-ok{ left:33%; top:75%; width:34%; height:16%; }
+  .clockin-hot-x{ left:86%; top:22%; width:12%; height:17%; border-radius:50%; }
+  @media (max-width: 760px){
+    body.needs-clockin .wake-cat{ right:50%; transform:translateX(50%); bottom:84px; width:min(62vw, 248px); }
+    body.needs-clockin .clockin-hint{ right:50%; transform:translateX(50%); bottom:calc(84px + min(62vw, 248px) * 164 / 248 + 8px); animation:none; }
+  }
   @keyframes spinIcon{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
   .spin-icon svg{ animation: spinIcon .7s linear infinite; }
   .spinner{
@@ -883,7 +934,15 @@
 <div id="app"></div>
 <div id="toastWrap"></div>
 <!-- แมวออฟฟิศไฟลุกตกแต่งมุมขวาล่าง (พิมพ์งานโมโห วนไปเรื่อยๆ) — อยู่นอก #app จะได้ไม่เริ่มแอนิเมชันใหม่ทุกครั้งที่วาดหน้าจอ -->
-<div class="wake-cat" aria-hidden="true"></div>
+<div class="wake-cat" id="officeCat" title="คลิกแมวเพื่อเข้างาน"></div>
+<!-- ระบบ "เข้างาน": เปิดโปรแกรมมาแมวหลับอยู่ ต้องคลิกแมว 1 ทีถึงจะใช้งานได้ + ขึ้นออนไลน์ (ดู clockIn() ในสคริปต์) -->
+<div class="clockin-overlay" id="clockinOverlay"></div>
+<div class="clockin-hint" id="clockinHint">🐾 คลิกแมวเพื่อเข้างาน</div>
+<div class="clockin-popup" id="clockinPopup" role="dialog" aria-label="Go Online — คลิกแมวเพื่อเข้างาน">
+  <img src="/icons/popup-online-420.png" srcset="/icons/popup-online-420.png 1x, /icons/popup-online-806.png 2x" alt="Go Online — Click the cat to go online." width="420" height="268" draggable="false" />
+  <button type="button" class="clockin-hot clockin-hot-ok" id="clockinOk" aria-label="OK"></button>
+  <button type="button" class="clockin-hot clockin-hot-x" id="clockinX" aria-label="ปิด"></button>
+</div>
 
 <!-- Supabase Auth: ใช้จัดการล็อกอินของทีม (คนละไอดีกันเข้า) แทนการเปิดหน้าเว็บแบบไม่ต้องล็อกอิน -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1287,7 +1346,8 @@ function renderPresenceList(){
   return `<div class="presence-sub" style="padding:0 4px 6px;">ออนไลน์ ${onlineCount} จาก ${rows.length} คน</div>` + rows.map((r) => {
     const h = presenceHash(r.user_id);
     const name = presenceDisplayName(r).replace(/</g, '&lt;');
-    const sub = r.online ? 'ออนไลน์อยู่' : (r.seen ? `ออฟไลน์ · ${timeAgo(r.last_seen_at)}` : 'ยังไม่เคยเข้าใช้');
+    const inAt = r.clocked_in_at ? new Date(r.clocked_in_at).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+    const sub = r.online ? `ออนไลน์อยู่${inAt ? ` · เข้างาน ${inAt} น.` : ''}` : (r.seen ? `ออฟไลน์ · ${timeAgo(r.last_seen_at)}` : 'ยังไม่เคยเข้าใช้');
     return `
       <div class="presence-row">
         <div class="presence-avatar" style="background:${r.avatar_color || PRESENCE_COLORS[h % PRESENCE_COLORS.length]};">
@@ -1306,6 +1366,55 @@ function refreshPresencePanel(){
   const el = document.getElementById('presenceBody');
   if (el) el.innerHTML = renderPresenceList();
 }
+// ---------- ระบบเข้างาน: คลิกแมว 1 ทีเพื่อเริ่มทำงาน/ขึ้นออนไลน์ ----------
+// จำไว้ใน sessionStorage ของแท็บนี้ (รีเฟรช/อัปเดตเวอร์ชันอัตโนมัติในแท็บเดิมไม่ต้องคลิกซ้ำ แต่ปิดแล้วเปิดโปรแกรมใหม่ต้องคลิกใหม่)
+const CLOCKIN_KEY = 'commentgg_clocked_in';
+function clockinState(){
+  try { return JSON.parse(sessionStorage.getItem(CLOCKIN_KEY) || 'null'); } catch { return null; }
+}
+function isClockedIn(){
+  const st = clockinState();
+  const uid = state.auth.session && state.auth.session.user && state.auth.session.user.id;
+  return !!(st && uid && st.uid === uid);
+}
+function updateClockinUI(){
+  const need = !!(state.auth.ready && state.auth.session) && !isClockedIn();
+  document.body.classList.toggle('needs-clockin', need);
+  if (!need) hideClockinPopup();
+}
+function showClockinPopup(){ document.getElementById('clockinPopup').classList.add('show'); }
+function hideClockinPopup(){ const el = document.getElementById('clockinPopup'); if (el) el.classList.remove('show'); }
+function nudgeCat(){
+  const cat = document.getElementById('officeCat');
+  cat.classList.remove('attention'); void cat.offsetWidth; cat.classList.add('attention');
+}
+function clockIn(){
+  const uid = state.auth.session && state.auth.session.user && state.auth.session.user.id;
+  if (!uid) return;
+  try { sessionStorage.setItem(CLOCKIN_KEY, JSON.stringify({ uid, at: new Date().toISOString() })); } catch {}
+  updateClockinUI();
+  showToast('เข้างานแล้ว 🔥 ลุยเลย!', 'success');
+  presenceHeartbeat();
+}
+document.getElementById('officeCat').addEventListener('click', () => { if (document.body.classList.contains('needs-clockin')) clockIn(); });
+document.getElementById('clockinOverlay').addEventListener('click', showClockinPopup);
+document.getElementById('clockinOk').addEventListener('click', () => { hideClockinPopup(); nudgeCat(); });
+document.getElementById('clockinX').addEventListener('click', () => { hideClockinPopup(); nudgeCat(); });
+// ยังไม่คลิกแมวภายใน 4 วิหลังเปิด → เด้งป๊อบอัพเตือนเองหนึ่งครั้ง
+setTimeout(() => { if (document.body.classList.contains('needs-clockin')) showClockinPopup(); }, 4000);
+// ปิดโปรแกรม/ปิดแท็บ → ทำให้ขึ้นออฟไลน์ทันที ไม่ต้องรอ 2.5 นาที (รีเฟรชในแท็บเดิมจะส่งสัญญาณออนไลน์กลับเองทันทีหลังโหลด)
+window.addEventListener('pagehide', () => {
+  const sess = state.auth.session;
+  if (!sess || !isClockedIn()) return;
+  try {
+    fetch(`${SUPABASE_URL}/rest/v1/team_presence?user_id=eq.${sess.user.id}`, {
+      method: 'PATCH', keepalive: true,
+      headers: { ...sbAuthHeaders(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ last_seen_at: new Date(Date.now() - 10 * 60000).toISOString() }),
+    });
+  } catch {}
+});
+
 async function presenceHeartbeat(){
   const sess = state.auth.session;
   if (!sess || !sess.user) return;
@@ -1314,13 +1423,14 @@ async function presenceHeartbeat(){
   const meta = user.user_metadata || {};
   const displayName = `${meta.first_name || ''} ${meta.last_name || ''}`.trim() || null;
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/team_presence?on_conflict=user_id`, {
+    if (isClockedIn()) await fetch(`${SUPABASE_URL}/rest/v1/team_presence?on_conflict=user_id`, {
       method: 'POST',
       headers: { ...sbAuthHeaders(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ user_id: user.id, display_name: displayName, email: user.email, last_seen_at: new Date().toISOString(),
-        avatar_emoji: meta.avatar_emoji || null, avatar_color: meta.avatar_color || null }),
+        avatar_emoji: meta.avatar_emoji || null, avatar_color: meta.avatar_color || null,
+        clocked_in_at: (clockinState() || {}).at || null }),
     });
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/team_presence?select=user_id,display_name,email,last_seen_at,avatar_emoji,avatar_color`, { headers: sbAuthHeaders() });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/team_presence?select=user_id,display_name,email,last_seen_at,avatar_emoji,avatar_color,clocked_in_at`, { headers: sbAuthHeaders() });
     if (res.ok) { TEAM_PRESENCE = await res.json(); refreshPresencePanel(); }
   } catch (err) {
     console.error('อัปเดตสถานะออนไลน์ไม่สำเร็จ:', err);
@@ -1328,7 +1438,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '31/10 18:12';
+const APP_VERSION = '31/10 18:45';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
@@ -4604,6 +4714,7 @@ var bodyScrollLockY = { locked: false, y: 0 };
 function render(){
   const app = document.getElementById('app');
   updateBodyScrollLock();
+  updateClockinUI();
 
   // ยังไม่รู้ผลว่าล็อกอินค้างไว้จาก session เดิมหรือเปล่า — ไม่โชว์อะไรเลยดีกว่าโชว์หน้า login
   // วาบแล้วหายไปทันทีถ้าจริงๆ มี session ค้างอยู่
@@ -5473,6 +5584,7 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'sign-out':
       state.userMenuOpen = false;
+      try { sessionStorage.removeItem(CLOCKIN_KEY); } catch {}
       sb.auth.signOut(); // onAuthStateChange ด้านล่างจะเคลียร์ session + พาไปหน้า login เอง
       break;
 
