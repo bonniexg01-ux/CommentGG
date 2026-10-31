@@ -1233,7 +1233,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '31/10 16:42';
+const APP_VERSION = '31/10 16:49';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
@@ -5938,7 +5938,28 @@ setInterval(syncPollingPages, 90000);
 // เช็คโพสต์ใหม่ของทุกเพจ (ไม่ใช่แค่เพจ polling คอมเมนต์) เป็นระยะ — ถี่น้อยกว่าคอมเมนต์เพราะโพสต์ออก
 // ไม่บ่อยเท่า และต้องไล่ทุกเพจ (ไม่ได้กรองด้วย needs_polling) กันยิง Graph API ถี่เกินจำเป็น
 setInterval(syncPagePostsFromFb, 5 * 60 * 1000);
-setInterval(presenceHeartbeat, 60 * 1000); // บอกทีมว่ายังออนไลน์อยู่ + อัปเดตรายชื่อในแผง "ใครออนไลน์"
+setInterval(presenceHeartbeat, 60 * 1000);
+
+// อัปเดตเวอร์ชันอัตโนมัติ — เจอจริง: ฟีเจอร์ใหม่ไม่ทำงานในเครื่องที่เปิดเว็บค้างไว้ก่อน deploy จนกว่าจะกดรีเฟรชเอง
+// เช็คทุก 2 นาที (และตอนกลับมาที่หน้าเว็บ) ว่า APP_VERSION บนเซิร์ฟเวอร์เปลี่ยนไหม ถ้าเปลี่ยนแล้วรีเฟรชให้เอง
+// แต่รอจนไม่ได้พิมพ์/แก้อะไรค้างอยู่ (เปิดกล่องตอบ ฟอร์ม ป๊อบอัพ ฯลฯ) จะได้ไม่ทำให้งานที่ทำอยู่หาย
+let pendingUpdateVersion = null;
+async function checkForNewVersion(){
+  try {
+    const res = await fetch('/?v=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const m = (await res.text()).match(/const APP_VERSION = '([^']+)'/);
+    if (!m || m[1] === APP_VERSION) return;
+    pendingUpdateVersion = m[1];
+    if (!isUserEditingSomething() && !state.presenceOpen && !state.userMenuOpen && !state.soundMenuOpen && !state.pagePicker.open) {
+      location.reload();
+    }
+  } catch (err) {
+    // เครือข่ายหลุดชั่วคราว ไม่ต้องทำอะไร รอรอบถัดไป
+  }
+}
+setInterval(checkForNewVersion, 2 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForNewVersion(); }); // บอกทีมว่ายังออนไลน์อยู่ + อัปเดตรายชื่อในแผง "ใครออนไลน์"
 document.addEventListener('visibilitychange', () => { if (!document.hidden) presenceHeartbeat(); });
 
 // ลงทะเบียน service worker ให้ติดตั้งเป็นแอปได้ (ดู sw.js — ไม่แคชอะไร ไม่กระทบการโหลดเว็บ)
