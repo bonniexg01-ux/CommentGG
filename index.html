@@ -585,6 +585,7 @@
   .tag.needs-reply{background:var(--tag-urgent-soft); color:var(--tag-urgent-text);}
   .tag.hidden-tag{background:var(--red-soft); color:var(--red-text);}
   .tag.replied-tag{background:var(--blue-soft); color:var(--blue-text);}
+  .tag.auto-archived-tag{background:var(--hover-bg); color:var(--text-dim);}
   .tag.blocked-tag{background:var(--neutral-soft); color:var(--neutral-text);}
   .copy-link{font-size:11.5px; color:var(--text-faint); margin-top:6px; cursor:pointer; display:inline-flex; align-items:center; gap:4px;}
   .copy-link:hover{color:var(--text-dim); text-decoration:underline;}
@@ -1263,6 +1264,9 @@ function mapItem(row){
     // รูปที่แนบมากับคอมเมนต์ (ถ้ามี) — เก็บไว้ตั้งแต่ตอน webhook รับคอมเมนต์เข้ามาใหม่ (ดู
     // api/webhook.js) คอมเมนต์เก่าก่อนมีฟีเจอร์นี้จะเป็น null ไปเลย (ยังกดแว่นขยายดูได้ตามปกติ)
     attachmentImageUrl: row.attachment_image_url || null,
+    // 'event_entry' = ฐานข้อมูลจัดเก็บให้อัตโนมัติเพราะเป็นคอมเมนต์ลงกิจกรรม (มี UID/AID) — ดู trigger
+    // auto_archive_event_comment ใน Supabase
+    autoArchiveReason: row.auto_archive_reason || null,
     liked: !!row.liked, blocked: !!row.blocked,
   };
 }
@@ -1676,7 +1680,7 @@ async function loadData(){
       // ของ Facebook ที่ฝั่งหน้าเว็บไม่เคยอ่านไปใช้เลย ฝั่ง backend ที่ต้องใช้ตอนตอบ/ลบ/ซ่อนคอมเมนต์จะ
       // ไปดึงเองจากฐานข้อมูลตรงๆ อยู่แล้วตอนนั้น) ลดขนาดข้อมูลที่ต้องโหลดทุกครั้งลง โดยไม่เปลี่ยนจำนวน/
       // ลำดับแถวที่ได้เลยแม้แต่น้อย — ปลอดภัยกว่าการเปลี่ยนวิธีดึงข้อมูลเหมือนที่เคยลองแล้วมีบั๊ก
-      fetch(`${SUPABASE_URL}/rest/v1/feed_items?select=id,page_id,type,post_excerpt,author_name,message,status,folder,ai_reason,admin_reply,admin_reply_fb_id,admin_reply_by,fail_reason,replied_at,attachment_image_url,liked,blocked,created_at&order=created_at.desc`, { headers: sbAuthHeaders() }),
+      fetch(`${SUPABASE_URL}/rest/v1/feed_items?select=id,page_id,type,post_excerpt,author_name,message,status,folder,ai_reason,admin_reply,admin_reply_fb_id,admin_reply_by,fail_reason,replied_at,attachment_image_url,auto_archive_reason,liked,blocked,created_at&order=created_at.desc`, { headers: sbAuthHeaders() }),
       fetch(`${SUPABASE_URL}/rest/v1/user_page_hashtags?select=page_id,hashtag`, { headers: sbAuthHeaders() }),
       // โพสต์เพจล่าสุดของทุกเพจ (สำหรับแท็บ "โพสต์เพจ" + ตัวเลขแจ้งเตือนบน topbar) เรียงใหม่สุดก่อน
       fetch(`${SUPABASE_URL}/rest/v1/page_posts?select=*&order=posted_at.desc.nullslast&limit=200`, { headers: sbAuthHeaders() }),
@@ -1717,7 +1721,8 @@ async function loadData(){
       const newCountByPage = {};
       let hasNew = false;
       for (const it of freshItems) {
-        if (!knownItemIds.has(it.id)) {
+        // คอมเมนต์ลงกิจกรรมที่ถูกจัดเก็บอัตโนมัติไม่ต้องส่งเสียง/กระพริบ (ไม่งั้นโพสต์กิจกรรมจะดังรัวๆ)
+        if (!knownItemIds.has(it.id) && it.folder === 'inbox') {
           hasNew = true;
           newCountByPage[it.pageId] = (newCountByPage[it.pageId] || 0) + 1;
         }
@@ -2627,6 +2632,9 @@ function tagFor(item){
     return `<span class="tag hidden-tag" title="${reasonAttr}">ส่งไม่สำเร็จ ลองใหม่ ⓘ</span>`;
   }
   if (item.blocked) return `<span class="tag blocked-tag">ผู้ใช้ถูกบล็อก</span>`;
+  if (item.folder === 'archive' && item.autoArchiveReason === 'event_entry') {
+    return `<span class="tag auto-archived-tag" title="มี UID/AID ใต้โพสต์กิจกรรม และไม่มีคำถาม/แจ้งปัญหา — ถ้าจัดผิด กดย้ายกลับ Inbox ได้">🎁 เก็บอัตโนมัติ: ลงกิจกรรม</span>`;
+  }
   return `<span class="tag needs-reply">ต้องตอบกลับ</span>`;
 }
 
@@ -5010,7 +5018,8 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'unarchive':
       item.folder = 'inbox';
-      protectedPatch(item.id, { folder: 'inbox' });
+      item.autoArchiveReason = null;
+      protectedPatch(item.id, { folder: 'inbox', auto_archive_reason: null });
       showToast('ย้ายกลับ Inbox แล้ว', 'success');
       render(); break;
 
