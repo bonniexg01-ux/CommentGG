@@ -4,6 +4,20 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
+// แจ้งเตือน push จากเซิร์ฟเวอร์ (ประกาศสำคัญ) — เด้งได้แม้ปิดแอป/ปิดเว็บอยู่ ดู lib/push.cjs
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data ? event.data.text() : '' }; }
+  event.waitUntil(self.registration.showNotification(data.title || '⚠️ ประกาศสำคัญ', {
+    body: data.body || '',
+    icon: data.icon || '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: data.tag || undefined,
+    requireInteraction: true,
+    data: { postId: data.postId || null },
+  }));
+});
+
 // กดแจ้งเตือน (ที่เว็บสั่งแสดงผ่าน service worker) แล้วเปิด/สลับกลับมาที่แอป
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();

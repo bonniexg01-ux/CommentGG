@@ -1714,12 +1714,74 @@ function showNewPostDesktopNotification(post){
   }
 }
 
-function openPostFromNotification(postId){
-  state.view = 'page-posts';
-  state.pagePosts.detailId = postId;
-  state.pagePosts.video = null;
+// ---------- แจ้งเตือน push (ทำงานแม้ปิดแอป/ปิดเว็บ) — ส่งเฉพาะประกาศสำคัญ ดู lib/push.cjs ----------
+const VAPID_PUBLIC_KEY = 'BH0x22wIFCJME3zaC9i2xnGB9mSUXdXIFMHyjghrWx45bEC50R_3SC5wFNNONlVCHbDCzPS-G8XLR8u44USPsyg';
+let pushRegisteredKey = '';
+function pushSupported(){
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+function pushStatusText(){
+  if (!pushSupported()) {
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    return ios ? 'iPhone/iPad: ต้องเปิดจากไอคอนแอปที่ติดตั้งลงหน้าจอโฮมก่อน (Safari > แชร์ > เพิ่มไปยังหน้าจอโฮม)' : 'เบราว์เซอร์นี้ไม่รองรับแจ้งเตือนแบบ push';
+  }
+  if (Notification.permission === 'denied') return '❌ ถูกบล็อกไว้ — เปิดสิทธิ์แจ้งเตือนของเว็บนี้ในการตั้งค่าเบราว์เซอร์/มือถือก่อน';
+  if (Notification.permission === 'granted') return pushRegisteredKey ? '✅ เปิดอยู่ — อุปกรณ์นี้จะได้รับแจ้งเตือน' : '⏳ อนุญาตแล้ว กำลังลงทะเบียน…';
+  return 'ยังไม่ได้เปิด';
+}
+function urlBase64ToUint8Array(b64){
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+// ลงทะเบียนอุปกรณ์นี้กับเซิร์ฟเวอร์ (ทำซ้ำได้ ปลอดภัย — เซิร์ฟเวอร์ upsert ตาม endpoint)
+async function ensurePushSubscription(){
+  if (!state.auth.session || !pushSupported() || Notification.permission !== 'granted') return false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
+    const key = `${state.auth.session.user.id}|${sub.endpoint}`;
+    if (pushRegisteredKey === key) return true;
+    await ensureFreshSession();
+    const res = await fetch('/api/push', { method: 'POST', headers: apiAuthHeaders(), body: JSON.stringify({ action: 'subscribe', subscription: sub.toJSON() }) });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    pushRegisteredKey = key;
+    return true;
+  } catch (err) {
+    console.error('ลงทะเบียนแจ้งเตือน push ไม่สำเร็จ:', err);
+    return false;
+  }
+}
+async function enableAndTestPush(){
+  if (!pushSupported()) { showToast(pushStatusText(), 'error'); return; }
+  if (Notification.permission === 'default') await Notification.requestPermission();
+  if (Notification.permission !== 'granted') { showToast('ยังไม่ได้อนุญาตแจ้งเตือน', 'error'); render(); return; }
+  const ok = await ensurePushSubscription();
+  if (!ok) { showToast('ลงทะเบียนแจ้งเตือนไม่สำเร็จ ลองใหม่อีกครั้ง', 'error'); render(); return; }
+  try {
+    const res = await fetch('/api/push', { method: 'POST', headers: apiAuthHeaders(), body: JSON.stringify({ action: 'test' }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+    showToast(data.sent ? `ส่งแจ้งเตือนทดสอบแล้ว (${data.sent} อุปกรณ์) — ควรเด้งภายในไม่กี่วินาที` : 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', data.sent ? 'success' : 'error');
+  } catch (err) {
+    showToast('ส่งแจ้งเตือนทดสอบไม่สำเร็จ: ' + err.message, 'error');
+  }
   render();
-  loadPagePostVideo(postId);
+}
+
+async function openPostFromNotification(postId){
+  state.view = 'page-posts';
+  // แอปเพิ่งถูกเปิดจากแจ้งเตือน โพสต์อาจยังไม่ถูกโหลดมา — โหลดก่อน ถ้ายังไม่เจอ (เช่นแจ้งเตือนทดสอบ) ก็แค่เปิดหน้าโพสต์เพจ
+  if (!PAGE_POSTS.some((p) => p.id === postId)) { render(); await loadData(); }
+  if (PAGE_POSTS.some((p) => p.id === postId)) {
+    state.pagePosts.detailId = postId;
+    state.pagePosts.video = null;
+    render();
+    loadPagePostVideo(postId);
+  } else {
+    render();
+  }
 }
 if (navigator.serviceWorker) {
   navigator.serviceWorker.addEventListener('message', (e) => {
@@ -1754,7 +1816,10 @@ function requestDesktopNotificationPermissionOnce(){
     document.removeEventListener('click', ask);
     if (!state.auth.session) { document.addEventListener('click', ask); return; } // รอให้ล็อกอินก่อน
     Notification.requestPermission().then((perm) => {
-      if (perm === 'granted') showToast('เปิดแจ้งเตือนแล้ว — มีโพสต์ใหม่ระหว่างทำอย่างอื่น จะเด้งที่มุมจอ', 'success');
+      if (perm === 'granted') {
+        showToast('เปิดแจ้งเตือนแล้ว — มีโพสต์ใหม่ระหว่างทำอย่างอื่น จะเด้งที่มุมจอ', 'success');
+        ensurePushSubscription();
+      }
     }).catch(() => {});
   };
   document.addEventListener('click', ask);
@@ -2651,6 +2716,12 @@ function renderProfileModal(){
       <input id="pf-newPassword2" type="password" placeholder="ยืนยันรหัสผ่านใหม่" autocomplete="new-password" style="margin-top:8px;" />
       <button class="btn" type="button" data-action="change-password" style="margin-top:10px;">เปลี่ยนรหัสผ่าน</button>
       <div class="form-hint">เปลี่ยนรหัสผ่านของบัญชีที่ล็อกอินอยู่ตอนนี้เท่านั้น (ไม่กระทบบัญชีคนอื่นในทีม)</div>
+    </div>
+    <div class="form-row">
+      <label>🔔 แจ้งเตือนประกาศสำคัญบนอุปกรณ์นี้</label>
+      <div class="form-hint" style="margin-bottom:8px;">${pushStatusText()}</div>
+      <button class="btn" type="button" data-action="push-enable-test">เปิดและทดสอบแจ้งเตือน</button>
+      <div class="form-hint">เพจโพสต์เรื่องปิดเซิร์ฟ/ปิดปรับปรุง จะเด้งแจ้งเตือนแม้ปิดแอป/ปิดเว็บอยู่ (มือถือ iPhone ต้องติดตั้งแอปลงหน้าจอโฮมก่อน) ทำแยกทีละเครื่อง</div>
     </div>
   `;
 
@@ -5120,6 +5191,10 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     // เปลี่ยนรหัสผ่านของบัญชีตัวเองที่ล็อกอินอยู่ตอนนี้ ผ่าน Supabase Auth โดยตรง (ใช้ JWT ของ
     // ผู้ใช้เอง ไม่ต้องผ่าน service key ฝั่งเซิร์ฟเวอร์ เพราะแก้ได้แค่บัญชีตัวเองเท่านั้นอยู่แล้ว)
+    case 'push-enable-test':
+      enableAndTestPush();
+      break;
+
     case 'change-password': {
       const p1 = document.getElementById('pf-newPassword');
       const p2 = document.getElementById('pf-newPassword2');
@@ -5522,6 +5597,7 @@ function kickInitialLoad(){
   initialLoadKicked = true;
   loadData();
   syncPollingPages();
+  ensurePushSubscription(); // อุปกรณ์ที่เคยอนุญาตแล้ว ลงทะเบียนรับ push ให้อัตโนมัติ
 }
 
 sb.auth.getSession().then(({ data }) => {

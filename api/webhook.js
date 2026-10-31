@@ -4,6 +4,7 @@
 // Writes new comments/messages directly into Supabase `feed_items`.
 
 const crypto = require('crypto');
+const { notifyImportantPost } = require('../lib/push.cjs');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://acwilhbtdbxhhwlabpes.supabase.co';
 // เดิมไฟล์นี้ใช้ anon/publishable key อ่าน/เขียน Supabase — ตอนเพิ่มระบบ login เข้ามาทีหลัง เรา
@@ -111,6 +112,15 @@ async function handleEvent(req, res) {
           // Combo แล้วขาดไป 2 คอมเมนต์ ทั้งที่ webhook subscription ฝั่ง Facebook ตั้งค่าถูกต้องทุกจุด
           // แก้โดยครอบ try/catch แยกรายคอมเมนต์ ให้ตัวที่พังไม่ลากตัวอื่นในชุดเดียวกันตกไปด้วย
           try {
+            // เพจโพสต์ใหม่ (ไม่ใช่คอมเมนต์) — บันทึกลง page_posts ทันที + ส่งแจ้งเตือน push ถ้าเป็นประกาศสำคัญ
+            // ทำให้แจ้งเตือนถึงมือถือทีมได้แม้ไม่มีใครเปิดเว็บค้างไว้ (เดิมโพสต์ใหม่เข้าระบบได้ทาง sync-posts
+            // ที่หน้าเว็บสั่งทุก 5 นาทีเท่านั้น)
+            if (change.field === 'feed' && change.value && PAGE_POST_ITEMS.has(change.value.item)
+                && change.value.verb === 'add' && change.value.published !== 0
+                && change.value.from && String(change.value.from.id) === fbPageId && change.value.post_id) {
+              await handleNewPagePost(pageUuid, change.value);
+              continue;
+            }
             if (change.field === 'feed' && change.value && change.value.item === 'comment') {
               // ลูกค้าลบคอมเมนต์ตัวเองทิ้ง (หรือคอมเมนต์ถูกลบจาก Facebook ไม่ว่าด้วยเหตุผลอะไรก็ตาม)
               // Meta ส่ง event เดิมกลับมาอีกรอบแต่ verb เป็น "remove" — ให้ลบรายการที่ตรงกันออกจาก
@@ -153,6 +163,43 @@ async function handleEvent(req, res) {
     console.error('webhook error', err);
     // ตอบ 200 เสมอกัน Meta retry ถี่ๆ แม้ฝั่งเราจะ error ระหว่างประมวลผล
     return res.status(200).send('EVENT_RECEIVED');
+  }
+}
+
+const PAGE_POST_ITEMS = new Set(['status', 'photo', 'video', 'post', 'share', 'album', 'link']);
+
+async function handleNewPagePost(pageUuid, value) {
+  const accessToken = await fetchPageAccessToken(pageUuid);
+  let post = { id: value.post_id, message: value.message || '', created_time: value.created_time ? new Date(value.created_time * 1000).toISOString() : null };
+  if (accessToken) {
+    // ดึงรายละเอียดเต็ม (รูป/ลิงก์โพสต์) แบบเดียวกับ api/sync-posts.mjs — ถ้าดึงไม่ได้ก็ใช้ข้อมูลจาก webhook ไปก่อน
+    try {
+      const fields = 'id,message,story,full_picture,permalink_url,created_time';
+      const r = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(value.post_id)}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(accessToken)}`);
+      const data = await r.json();
+      if (data && data.id) post = data;
+    } catch (err) {
+      console.error('webhook error: ดึงรายละเอียดโพสต์ใหม่ไม่สำเร็จ', err);
+    }
+  }
+  const record = {
+    page_id: pageUuid,
+    fb_post_id: post.id || value.post_id,
+    message: post.message || post.story || value.message || '',
+    image_url: post.full_picture || null,
+    permalink_url: post.permalink_url || null,
+    posted_at: post.created_time || null,
+  };
+  await fetch(`${SUPABASE_URL}/rest/v1/page_posts?on_conflict=fb_post_id`, {
+    method: 'POST',
+    headers: { ...sbHeaders, Prefer: 'resolution=ignore-duplicates,return=minimal' },
+    body: JSON.stringify(record),
+  });
+  const r2 = await fetch(`${SUPABASE_URL}/rest/v1/page_posts?fb_post_id=eq.${encodeURIComponent(record.fb_post_id)}&select=id,page_id,message,push_sent_at`, { headers: sbHeaders });
+  const row = r2.ok ? (await r2.json())[0] : null;
+  if (row && !row.push_sent_at) {
+    const result = await notifyImportantPost(row);
+    if (result.sent) console.log('webhook: ส่งแจ้งเตือนประกาศสำคัญแล้ว', result);
   }
 }
 

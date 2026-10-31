@@ -72,11 +72,26 @@ export default async function handler(request) {
     if (!pages.length) return json({ ok: true, pagesChecked: 0, inserted: 0 });
 
     let inserted = 0;
+    const seenPostIds = [];
     for (const page of pages) {
       try {
-        inserted += await syncOnePage(page);
+        inserted += await syncOnePage(page, seenPostIds);
       } catch (err) {
         console.error('sync-posts error: syncOnePage ล้มเหลว', page.page_id, err);
+      }
+    }
+
+    // สำรองกรณี webhook ไม่ได้ส่งโพสต์ใหม่มา — ให้ api/push.js เช็คว่ามีประกาศสำคัญที่ยังไม่เคยส่งแจ้งเตือนไหม
+    // (ส่งต่อ Authorization ของคนที่เรียกมา; api/push.js กันส่งซ้ำเองด้วย page_posts.push_sent_at)
+    if (seenPostIds.length) {
+      try {
+        await fetch(new URL('/api/push', request.url).toString(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: request.headers.get('Authorization') || '' },
+          body: JSON.stringify({ action: 'notify-posts', fbPostIds: seenPostIds }),
+        });
+      } catch (err) {
+        console.error('sync-posts error: เรียก api/push ไม่สำเร็จ', err);
       }
     }
 
@@ -99,13 +114,14 @@ async function fetchActivePages() {
   return r.json();
 }
 
-async function syncOnePage(page) {
+async function syncOnePage(page, seenPostIds = []) {
   if (!page.access_token) return 0;
 
   const posts = await fetchRecentPostsFull(page.page_id, page.access_token);
   let inserted = 0;
 
   for (const post of posts) {
+    seenPostIds.push(post.id);
     const ok = await upsertPagePost({
       page_id: page.id,
       fb_post_id: post.id,
