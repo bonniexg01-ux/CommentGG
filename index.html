@@ -304,25 +304,31 @@
   .presence-sub{ font-size:11.5px; color:var(--text-faint); }
   .presence-me{ font-size:10.5px; color:var(--text-faint); font-weight:500; }
   .presence-change{ text-decoration:underline; cursor:pointer; color:var(--text-dim); }
-  /* แมวส้มพิกเซล 4 เฟรม (icons/cat-wake-*.png = แถบภาพ 4 เฟรมเรียงแนวนอน แต่ละเฟรม 242x164 ที่ 1x)
-     ลำดับ: 1 นอนหลับ ~3.6 วิ → 2 เริ่มเงยหัว 0.2 วิ → 3 ลืมตา 0.2 วิ → 4 ตื่นเต็มที่ยิ้ม 1.2 วิ → กลับไปนอน (รอบละ 5.2 วิ)
-     วางไว้หลังการ์ดเนื้อหา (z-index:-1) จึงไม่บังงาน/ไม่รับการคลิก จอแคบที่การ์ดเต็มจอจะเห็นแค่ช่วงท้ายหน้า */
+  /* แมวออฟฟิศไฟลุกมุมขวาล่าง (icons/office-cat-*.{png,webp} = แถบภาพ 4 เฟรมเรียงแนวนอน แต่ละเฟรม 243x164 ที่ 1x)
+     ลำดับ: 1 พิมพ์ → 2 โมโห → 1 → 2 → 3 ระเบิด → 4 ชูมือโวยวาย (ค้างนานสุด) → 3 → 2 วนไม่สิ้นสุด รอบละ 1.62 วิ
+     คีย์บอร์ดถูกจัดให้อยู่ตำแหน่งเดียวกันทุกเฟรม ตัวแมว/คีย์บอร์ดจึงไม่กระโดด
+     วางไว้หลังการ์ดเนื้อหา (z-index:-1) ไม่บังงาน/ไม่รับการคลิก
+     (แมวนอน-ตื่นตัวก่อนหน้า icons/cat-wake-*.png ยังเก็บไว้ในระบบ) */
   .wake-cat{
     position:fixed; right:clamp(10px, 2vw, 28px); bottom:clamp(8px, 2vh, 24px); z-index:-1; pointer-events:none;
-    width:clamp(150px, 17vw, 242px); aspect-ratio:242 / 164;
-    background-image:url('/icons/cat-wake-164.png');
-    background-image:-webkit-image-set(url('/icons/cat-wake-164.png') 1x, url('/icons/cat-wake-328.png') 2x);
-    background-image:image-set(url('/icons/cat-wake-164.png') 1x, url('/icons/cat-wake-328.png') 2x);
+    width:clamp(150px, 17vw, 243px); aspect-ratio:243 / 164;
+    background-image:url('/icons/office-cat-164.png');
+    background-image:-webkit-image-set(url('/icons/office-cat-164.png') 1x, url('/icons/office-cat-328.webp') 2x);
+    background-image:image-set(url('/icons/office-cat-164.png') 1x, url('/icons/office-cat-328.webp') 2x);
     background-size:400% 100%; background-repeat:no-repeat; background-position:0% 0;
     image-rendering:pixelated;
-    animation:catWake 5.2s step-end infinite;
+    animation:officeCat 1.62s step-end infinite;
   }
-  @keyframes catWake{
+  @keyframes officeCat{
     0%{ background-position:0% 0; }
-    69.23%{ background-position:33.333% 0; }
-    73.08%{ background-position:66.667% 0; }
-    76.92%{ background-position:100% 0; }
-    100%{ background-position:100% 0; }
+    13.58%{ background-position:33.333% 0; }
+    23.46%{ background-position:0% 0; }
+    33.33%{ background-position:33.333% 0; }
+    43.21%{ background-position:66.667% 0; }
+    54.32%{ background-position:100% 0; }
+    80.25%{ background-position:66.667% 0; }
+    90.12%{ background-position:33.333% 0; }
+    100%{ background-position:33.333% 0; }
   }
   @media (prefers-reduced-motion: reduce){ .wake-cat{ animation:none; } }
   @keyframes spinIcon{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
@@ -876,7 +882,7 @@
 <body>
 <div id="app"></div>
 <div id="toastWrap"></div>
-<!-- แมวส้มพิกเซลตกแต่งมุมขวาล่าง (นอน → ตื่น วนไปเรื่อยๆ) — อยู่นอก #app จะได้ไม่เริ่มแอนิเมชันใหม่ทุกครั้งที่วาดหน้าจอ -->
+<!-- แมวออฟฟิศไฟลุกตกแต่งมุมขวาล่าง (พิมพ์งานโมโห วนไปเรื่อยๆ) — อยู่นอก #app จะได้ไม่เริ่มแอนิเมชันใหม่ทุกครั้งที่วาดหน้าจอ -->
 <div class="wake-cat" aria-hidden="true"></div>
 
 <!-- Supabase Auth: ใช้จัดการล็อกอินของทีม (คนละไอดีกันเข้า) แทนการเปิดหน้าเว็บแบบไม่ต้องล็อกอิน -->
@@ -1322,7 +1328,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '31/10 17:28';
+const APP_VERSION = '31/10 18:12';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
