@@ -1438,7 +1438,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '31/10 18:45';
+const APP_VERSION = '31/10 23:58';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
@@ -5584,6 +5584,7 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'sign-out':
       state.userMenuOpen = false;
+      stopRealtime();
       try { sessionStorage.removeItem(CLOCKIN_KEY); } catch {}
       sb.auth.signOut(); // onAuthStateChange ด้านล่างจะเคลียร์ session + พาไปหน้า login เอง
       break;
@@ -6057,6 +6058,36 @@ function kickInitialLoad(){
   syncPollingPages();
   ensurePushSubscription(); // อุปกรณ์ที่เคยอนุญาตแล้ว ลงทะเบียนรับ push ให้อัตโนมัติ
   presenceHeartbeat();
+  startRealtime();
+}
+
+// ---------- รับคอมเมนต์/โพสต์ใหม่ทันที (Supabase Realtime) ----------
+// เดิมหน้าเว็บรอรอบโหลดทุก 20 วิ คอมเมนต์ที่เข้าระบบแล้วเลยโผล่บนจอช้าไปอีกถึง 20 วิ — ตอนนี้ฐานข้อมูลส่งสัญญาณ
+// มาทันทีที่มีคอมเมนต์ใหม่/มีการเปลี่ยนสถานะ แล้วหน้าเว็บโหลดข้อมูลใหม่ภายใน ~0.3–2 วิ (ยังเคารพสิทธิ์ RLS เดิม
+// เห็นเฉพาะเพจที่มีสิทธิ์) ช่วงคอมเมนต์ถล่มจะรวบเป็นโหลดเดียวทุก 2 วิ กันยิงฐานข้อมูลถี่เกินไป
+// รอบโหลดทุก 20 วิยังอยู่เป็นตัวสำรอง ถ้าการเชื่อมต่อ Realtime หลุด
+let realtimeChannel = null;
+let realtimeTimer = null;
+let lastRealtimeLoadAt = 0;
+function scheduleRealtimeLoad(){
+  if (!state.auth.session || realtimeTimer) return;
+  const wait = Math.max(300, 2000 - (Date.now() - lastRealtimeLoadAt));
+  realtimeTimer = setTimeout(() => {
+    realtimeTimer = null;
+    lastRealtimeLoadAt = Date.now();
+    if (!isUserEditingSomething()) loadData();
+    else checkNewPagePostsOnly(); // กำลังพิมพ์ตอบอยู่ — ไม่วาดหน้าใหม่ทับ แต่ยังแจ้งเตือนโพสต์ใหม่ได้
+  }, wait);
+}
+function startRealtime(){
+  if (realtimeChannel || !state.auth.session) return;
+  realtimeChannel = sb.channel('commentgg-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'feed_items' }, scheduleRealtimeLoad)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'page_posts' }, scheduleRealtimeLoad)
+    .subscribe((status) => { if (status !== 'SUBSCRIBED') console.warn('Realtime:', status); });
+}
+function stopRealtime(){
+  if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
 }
 
 sb.auth.getSession().then(({ data }) => {
