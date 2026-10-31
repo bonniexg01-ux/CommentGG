@@ -272,6 +272,26 @@
     55%{ transform: rotate(-9deg) scale(1.05); }
     75%{ transform: rotate(7deg) scale(1.05); }
   }
+  /* แผง "ใครออนไลน์" — ชี้เมาส์ที่มาสคอตมุมซ้ายบน (คอม) หรือแตะ (มือถือ) */
+  .presence-wrap{ position:relative; }
+  .presence-panel{
+    display:none; position:absolute; top:calc(100% + 10px); left:0; z-index:90; width:270px; max-height:65vh; overflow:auto;
+    background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:14px;
+    box-shadow:0 12px 32px rgba(0,0,0,.18); padding:10px; font-size:13px; font-weight:500; letter-spacing:0;
+  }
+  @media (hover:hover){ .presence-wrap:hover .presence-panel{ display:block; } }
+  .presence-wrap.open .presence-panel{ display:block; }
+  .presence-title{ font-weight:700; font-size:13px; color:var(--text-dim); padding:2px 4px 8px; }
+  .presence-row{ display:flex; align-items:center; gap:10px; padding:6px 4px; border-radius:10px; }
+  .presence-row + .presence-row{ border-top:1px solid var(--border); }
+  .presence-avatar{ position:relative; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:19px; flex:none; }
+  .presence-dot{ position:absolute; right:-1px; bottom:-1px; width:11px; height:11px; border-radius:50%; border:2px solid var(--surface); }
+  .presence-dot.on{ background:#22C55E; animation:presencePulse 1.6s ease-in-out infinite; }
+  .presence-dot.off{ background:#EF4444; }
+  @keyframes presencePulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(34,197,94,.7);} 50%{ box-shadow:0 0 0 5px rgba(34,197,94,0);} }
+  .presence-name{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .presence-sub{ font-size:11.5px; color:var(--text-faint); }
+  .presence-me{ font-size:10.5px; color:var(--text-faint); font-weight:500; }
   @keyframes spinIcon{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
   .spin-icon svg{ animation: spinIcon .7s linear infinite; }
   .spinner{
@@ -1153,8 +1173,67 @@ async function callTranslateApi(text, target, source){
   }
 }
 
+// ---------- ใครออนไลน์ (team_presence) ----------
+// หน้าเว็บของแต่ละคนอัปเดตเวลาล่าสุดของตัวเองทุก 1 นาที — ส่งมาภายใน 2.5 นาทีล่าสุด = ออนไลน์ (เปิดเว็บ/แอปอยู่)
+let TEAM_PRESENCE = [];
+const PRESENCE_ONLINE_MS = 150000;
+const PRESENCE_AVATARS = ['🐻','🐱','🐶','🐰','🦊','🐼','🐨','🐯','🐸','🐵','🐧','🐹','🦁','🐮','🐷','🐙','🦄','🐥'];
+const PRESENCE_COLORS = ['#FDE2E4','#E2F0CB','#DCEBFF','#FFF1C9','#EADCF8','#D7F5EF','#FFE0CC','#E8E8E8'];
+function presenceHash(id){ let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
+function presenceDisplayName(row){ return row.display_name || (row.email ? row.email.split('@')[0] : 'ไม่ทราบชื่อ'); }
+function renderPresenceList(){
+  if (!TEAM_PRESENCE.length) return '<div class="presence-sub" style="padding:6px 4px;">กำลังโหลดรายชื่อ…</div>';
+  const now = Date.now();
+  const myId = state.auth.session && state.auth.session.user && state.auth.session.user.id;
+  const rows = TEAM_PRESENCE.map((r) => {
+    const seen = r.last_seen_at ? new Date(r.last_seen_at).getTime() : 0;
+    return { ...r, online: seen && now - seen < PRESENCE_ONLINE_MS, seen };
+  }).sort((a, b) => (b.online - a.online) || (b.seen - a.seen) || presenceDisplayName(a).localeCompare(presenceDisplayName(b)));
+  const onlineCount = rows.filter((r) => r.online).length;
+  return `<div class="presence-sub" style="padding:0 4px 6px;">ออนไลน์ ${onlineCount} จาก ${rows.length} คน</div>` + rows.map((r) => {
+    const h = presenceHash(r.user_id);
+    const name = presenceDisplayName(r).replace(/</g, '&lt;');
+    const sub = r.online ? 'ออนไลน์อยู่' : (r.seen ? `ออฟไลน์ · ${timeAgo(r.last_seen_at)}` : 'ยังไม่เคยเข้าใช้');
+    return `
+      <div class="presence-row">
+        <div class="presence-avatar" style="background:${PRESENCE_COLORS[h % PRESENCE_COLORS.length]};">
+          ${PRESENCE_AVATARS[h % PRESENCE_AVATARS.length]}
+          <span class="presence-dot ${r.online ? 'on' : 'off'}"></span>
+        </div>
+        <div style="min-width:0;">
+          <div class="presence-name">${name} ${r.user_id === myId ? '<span class="presence-me">(คุณ)</span>' : ''}</div>
+          <div class="presence-sub">${sub}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+// อัปเดตเฉพาะเนื้อหาในแผง (ไม่วาดทั้งหน้าใหม่) — แผงอาจเปิดค้างอยู่ตอนเอาเมาส์ชี้
+function refreshPresencePanel(){
+  const el = document.getElementById('presenceBody');
+  if (el) el.innerHTML = renderPresenceList();
+}
+async function presenceHeartbeat(){
+  const sess = state.auth.session;
+  if (!sess || !sess.user) return;
+  await ensureFreshSession();
+  const user = state.auth.session.user;
+  const meta = user.user_metadata || {};
+  const displayName = `${meta.first_name || ''} ${meta.last_name || ''}`.trim() || null;
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/team_presence?on_conflict=user_id`, {
+      method: 'POST',
+      headers: { ...sbAuthHeaders(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ user_id: user.id, display_name: displayName, email: user.email, last_seen_at: new Date().toISOString() }),
+    });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/team_presence?select=user_id,display_name,email,last_seen_at`, { headers: sbAuthHeaders() });
+    if (res.ok) { TEAM_PRESENCE = await res.json(); refreshPresencePanel(); }
+  } catch (err) {
+    console.error('อัปเดตสถานะออนไลน์ไม่สำเร็จ:', err);
+  }
+}
+
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '31/10 16:34';
+const APP_VERSION = '31/10 16:42';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
@@ -1849,6 +1928,7 @@ function refreshAfterResume(){
   if (!state.auth || !state.auth.session) return;
   state.userMenuOpen = false;
   state.soundMenuOpen = false;
+  state.presenceOpen = false;
   if (state.expandedId || state.editingReplyId || state.profileOpen || state.pagesAdmin.formOpen || state.teamAdmin.formOpen) return;
   render();
 }
@@ -2219,6 +2299,7 @@ const state = {
 
   userMenuOpen: false,
   profileOpen: false,
+  presenceOpen: false, // แผง "ใครออนไลน์" (มือถือเปิดด้วยการแตะ คอมชี้เมาส์ก็ขึ้นเอง)
   // หน้าต่าง "เลือกเพจที่แสดง" (ตั้งค่าของแต่ละคน ติดบัญชีไว้ เปิดเว็บครั้งต่อไปก็ยังเป็นแบบที่เลือก)
   pagePicker: { open: false, saving: false },
   profileTab: 'profile',
@@ -2601,7 +2682,13 @@ function renderTopbar(){
   return `
     <div class="topbar">
       <div class="topbar-brand">
-        <div class="mark">${iconForTheme()}</div>
+        <div class="presence-wrap ${state.presenceOpen ? 'open' : ''}">
+          <div class="mark" data-action="toggle-presence" title="ใครออนไลน์อยู่บ้าง">${iconForTheme()}</div>
+          <div class="presence-panel" data-action="stop-propagation">
+            <div class="presence-title">👥 ทีมตอนนี้</div>
+            <div id="presenceBody">${renderPresenceList()}</div>
+          </div>
+        </div>
         CommentGG
       </div>
       <div class="topbar-actions">
@@ -2641,6 +2728,7 @@ function renderTopbar(){
       </div>
     </div>
     ${state.userMenuOpen ? `<div class="menu-backdrop" data-action="close-user-menu"></div>` : ''}
+    ${state.presenceOpen ? `<div class="menu-backdrop" data-action="close-presence"></div>` : ''}
     ${state.soundMenuOpen ? `<div class="menu-backdrop" data-action="close-sound-menu"></div>` : ''}
     ${state.profileOpen ? renderProfileModal() : ''}
     ${state.pagePicker.open ? renderPagePickerModal() : ''}
@@ -5008,7 +5096,7 @@ document.getElementById('app').addEventListener('change', (e) => {
   }
 });
 
-const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu', 'close-sound-menu', 'close-filters', 'pages-admin-close-form', 'team-admin-close-form', 'close-page-post-detail', 'close-page-picker']);
+const BACKDROP_CLOSE_ACTIONS = new Set(['close-profile', 'close-post-panel', 'close-user-menu', 'close-sound-menu', 'close-filters', 'pages-admin-close-form', 'team-admin-close-form', 'close-page-post-detail', 'close-page-picker', 'close-presence']);
 
 // กดจัดการคอมเมนต์รายการนี้ (เปิดดู/ตอบ/ซ่อน/ย้ายถัง/เก็บ archive/กู้คืน/ลบถาวร) แปลว่า "เห็น/จัดการ
 // แล้ว" — เอาสถานะ "โดนถล่ม" (surge) ของเพจนั้นออกทันที (ไฟกระพริบพื้นฐานไม่ต้องเคลียร์ตรงนี้แล้ว
@@ -5066,6 +5154,17 @@ document.getElementById('app').addEventListener('click', (e) => {
 
     case 'page-posts-more':
       state.pagePosts.limit = (state.pagePosts.limit || PAGE_POSTS_PAGE_SIZE) + PAGE_POSTS_PAGE_SIZE;
+      render();
+      break;
+
+    case 'toggle-presence':
+      state.presenceOpen = !state.presenceOpen;
+      if (state.presenceOpen) presenceHeartbeat();
+      render();
+      break;
+
+    case 'close-presence':
+      state.presenceOpen = false;
       render();
       break;
 
@@ -5740,6 +5839,7 @@ function kickInitialLoad(){
   loadData();
   syncPollingPages();
   ensurePushSubscription(); // อุปกรณ์ที่เคยอนุญาตแล้ว ลงทะเบียนรับ push ให้อัตโนมัติ
+  presenceHeartbeat();
 }
 
 sb.auth.getSession().then(({ data }) => {
@@ -5838,6 +5938,8 @@ setInterval(syncPollingPages, 90000);
 // เช็คโพสต์ใหม่ของทุกเพจ (ไม่ใช่แค่เพจ polling คอมเมนต์) เป็นระยะ — ถี่น้อยกว่าคอมเมนต์เพราะโพสต์ออก
 // ไม่บ่อยเท่า และต้องไล่ทุกเพจ (ไม่ได้กรองด้วย needs_polling) กันยิง Graph API ถี่เกินจำเป็น
 setInterval(syncPagePostsFromFb, 5 * 60 * 1000);
+setInterval(presenceHeartbeat, 60 * 1000); // บอกทีมว่ายังออนไลน์อยู่ + อัปเดตรายชื่อในแผง "ใครออนไลน์"
+document.addEventListener('visibilitychange', () => { if (!document.hidden) presenceHeartbeat(); });
 
 // ลงทะเบียน service worker ให้ติดตั้งเป็นแอปได้ (ดู sw.js — ไม่แคชอะไร ไม่กระทบการโหลดเว็บ)
 if ('serviceWorker' in navigator) {
