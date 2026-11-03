@@ -19,11 +19,11 @@ export const config = {
   runtime: 'edge',
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://acwilhbtdbxhhwlabpes.supabase.co';
+const SUPABASE_URL = 'https://bigraupfyreieuokuuoy.supabase.co' /* ย้ายโปรเจกต์ 03/11 — ไม่อ่าน env SUPABASE_URL แล้ว กันค่าเก่าค้างใน Vercel */;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 // publishable/anon key — ใช้แค่ตรวจสอบ token ผู้ใช้ที่แนบมากับคำขอผ่าน /auth/v1/user เท่านั้น
 // (ค่านี้ถูกออกแบบให้ฝังในฝั่ง client ได้อยู่แล้ว ไม่ใช่ความลับเหมือน SERVICE_KEY)
-const SUPABASE_ANON_KEY = 'sb_publishable_i9A_PqJhrOb8kmP47x2OOg_Ma2AhTRn';
+const SUPABASE_ANON_KEY = 'sb_publishable_iEWKhir8bCWiqiMHWCBeBw_891Wez2k';
 const GRAPH_VERSION = 'v23.0';
 // ถ้า Facebook ไม่ตอบภายในเวลานี้ ให้ตัดการเชื่อมต่อเองแล้วมาร์ค 'failed' ทันที
 // กันไม่ให้ Vercel Edge Function ถูก platform ตัดจบกลางคันแบบเงียบๆ (ซึ่งจะทำให้ไม่มีการเขียน

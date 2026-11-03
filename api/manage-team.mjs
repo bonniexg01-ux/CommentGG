@@ -17,9 +17,9 @@ export const config = {
   runtime: 'edge',
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://acwilhbtdbxhhwlabpes.supabase.co';
+const SUPABASE_URL = 'https://bigraupfyreieuokuuoy.supabase.co' /* ย้ายโปรเจกต์ 03/11 — ไม่อ่าน env SUPABASE_URL แล้ว กันค่าเก่าค้างใน Vercel */;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const SUPABASE_ANON_KEY = 'sb_publishable_i9A_PqJhrOb8kmP47x2OOg_Ma2AhTRn';
+const SUPABASE_ANON_KEY = 'sb_publishable_iEWKhir8bCWiqiMHWCBeBw_891Wez2k';
 
 const sbHeaders = {
   apikey: SERVICE_KEY,

@@ -6,7 +6,7 @@
 const crypto = require('crypto');
 const { notifyImportantPost } = require('../lib/push.cjs');
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://acwilhbtdbxhhwlabpes.supabase.co';
+const SUPABASE_URL = 'https://bigraupfyreieuokuuoy.supabase.co' /* ย้ายโปรเจกต์ 03/11 — ไม่อ่าน env SUPABASE_URL แล้ว กันค่าเก่าค้างใน Vercel */;
 // เดิมไฟล์นี้ใช้ anon/publishable key อ่าน/เขียน Supabase — ตอนเพิ่มระบบ login เข้ามาทีหลัง เรา
 // ล็อก RLS ของ feed_items และ pages_public ให้เหลือแค่ role "authenticated" เท่านั้น (REVOKE
 // สิทธิ์ anon ออกไปหมด กันไม่ให้ใครก็ตามที่ไม่ได้ล็อกอินมาอ่าน/เขียนข้อมูลได้ตรงๆ)

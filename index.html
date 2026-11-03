@@ -1159,8 +1159,8 @@ updateTabTitle();
 /* ============================================================
    LIVE DATA (Supabase) — โหลดคอมเมนต์/ข้อความจริงจากฐานข้อมูล
 ============================================================ */
-const SUPABASE_URL = 'https://acwilhbtdbxhhwlabpes.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_i9A_PqJhrOb8kmP47x2OOg_Ma2AhTRn';
+const SUPABASE_URL = 'https://bigraupfyreieuokuuoy.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_iEWKhir8bCWiqiMHWCBeBw_891Wez2k';
 
 // ไคลเอนต์ Supabase Auth — จัดการ session ของผู้ใช้ที่ล็อกอิน ต่ออายุ token อัตโนมัติ
 // ตั้งชื่อ "sb" กันชนกับ global "supabase" ที่มาจาก CDN script
@@ -1438,7 +1438,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '03/11 09:30';
+const APP_VERSION = '03/11 10:00';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
@@ -2267,7 +2267,7 @@ let itemsCursor = null;          // updated_at ล่าสุดที่เค
 let deletedCursor = null;        // deleted_at ล่าสุดที่เคยได้
 let lastFullItemsLoadAt = 0;
 let forceFullItemsLoad = false;
-const FULL_ITEMS_RELOAD_MS = 30 * 60 * 1000;
+const FULL_ITEMS_RELOAD_MS = 6 * 60 * 60 * 1000; // โหลดเต็มเป็นตัวกันพลาดทุก 6 ชม. (ปกติเปิดเว็บ/กดรีเฟรชก็โหลดเต็มอยู่แล้ว)
 const CURSOR_OVERLAP_MS = 15000; // ขอเหลื่อมย้อนไป 15 วิ กันแถวที่ commit ช้ากว่าเวลา updated_at ของมัน
 function cursorParam(iso){ return new Date(new Date(iso).getTime() - CURSOR_OVERLAP_MS).toISOString(); }
 function maxIso(a, b){ return !a ? b : (!b ? a : (a > b ? a : b)); }
@@ -2350,32 +2350,41 @@ async function loadAnalyticsItems(){
 
 let lastPagePostsLoadAt = 0;
 let pagePostsDirty = true;
-function needPagePostsReload(){ return pagePostsDirty || Date.now() - lastPagePostsLoadAt > 5 * 60 * 1000; }
+// โพสต์เพจโหลดเฉพาะตอนมีโพสต์ใหม่จริง (Realtime/sync-posts ตั้ง pagePostsDirty) + กันพลาดทุก 1 ชม.
+function needPagePostsReload(){ return pagePostsDirty || Date.now() - lastPagePostsLoadAt > 60 * 60 * 1000; }
+let lastMetaLoadAt = 0;
+let META_CACHE = null;
 
 async function loadData(){
   // ยังไม่ล็อกอิน ไม่ต้องดึงข้อมูล (RLS ฝั่ง Supabase จะปฏิเสธอยู่แล้ว แต่กันไว้ตั้งแต่ต้นเลย)
   if (!state.auth.session) return;
   await ensureFreshSession();
   try {
+    const needMeta = !META_CACHE || forceFullItemsLoad || Date.now() - lastMetaLoadAt > 5 * 60 * 1000;
     const [pagesRes, itemsRes, hashtagsRes, postsRes] = await Promise.all([
-      // เรียงตาม created_at เสมอ (เพจที่เพิ่มก่อนอยู่หน้าก่อน) — เดิมไม่ได้ระบุ order เลย Postgres
-      // จะคืนแถวมาตามลำดับภายในของมันเอง ไม่การันตีว่าจะตรงกับลำดับที่เพิ่มเพจจริง ทำให้แท็บเพจ
-      // สลับที่ไปมาดูไม่เป็นระเบียบ (เช่น WarZ TH ซึ่งเพิ่มก่อน ดันไปโผล่ท้ายแถว)
-      fetch(`${SUPABASE_URL}/rest/v1/pages_public?select=*&order=created_at.asc`, { headers: sbAuthHeaders() }),
-      // ระบุ select เฉพาะคอลัมน์ที่หน้าเว็บใช้จริง (ไม่เอา fb_id, fb_post_id, author_fb_id — เป็น ID
-      // ของ Facebook ที่ฝั่งหน้าเว็บไม่เคยอ่านไปใช้เลย ฝั่ง backend ที่ต้องใช้ตอนตอบ/ลบ/ซ่อนคอมเมนต์จะ
-      // ไปดึงเองจากฐานข้อมูลตรงๆ อยู่แล้วตอนนั้น) ลดขนาดข้อมูลที่ต้องโหลดทุกครั้งลง โดยไม่เปลี่ยนจำนวน/
-      // ลำดับแถวที่ได้เลยแม้แต่น้อย — ปลอดภัยกว่าการเปลี่ยนวิธีดึงข้อมูลเหมือนที่เคยลองแล้วมีบั๊ก
+      // รายชื่อเพจ/แฮชแท็กเปลี่ยนน้อยมาก — โหลดใหม่ทุก 5 นาที (หรือกดรีเฟรชเอง) ไม่ใช่ทุก 20 วิ
+      needMeta ? fetch(`${SUPABASE_URL}/rest/v1/pages_public?select=*&order=created_at.asc`, { headers: sbAuthHeaders() }) : Promise.resolve(null),
       fetchDashboardItems(),
-      fetch(`${SUPABASE_URL}/rest/v1/user_page_hashtags?select=page_id,hashtag`, { headers: sbAuthHeaders() }),
+      needMeta ? fetch(`${SUPABASE_URL}/rest/v1/user_page_hashtags?select=page_id,hashtag`, { headers: sbAuthHeaders() }) : Promise.resolve(null),
       // โพสต์เพจล่าสุดของทุกเพจ (สำหรับแท็บ "โพสต์เพจ" + ตัวเลขแจ้งเตือนบน topbar) เรียงใหม่สุดก่อน
       // โพสต์เพจหนัก (~250 KB) — โหลดแค่ครั้งแรก/ทุก 5 นาที/ตอน Realtime บอกว่ามีโพสต์ใหม่/กดรีเฟรชเอง
       needPagePostsReload()
         ? fetch(`${SUPABASE_URL}/rest/v1/page_posts?select=*&order=posted_at.desc.nullslast&limit=200`, { headers: sbAuthHeaders() })
         : Promise.resolve(null),
     ]);
-    if (!pagesRes.ok || !itemsRes) throw new Error('โหลดข้อมูลไม่สำเร็จ');
-    ALL_PAGES = (await pagesRes.json()).map(mapPage);
+    if (!itemsRes) throw new Error('โหลดข้อมูลไม่สำเร็จ');
+    let pagesJson, hashtagsJson;
+    if (needMeta) {
+      if (!pagesRes || !pagesRes.ok) throw new Error('โหลดรายชื่อเพจไม่สำเร็จ');
+      pagesJson = await pagesRes.json();
+      hashtagsJson = hashtagsRes && hashtagsRes.ok ? await hashtagsRes.json() : (META_CACHE ? META_CACHE.hashtags : []);
+      META_CACHE = { pages: pagesJson, hashtags: hashtagsJson };
+      lastMetaLoadAt = Date.now();
+    } else {
+      pagesJson = META_CACHE.pages;
+      hashtagsJson = META_CACHE.hashtags;
+    }
+    ALL_PAGES = pagesJson.map(mapPage);
     const visiblePageIds = applyPageVisibility();
     // คอมเมนต์ของเพจที่ผู้ใช้ซ่อนไว้ไม่ต้องโหลดเข้ามาเลย — ไม่นับ ไม่กระพริบ ไม่ส่งเสียง
     const freshItems = itemsRes.map(mapItem).filter((it) => visiblePageIds.has(it.pageId));
@@ -2417,8 +2426,8 @@ async function loadData(){
     }
     knownItemIds = freshIds;
 
-    if (hashtagsRes.ok) {
-      const rows = await hashtagsRes.json();
+    {
+      const rows = hashtagsJson || [];
       MY_HASHTAGS = {};
       rows.forEach(r => { MY_HASHTAGS[r.page_id] = r.hashtag || ''; });
     }
@@ -4081,6 +4090,7 @@ async function loadPagesAdmin(){
   state.pagesAdmin.loading = true;
   render();
   try {
+    lastMetaLoadAt = 0; // รายชื่อเพจจะเปลี่ยน — รอบโหลดถัดไปให้ดึงใหม่
     const res = await fetch('/api/manage-pages', {
       method: 'POST',
       headers: apiAuthHeaders(),
@@ -4106,6 +4116,7 @@ async function refreshAllPageLogos(){
   state.pagesAdmin.refreshingLogos = true;
   render();
   try {
+    lastMetaLoadAt = 0; // รายชื่อเพจจะเปลี่ยน — รอบโหลดถัดไปให้ดึงใหม่
     const res = await fetch('/api/manage-pages', {
       method: 'POST',
       headers: apiAuthHeaders(),
@@ -4131,6 +4142,7 @@ async function loadTokenHealth(){
   state.pagesAdmin.tokenHealthLoading = true;
   render();
   try {
+    lastMetaLoadAt = 0; // รายชื่อเพจจะเปลี่ยน — รอบโหลดถัดไปให้ดึงใหม่
     const res = await fetch('/api/manage-pages', {
       method: 'POST',
       headers: apiAuthHeaders(),
@@ -4184,6 +4196,7 @@ async function testPageToken(){
   captureAdminFormDraft();
   render();
   try {
+    lastMetaLoadAt = 0; // รายชื่อเพจจะเปลี่ยน — รอบโหลดถัดไปให้ดึงใหม่
     const res = await fetch('/api/manage-pages', {
       method: 'POST',
       headers: apiAuthHeaders(),
@@ -4222,6 +4235,7 @@ async function savePageAdmin(){
   captureAdminFormDraft(); // เก็บค่าที่พิมพ์ไว้ก่อน render() เผื่อบันทึกไม่สำเร็จจะได้ไม่ต้องพิมพ์ใหม่
   render();
   try {
+    lastMetaLoadAt = 0; // รายชื่อเพจจะเปลี่ยน — รอบโหลดถัดไปให้ดึงใหม่
     const res = await fetch('/api/manage-pages', {
       method: 'POST',
       headers: apiAuthHeaders(),
@@ -4257,6 +4271,7 @@ async function subscribeWebhookAdmin(){
   captureAdminFormDraft();
   render();
   try {
+    lastMetaLoadAt = 0; // รายชื่อเพจจะเปลี่ยน — รอบโหลดถัดไปให้ดึงใหม่
     const res = await fetch('/api/manage-pages', {
       method: 'POST',
       headers: apiAuthHeaders(),
@@ -5696,7 +5711,7 @@ document.getElementById('app').addEventListener('click', (e) => {
       }
 
       Promise.all(changedPages.map(({ page, newHashtag }) =>
-        saveMyHashtag(page.id, newHashtag).then(() => { MY_HASHTAGS[page.id] = newHashtag; })
+        saveMyHashtag(page.id, newHashtag).then(() => { MY_HASHTAGS[page.id] = newHashtag; lastMetaLoadAt = 0; })
       ))
         .then(() => {
           showToast('บันทึกโปรไฟล์และแฮชแท็กเรียบร้อยแล้ว', 'success');
