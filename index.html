@@ -1438,7 +1438,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '01/11 00:30';
+const APP_VERSION = '03/11 09:30';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
@@ -2258,13 +2258,64 @@ async function fetchAllRows(query, maxRows){
 // ~18,000 แถว) คอมเมนต์ "ต้องตอบกลับ" ที่เก่ากว่า 1000 แถวล่าสุดเลยหายไปจาก Inbox เงียบๆ (พบ 86 รายการ —
 // โพสต์กิจกรรมที่มีคอมเมนต์เข้ามาเยอะดันให้หลุด) — แยกเป็น 2 ชุด: Inbox ทั้งหมดไม่จำกัด (ต้องไม่หลุดสักอัน)
 // + Archive/Bin 1000 แถวล่าสุด (ไว้ดูย้อนหลัง; หน้ารายงานสถิติดึงของตัวเองแยกตามช่วงวันที่ ดู loadAnalyticsItems)
+// เจอจริง (03/11): โหลด Inbox ทั้งหมด + 1000 แถวล่าสุด "ทั้งก้อน" (~0.6 MB) ทุก 20 วิ ต่อคน + ทุกครั้งที่
+// Realtime เด้ง ทำให้ Supabase แพ็กเกจฟรีใช้โควตาส่งข้อมูล (5 GB/เดือน) หมดจนโดนระงับทั้งโปรเจกต์ —
+// ตอนนี้โหลดเต็มแค่ครั้งแรก (และทุก 30 นาที/กดรีเฟรชเอง) รอบต่อๆ ไปขอเฉพาะแถวที่ "เปลี่ยน" ตั้งแต่รอบก่อน
+// (คอลัมน์ updated_at) + รายการที่ถูกลบ (ตาราง feed_items_deleted) แล้วรวมเข้ากับของเดิมในเครื่อง
+const RAW_ITEMS = new Map();     // id → แถวดิบจาก Supabase
+let itemsCursor = null;          // updated_at ล่าสุดที่เคยได้ (เวลาฝั่งเซิร์ฟเวอร์)
+let deletedCursor = null;        // deleted_at ล่าสุดที่เคยได้
+let lastFullItemsLoadAt = 0;
+let forceFullItemsLoad = false;
+const FULL_ITEMS_RELOAD_MS = 30 * 60 * 1000;
+const CURSOR_OVERLAP_MS = 15000; // ขอเหลื่อมย้อนไป 15 วิ กันแถวที่ commit ช้ากว่าเวลา updated_at ของมัน
+function cursorParam(iso){ return new Date(new Date(iso).getTime() - CURSOR_OVERLAP_MS).toISOString(); }
+function maxIso(a, b){ return !a ? b : (!b ? a : (a > b ? a : b)); }
+
+function buildDashboardList(){
+  const all = [...RAW_ITEMS.values()].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  const inbox = [];
+  const others = [];
+  for (const r of all) {
+    if (r.folder === 'inbox') inbox.push(r);
+    else if (others.length < FEED_PAGE_SIZE) others.push(r);
+    else RAW_ITEMS.delete(r.id); // เก่ากว่า 1000 แถวล่าสุดของ Archive/Bin — ทิ้งจากหน่วยความจำ
+  }
+  return [...inbox, ...others].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+}
+
 async function fetchDashboardItems(){
   try {
-    const [inbox, others] = await Promise.all([
-      fetchAllRows(`feed_items?select=${FEED_ITEM_COLUMNS}&folder=eq.inbox&order=created_at.desc`, 20000),
-      fetchAllRows(`feed_items?select=${FEED_ITEM_COLUMNS}&folder=neq.inbox&order=created_at.desc`, FEED_PAGE_SIZE),
-    ]);
-    return [...inbox, ...others].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    const needFull = forceFullItemsLoad || !itemsCursor || Date.now() - lastFullItemsLoadAt > FULL_ITEMS_RELOAD_MS;
+    if (needFull) {
+      const startedAt = new Date().toISOString();
+      const [inbox, others, lastDel] = await Promise.all([
+        fetchAllRows(`feed_items?select=${FEED_ITEM_COLUMNS},updated_at&folder=eq.inbox&order=created_at.desc`, 20000),
+        fetchAllRows(`feed_items?select=${FEED_ITEM_COLUMNS},updated_at&folder=neq.inbox&order=created_at.desc`, FEED_PAGE_SIZE),
+        fetch(`${SUPABASE_URL}/rest/v1/feed_items_deleted?select=deleted_at&order=deleted_at.desc&limit=1`, { headers: sbAuthHeaders() })
+          .then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      ]);
+      RAW_ITEMS.clear();
+      let cur = null;
+      for (const r of [...inbox, ...others]) { RAW_ITEMS.set(r.id, r); cur = maxIso(cur, r.updated_at); }
+      itemsCursor = cur || startedAt;
+      deletedCursor = (lastDel[0] && lastDel[0].deleted_at) || startedAt;
+      lastFullItemsLoadAt = Date.now();
+      forceFullItemsLoad = false;
+    } else {
+      const [changed, deleted] = await Promise.all([
+        fetchAllRows(`feed_items?select=${FEED_ITEM_COLUMNS},updated_at&updated_at=gt.${encodeURIComponent(cursorParam(itemsCursor))}&order=updated_at.asc`, 20000),
+        fetchAllRows(`feed_items_deleted?select=id,deleted_at&deleted_at=gt.${encodeURIComponent(cursorParam(deletedCursor))}&order=deleted_at.asc`, 20000),
+      ]);
+      for (const r of changed) { RAW_ITEMS.set(r.id, r); itemsCursor = maxIso(itemsCursor, r.updated_at); }
+      for (const d of deleted) {
+        const cur = RAW_ITEMS.get(d.id);
+        // ลบแล้วถูกใส่กลับมาใหม่ (id เดิม) ทีหลัง — เก็บไว้ ไม่ลบทิ้ง
+        if (!cur || !cur.updated_at || cur.updated_at <= d.deleted_at) RAW_ITEMS.delete(d.id);
+        deletedCursor = maxIso(deletedCursor, d.deleted_at);
+      }
+    }
+    return buildDashboardList();
   } catch (err) {
     console.error('fetchDashboardItems ล้มเหลว:', err);
     return null;
@@ -2297,6 +2348,10 @@ async function loadAnalyticsItems(){
   if (state.view === 'analytics') render();
 }
 
+let lastPagePostsLoadAt = 0;
+let pagePostsDirty = true;
+function needPagePostsReload(){ return pagePostsDirty || Date.now() - lastPagePostsLoadAt > 5 * 60 * 1000; }
+
 async function loadData(){
   // ยังไม่ล็อกอิน ไม่ต้องดึงข้อมูล (RLS ฝั่ง Supabase จะปฏิเสธอยู่แล้ว แต่กันไว้ตั้งแต่ต้นเลย)
   if (!state.auth.session) return;
@@ -2314,14 +2369,17 @@ async function loadData(){
       fetchDashboardItems(),
       fetch(`${SUPABASE_URL}/rest/v1/user_page_hashtags?select=page_id,hashtag`, { headers: sbAuthHeaders() }),
       // โพสต์เพจล่าสุดของทุกเพจ (สำหรับแท็บ "โพสต์เพจ" + ตัวเลขแจ้งเตือนบน topbar) เรียงใหม่สุดก่อน
-      fetch(`${SUPABASE_URL}/rest/v1/page_posts?select=*&order=posted_at.desc.nullslast&limit=200`, { headers: sbAuthHeaders() }),
+      // โพสต์เพจหนัก (~250 KB) — โหลดแค่ครั้งแรก/ทุก 5 นาที/ตอน Realtime บอกว่ามีโพสต์ใหม่/กดรีเฟรชเอง
+      needPagePostsReload()
+        ? fetch(`${SUPABASE_URL}/rest/v1/page_posts?select=*&order=posted_at.desc.nullslast&limit=200`, { headers: sbAuthHeaders() })
+        : Promise.resolve(null),
     ]);
     if (!pagesRes.ok || !itemsRes) throw new Error('โหลดข้อมูลไม่สำเร็จ');
     ALL_PAGES = (await pagesRes.json()).map(mapPage);
     const visiblePageIds = applyPageVisibility();
     // คอมเมนต์ของเพจที่ผู้ใช้ซ่อนไว้ไม่ต้องโหลดเข้ามาเลย — ไม่นับ ไม่กระพริบ ไม่ส่งเสียง
     const freshItems = itemsRes.map(mapItem).filter((it) => visiblePageIds.has(it.pageId));
-    if (postsRes.ok) applyFreshPagePosts(await postsRes.json());
+    if (postsRes && postsRes.ok) { applyFreshPagePosts(await postsRes.json()); lastPagePostsLoadAt = Date.now(); pagePostsDirty = false; }
 
     const freshIds = new Set(freshItems.map((it) => it.id));
     if (knownItemIds !== null) {
@@ -2412,6 +2470,8 @@ async function manualRefresh(){
   manualRefreshInFlight = true;
   state.refreshing = true;
   render();
+  forceFullItemsLoad = true;
+  pagePostsDirty = true;
   await loadData();
   state.refreshing = false;
   manualRefreshInFlight = false;
@@ -2713,6 +2773,7 @@ async function syncPagePostsFromFb(){
       headers: { Authorization: `Bearer ${state.auth.session.access_token}` },
     });
     if (res.ok) {
+      pagePostsDirty = true;
       if (!isUserEditingSomething()) loadData();
       else checkNewPagePostsOnly();
     }
@@ -6076,14 +6137,14 @@ function scheduleRealtimeLoad(){
     realtimeTimer = null;
     lastRealtimeLoadAt = Date.now();
     if (!isUserEditingSomething()) loadData();
-    else checkNewPagePostsOnly(); // กำลังพิมพ์ตอบอยู่ — ไม่วาดหน้าใหม่ทับ แต่ยังแจ้งเตือนโพสต์ใหม่ได้
+    else if (pagePostsDirty) checkNewPagePostsOnly().then(() => { pagePostsDirty = false; lastPagePostsLoadAt = Date.now(); }); // กำลังพิมพ์ตอบอยู่ — ไม่วาดหน้าใหม่ทับ แต่ยังแจ้งเตือนโพสต์ใหม่ได้
   }, wait);
 }
 function startRealtime(){
   if (realtimeChannel || !state.auth.session) return;
   realtimeChannel = sb.channel('commentgg-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'feed_items' }, scheduleRealtimeLoad)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'page_posts' }, scheduleRealtimeLoad)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'page_posts' }, () => { pagePostsDirty = true; scheduleRealtimeLoad(); })
     .subscribe((status) => { if (status !== 'SUBSCRIBED') console.warn('Realtime:', status); });
 }
 function stopRealtime(){
@@ -6197,7 +6258,8 @@ async function fastPollComments(){
     });
   } catch {} finally { fastPollBusy = false; }
 }
-setInterval(fastPollComments, 5000);
+// ปิดแล้ว (03/11): ฐานข้อมูลดึงคอมเมนต์เพจ EXE เองทุก 5 วิ (pg_cron: poll_fb_comments) ไม่ต้องให้เบราว์เซอร์ยิงซ้ำ
+// setInterval(fastPollComments, 5000);
 
 // เช็คโพสต์ใหม่ของทุกเพจ (ไม่ใช่แค่เพจ polling คอมเมนต์) เป็นระยะ — ถี่น้อยกว่าคอมเมนต์เพราะโพสต์ออก
 // ไม่บ่อยเท่า และต้องไล่ทุกเพจ (ไม่ได้กรองด้วย needs_polling) กันยิง Graph API ถี่เกินจำเป็น
