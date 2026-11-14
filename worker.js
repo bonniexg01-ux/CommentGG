@@ -34,6 +34,11 @@ function syncEnv(env) {
 export default {
   async fetch(request, env) {
     const m = new URL(request.url).pathname.match(/^\/api\/([a-z-]+)\/?$/);
+    if (m && m[1] === 'health') {
+      // ตรวจสุขภาพ: บอกแค่ "มี/ไม่มี" ค่าลับแต่ละตัว (ไม่เปิดเผยค่า)
+      const has = (k) => typeof (env || {})[k] === 'string' && env[k].length > 0;
+      return new Response(JSON.stringify({ ok: true, build: '2026-11-14b', envKeys: Object.keys(env || {}), serviceKey: has('SUPABASE_SERVICE_ROLE_KEY') }), { headers: { 'content-type': 'application/json' } });
+    }
     if (m) {
       try {
         syncEnv(env);
