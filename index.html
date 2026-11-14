@@ -1258,7 +1258,39 @@ const TRANSLATE_ENABLED_PAGE_IDS = new Set(['0904bedc-8e02-46be-bd25-c92d605c82c
 // ที่ตรวจจับได้จากคอมเมนต์ต้นฉบับ) — คืนค่า { ok, translated, detectedSource } หรือ { ok:false, error }
 // detectedSource คือรหัสภาษาต้นฉบับที่ปลายทางตรวจจับได้ ใช้เป็นภาษาเป้าหมายตอนแปลข้อความตอบกลับได้เลย
 // โดยไม่ต้องให้ผู้ใช้เลือก/ตั้งค่าภาษาของเพจไว้ล่วงหน้า
+// แปลจากเบราว์เซอร์ตรงก่อน (ย้าย 14/11): บริการแปลฟรีของ Google บล็อก IP ของ Cloudflare (ตอบ 429) แต่ยิงจาก
+// เครื่องผู้ใช้ได้ปกติ + ไม่กินโควตาฟังก์ชันของเรา — ถ้าเบราว์เซอร์แปลไม่ได้ ค่อยถอยไปใช้ /api/translate
+async function translateInBrowser(text, target, source){
+  const sl = encodeURIComponent(source || 'auto');
+  const tl = encodeURIComponent(target);
+  try {
+    const r = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body: new URLSearchParams({ q: text }),
+    });
+    if (r.ok) {
+      const data = await r.json();
+      const chunks = Array.isArray(data && data[0]) ? data[0] : [];
+      const translated = chunks.map((c) => (Array.isArray(c) ? c[0] : '')).join('');
+      if (translated) return { ok: true, translated, detectedSource: typeof data[2] === 'string' ? data[2] : (source || 'auto') };
+    }
+  } catch {}
+  try {
+    const r = await fetch(`https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=${sl}&tl=${tl}&q=${encodeURIComponent(text)}`);
+    if (r.ok) {
+      const data = await r.json();
+      const first = Array.isArray(data) ? data[0] : null;
+      if (Array.isArray(first) && first[0]) return { ok: true, translated: first[0], detectedSource: first[1] || source || 'auto' };
+      if (typeof first === 'string' && first) return { ok: true, translated: first, detectedSource: source || 'auto' };
+    }
+  } catch {}
+  return null;
+}
+
 async function callTranslateApi(text, target, source){
+  const direct = await translateInBrowser(text, target, source);
+  if (direct) return direct;
   try {
     const res = await fetch('/api/translate', {
       method: 'POST',
@@ -1438,7 +1470,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '14/11 11:40';
+const APP_VERSION = '14/11 12:00';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
