@@ -1,6 +1,14 @@
-# ตั้งค่า Cloudflare Pages (เว็บ + ฟังก์ชันใน functions/) — Vercel ไม่อ่านไฟล์นี้ ไม่กระทบกัน
+# ตั้งค่า Cloudflare Workers (เว็บ + ฟังก์ชัน) — Vercel ไม่อ่านไฟล์นี้ ไม่กระทบกัน
+# ค่าลับ (SUPABASE_SERVICE_ROLE_KEY ฯลฯ) ตั้งใน Cloudflare dashboard → Worker → Settings → Variables and Secrets
 name = "commentgg"
-pages_build_output_dir = "."
+main = "worker.js"
 compatibility_date = "2026-10-01"
-# nodejs_compat: ให้ใช้ crypto/Buffer และ process.env (ค่าจาก Environment Variables ของ Pages) ได้เหมือน Node
+# nodejs_compat: ให้ใช้ crypto/Buffer และ process.env (ค่าจาก Variables and Secrets) ได้เหมือน Node
 compatibility_flags = ["nodejs_compat"]
+keep_vars = true
+
+[assets]
+directory = "."
+binding = "ASSETS"
+# /api/* ต้องเข้า worker เสมอ (มีไฟล์ซอร์สชื่อคล้ายกันอยู่ในโฟลเดอร์ api/ — ไม่ให้เสิร์ฟเป็นไฟล์แทน)
+run_worker_first = ["/api/*"]

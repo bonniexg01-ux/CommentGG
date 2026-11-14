@@ -1,0 +1,14 @@
+# ไฟล์ที่ไม่ต้องอัปโหลดเป็นหน้าเว็บ (Cloudflare Workers assets)
+.git
+.github
+node_modules
+api
+lib
+worker.js
+wrangler.toml
+package.json
+package-lock.json
+CLAUDE.md
+README.md
+.assetsignore
+.wrangler
