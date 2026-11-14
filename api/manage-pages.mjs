@@ -139,7 +139,8 @@ async function testFacebookToken(pageId, accessToken) {
     if (String(data.id) !== String(pageId)) {
       return { ok: false, error: `Token นี้ใช้ได้ แต่เป็นของเพจอื่น (id: ${data.id}) ไม่ตรงกับ Page ID ที่กรอกไว้ (${pageId})` };
     }
-    const pictureUrl = data.picture && data.picture.data && !data.picture.data.is_silhouette ? data.picture.data.url : null;
+    // เก็บลิงก์ถาวร (graph.facebook.com/{id}/picture จะเด้งไปรูปล่าสุดเอง) แทน URL ของ fbcdn ที่หมดอายุภายในไม่กี่วัน
+    const pictureUrl = data.picture && data.picture.data && !data.picture.data.is_silhouette ? stablePictureUrl(data.id || pageId) : null;
     return { ok: true, name: data.name, fbId: data.id, finalToken, note, pictureUrl };
   } catch (err) {
     const isTimeout = err && err.name === 'AbortError';
@@ -150,6 +151,10 @@ async function testFacebookToken(pageId, accessToken) {
 // ดึงรูปโปรไฟล์เพจตรงๆ จาก Graph API (ใช้ตอน "ดึงรูปโปรไฟล์อัตโนมัติ" ย้อนหลังกับเพจที่มี token
 // บันทึกไว้อยู่แล้ว ไม่ต้องให้แอดมินมาวาง token ซ้ำ) — คืนค่า null เงียบๆ ถ้าดึงไม่สำเร็จ (เพจนั้นแค่
 // ไม่ได้โลโก้ใหม่ ไม่ควรทำให้เพจอื่นในล็อตเดียวกันพังไปด้วย)
+function stablePictureUrl(pageId) {
+  return `https://graph.facebook.com/${encodeURIComponent(pageId)}/picture?width=400&height=400`;
+}
+
 async function fetchPageProfilePicture(pageId, accessToken) {
   try {
     const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}?fields=picture.type(large)&access_token=${encodeURIComponent(accessToken)}`;
@@ -158,7 +163,7 @@ async function fetchPageProfilePicture(pageId, accessToken) {
     if (data.error) return null;
     const pic = data.picture && data.picture.data;
     if (!pic || pic.is_silhouette) return null; // is_silhouette = เพจยังไม่เคยตั้งรูปโปรไฟล์จริงเลย
-    return pic.url || null;
+    return pic.url ? stablePictureUrl(pageId) : null;
   } catch {
     return null;
   }
