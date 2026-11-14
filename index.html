@@ -1438,7 +1438,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '14/11 11:00';
+const APP_VERSION = '14/11 11:40';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
@@ -6299,8 +6299,16 @@ async function checkForNewVersion(){
   try {
     const res = await fetch('/', { method: 'HEAD', cache: 'no-store' });
     if (!res.ok) return;
-    const tag = res.headers.get('etag') || res.headers.get('last-modified') || '';
-    if (!tag) return;
+    let tag = res.headers.get('etag') || res.headers.get('last-modified') || '';
+    if (!tag) {
+      // Cloudflare ไม่ส่ง ETag มา — โหลดไฟล์ไปเทียบ APP_VERSION แทน (ไฟล์ static บน Cloudflare ฟรีไม่จำกัด ไม่นับโควตา)
+      const full = await fetch('/?v=' + Date.now(), { cache: 'no-store' });
+      if (!full.ok) return;
+      const m = (await full.text()).match(/const APP_VERSION = '([^']+)'/);
+      if (!m) return;
+      tag = m[1];
+      if (!baseVersionTag) baseVersionTag = APP_VERSION;
+    }
     if (!baseVersionTag) { baseVersionTag = tag; return; }
     if (tag === baseVersionTag) return;
     pendingUpdateVersion = tag;
