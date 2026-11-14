@@ -1,0 +1,6 @@
+# ตั้งค่า Cloudflare Pages (เว็บ + ฟังก์ชันใน functions/) — Vercel ไม่อ่านไฟล์นี้ ไม่กระทบกัน
+name = "commentgg"
+pages_build_output_dir = "."
+compatibility_date = "2026-10-01"
+# nodejs_compat: ให้ใช้ crypto/Buffer และ process.env (ค่าจาก Environment Variables ของ Pages) ได้เหมือน Node
+compatibility_flags = ["nodejs_compat"]
