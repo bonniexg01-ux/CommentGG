@@ -11,6 +11,7 @@
 - `APP_VERSION` ใน index.html โชว์ท้ายเมนูผู้ใช้ ใช้เช็คว่ามือถือโหลดเวอร์ชันล่าสุดหรือยัง — อัปเดตเป็นวันเวลา (เวลาไทย) ทุกครั้งที่ deploy
 
 ## Cloudflare Workers (ตั้งแต่ 14/11/2026)
+- เว็บจริง: https://commentgg.cs-exe.workers.dev (Webhook ของแอป Facebook ทั้ง 3 แอปชี้มาที่ /api/webhook ของลิงก์นี้)
 - Vercel แผนฟรีโดนระงับเพราะใช้โควตาเกิน — ย้ายไป Cloudflare Workers: ไฟล์เว็บ static ฟรีไม่จำกัด, `/api/*` วิ่งผ่าน `worker.js` ที่เรียกโค้ดเดิมใน `api/` (โควตาฟรี 100,000 ครั้ง/วัน)
 - แก้ logic ที่ `api/*` ตามเดิม ใช้ได้ทั้ง Vercel และ Cloudflare; ถ้าเพิ่ม endpoint ใหม่ต้องเพิ่มใน `worker.js` ด้วย
 - `lib/push.cjs` ส่ง Web Push เองด้วย Web Crypto (ไม่ใช้ไลบรารี web-push แล้ว); `lib/node-adapter.mjs` แปลง Request ให้ฟังก์ชันแบบ (req,res)
