@@ -185,15 +185,23 @@ async function listPages() {
 // 1) POST /{app-id}/subscriptions ผูก callback_url + verify_token ให้แอปนี้ (ทำ handshake กับ
 //    callback_url ของเราเองในตัว) 2) POST /{page-id}/subscribed_apps ให้เพจนี้ "สมัครรับ" event
 //    จากแอปนี้จริงๆ (ต้องใช้ access_token ของเพจเอง ไม่ใช่ของแอป)
-const WEBHOOK_CALLBACK_URL = 'https://commentgg-live.vercel.app/api/webhook';
+// ใช้โดเมนของเว็บที่แอดมินเปิดอยู่จริง (เดิม hardcode ไว้ที่ Vercel — ย้ายมา Cloudflare 14/11 แล้วผูกเพจใหม่จะชี้ไปที่ตายแล้ว)
+const DEFAULT_WEBHOOK_CALLBACK_URL = 'https://commentgg.cs-exe.workers.dev/api/webhook';
+function webhookCallbackUrl(request) {
+  try {
+    const origin = new URL(request.url).origin;
+    if (/^https:\/\//.test(origin) && !/localhost|127\.0\.0\.1/.test(origin)) return `${origin}/api/webhook`;
+  } catch {}
+  return DEFAULT_WEBHOOK_CALLBACK_URL;
+}
 const WEBHOOK_VERIFY_TOKEN = 'commentgg_self_service_webhook_v1';
 
-async function subscribeWebhook(pageDbId, pageFbId, pageAccessToken, appId, appSecret) {
+async function subscribeWebhook(pageDbId, pageFbId, pageAccessToken, appId, appSecret, callbackUrl = DEFAULT_WEBHOOK_CALLBACK_URL) {
   // ขั้น 1: ผูก Webhooks product ของแอปนี้เข้ากับ callback_url ของเรา
   const subUrl = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(appId)}/subscriptions`;
   const subParams = new URLSearchParams({
     object: 'page',
-    callback_url: WEBHOOK_CALLBACK_URL,
+    callback_url: callbackUrl,
     fields: 'feed',
     verify_token: WEBHOOK_VERIFY_TOKEN,
     access_token: `${appId}|${appSecret}`,
@@ -485,7 +493,7 @@ export default async function handler(request) {
       if (!page) return json({ error: 'ไม่พบเพจนี้ในระบบ' }, 404);
       if (!page.access_token) return json({ error: 'เพจนี้ยังไม่มี Access Token — ใส่ Access Token แล้วบันทึกก่อน' }, 400);
 
-      const result = await subscribeWebhook(id, page.page_id, page.access_token, String(appId).trim(), String(appSecret).trim());
+      const result = await subscribeWebhook(id, page.page_id, page.access_token, String(appId).trim(), String(appSecret).trim(), webhookCallbackUrl(request));
       return json(result, result.ok ? 200 : 400);
     }
 
