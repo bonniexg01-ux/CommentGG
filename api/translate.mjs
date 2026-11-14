@@ -90,16 +90,38 @@ async function translateViaMyMemory(text, target, source) {
 
 // ลองตัวหลักก่อนเสมอ (คุณภาพดีกว่า) ล้มแล้วค่อยสลับไปตัวสำรองอัตโนมัติ — คืน error จากตัวหลักถ้าตัวสำรอง
 // ก็ล้มด้วย (ข้อความ error จะได้สื่อถึงปัญหาจริงมากกว่า)
+// ตัวสำรองที่ 2 (เพิ่ม 14/11 ตอนย้ายไป Cloudflare): endpoint แปลของ Google อีกตัว (ใช้โดยส่วนเสริม Chrome)
+// — IP ของ Cloudflare โดน translate.googleapis.com ตอบ 429 บ่อย ตัวนี้มักไม่โดน
+async function translateViaGoogleDict(text, target, source) {
+  const url = `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=${encodeURIComponent(source || 'auto')}&tl=${encodeURIComponent(target)}&q=${encodeURIComponent(text)}`;
+  const r = await fetchWithTimeout(url, { method: 'GET' });
+  if (!r.ok) throw new Error(`บริการแปลสำรองตอบกลับผิดพลาด (HTTP ${r.status})`);
+  const data = await r.json();
+  // รูปแบบที่เจอ: [["ข้อความแปล","en"]] หรือ ["ข้อความแปล"] หรือ { sentences: [{ trans }] }
+  let translated = '';
+  let detected = source || 'auto';
+  if (Array.isArray(data)) {
+    const first = data[0];
+    if (Array.isArray(first)) { translated = first[0]; if (first[1]) detected = first[1]; }
+    else if (typeof first === 'string') translated = first;
+  } else if (data && Array.isArray(data.sentences)) {
+    translated = data.sentences.map((x) => x.trans || '').join('');
+    if (data.src) detected = data.src;
+  }
+  if (!translated) throw new Error('บริการแปลสำรองไม่คืนข้อความแปลมา');
+  return { translated, detectedSource: detected };
+}
+
 async function translateText(text, target, source) {
-  try {
-    return await translateViaGoogleFree(text, target, source);
-  } catch (primaryErr) {
+  let firstErr;
+  for (const fn of [translateViaGoogleFree, translateViaGoogleDict, translateViaMyMemory]) {
     try {
-      return await translateViaMyMemory(text, target, source);
-    } catch {
-      throw primaryErr;
+      return await fn(text, target, source);
+    } catch (err) {
+      if (!firstErr) firstErr = err;
     }
   }
+  throw firstErr;
 }
 
 export default async function handler(request) {
