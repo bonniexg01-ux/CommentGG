@@ -1438,7 +1438,7 @@ async function presenceHeartbeat(){
 }
 
 // เลขเวอร์ชันโชว์ท้ายเมนูผู้ใช้ — ไว้เช็คว่ามือถือ/แอปที่ติดตั้งโหลดเวอร์ชันล่าสุดแล้วหรือยัง (แก้ทุกครั้งที่ deploy)
-const APP_VERSION = '03/11 10:00';
+const APP_VERSION = '14/11 11:00';
 
 let PAGES = [];
 // ทุกเพจที่บัญชีนี้มีสิทธิ์เห็น (ก่อนกรองตาม "เลือกเพจที่แสดง" ของแต่ละคน) — PAGES ด้านบนคือชุดที่กรองแล้ว
@@ -6257,7 +6257,9 @@ async function syncPollingPages(){
     console.error('syncPollingPages ล้มเหลว:', err);
   }
 }
-setInterval(syncPollingPages, 90000);
+// ปิดแล้ว (14/11): Vercel แผนฟรีโดนระงับเพราะใช้โควตาเกิน — เพจ needs_polling (EXE) ฐานข้อมูลดึงเองทุก 5 วิ
+// (pg_cron: poll_fb_comments) อยู่แล้ว ไม่ต้องให้ทุกแท็บเรียก /api/sync-comments ทุก 90 วิซ้ำอีก
+// setInterval(syncPollingPages, 90000);
 
 // โหมดเร็วสำหรับเพจที่ Webhook ของ Facebook ส่งช้า/ไม่ส่ง (เพจ EXE) — ถามทุก 5 วิ ตอนเปิดหน้าเว็บดูอยู่
 // เซิร์ฟเวอร์มีล็อกกลางกันยิงซ้ำ (ทั้งระบบไม่เกิน 1 รอบ/4 วิ) คอมเมนต์ที่ได้มาจะเด้งขึ้นจอผ่าน Realtime เอง
@@ -6278,20 +6280,30 @@ async function fastPollComments(){
 
 // เช็คโพสต์ใหม่ของทุกเพจ (ไม่ใช่แค่เพจ polling คอมเมนต์) เป็นระยะ — ถี่น้อยกว่าคอมเมนต์เพราะโพสต์ออก
 // ไม่บ่อยเท่า และต้องไล่ทุกเพจ (ไม่ได้กรองด้วย needs_polling) กันยิง Graph API ถี่เกินจำเป็น
-setInterval(syncPagePostsFromFb, 5 * 60 * 1000);
+// ลดจากทุก 5 นาที/แท็บ เหลือ 15 นาที และเฉพาะแท็บที่เปิดดูอยู่ (โพสต์ใหม่ปกติมาทาง Webhook อยู่แล้ว ตัวนี้แค่สำรอง)
+setInterval(() => { if (document.visibilityState === 'visible') syncPagePostsFromFb(); }, 15 * 60 * 1000);
 setInterval(presenceHeartbeat, 60 * 1000);
 
 // อัปเดตเวอร์ชันอัตโนมัติ — เจอจริง: ฟีเจอร์ใหม่ไม่ทำงานในเครื่องที่เปิดเว็บค้างไว้ก่อน deploy จนกว่าจะกดรีเฟรชเอง
 // เช็คทุก 2 นาที (และตอนกลับมาที่หน้าเว็บ) ว่า APP_VERSION บนเซิร์ฟเวอร์เปลี่ยนไหม ถ้าเปลี่ยนแล้วรีเฟรชให้เอง
 // แต่รอจนไม่ได้พิมพ์/แก้อะไรค้างอยู่ (เปิดกล่องตอบ ฟอร์ม ป๊อบอัพ ฯลฯ) จะได้ไม่ทำให้งานที่ทำอยู่หาย
+// เจอจริง (14/11): เดิมดาวน์โหลด index.html ทั้งไฟล์ (~470 KB) ทุก 2 นาที + ทุกครั้งที่สลับกลับมาที่แท็บ
+// ต่อทุกเครื่อง กินโควตาส่งข้อมูลของ Vercel แผนฟรีจนโปรเจกต์โดนระงับ — ตอนนี้ขอแค่ "หัว" ไฟล์ (HEAD ไม่มีเนื้อหา)
+// แล้วดู ETag ว่าไฟล์บนเซิร์ฟเวอร์เปลี่ยนไหม ถ้าเปลี่ยนค่อยรีเฟรช + เช็คห่างกันอย่างน้อย 10 นาที
 let pendingUpdateVersion = null;
+let baseVersionTag = null;
+let lastVersionCheckAt = 0;
 async function checkForNewVersion(){
+  if (Date.now() - lastVersionCheckAt < 10 * 60 * 1000) return;
+  lastVersionCheckAt = Date.now();
   try {
-    const res = await fetch('/?v=' + Date.now(), { cache: 'no-store' });
+    const res = await fetch('/', { method: 'HEAD', cache: 'no-store' });
     if (!res.ok) return;
-    const m = (await res.text()).match(/const APP_VERSION = '([^']+)'/);
-    if (!m || m[1] === APP_VERSION) return;
-    pendingUpdateVersion = m[1];
+    const tag = res.headers.get('etag') || res.headers.get('last-modified') || '';
+    if (!tag) return;
+    if (!baseVersionTag) { baseVersionTag = tag; return; }
+    if (tag === baseVersionTag) return;
+    pendingUpdateVersion = tag;
     if (!isUserEditingSomething() && !state.presenceOpen && !state.userMenuOpen && !state.soundMenuOpen && !state.pagePicker.open) {
       location.reload();
     }
@@ -6299,7 +6311,8 @@ async function checkForNewVersion(){
     // เครือข่ายหลุดชั่วคราว ไม่ต้องทำอะไร รอรอบถัดไป
   }
 }
-setInterval(checkForNewVersion, 2 * 60 * 1000);
+setInterval(checkForNewVersion, 10 * 60 * 1000);
+checkForNewVersion(); // จำ ETag ของเวอร์ชันที่เปิดอยู่ไว้เป็นจุดเทียบ
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForNewVersion(); }); // บอกทีมว่ายังออนไลน์อยู่ + อัปเดตรายชื่อในแผง "ใครออนไลน์"
 document.addEventListener('visibilitychange', () => { if (!document.hidden) presenceHeartbeat(); });
 
