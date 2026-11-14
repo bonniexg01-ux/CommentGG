@@ -84,7 +84,10 @@ async function handleEvent(req, res) {
     // เช็คลายเซ็นกับ secret ทุกตัวที่เป็นไปได้: แอปเดิม (env, ไม่ hardcode ในโค้ด) + app_secret เฉพาะ
     // ของแต่ละเพจที่ผูก Webhook ไว้เอง (คอลัมน์ pages.app_secret, เก็บในฐานข้อมูลเท่านั้น ไม่ใช่ในโค้ด
     // ที่ push ขึ้น GitHub ตรงๆ — กัน Facebook App Secret หลุดไปอยู่ใน public repo) — ผ่านตัวใดตัวหนึ่งก็พอ
-    const pageSecrets = pagesInfo.map((p) => p.app_secret).filter(Boolean);
+    // เจอจริง (14/11): เพจ Cabal ผูก Webhook ไว้กับแอป "CB-CMT API Connector" (ตัวเดียวกับ WarZ/Tales) ไม่ใช่แอป
+    // V.2 ที่บันทึกใน pages.app_secret ของเพจนั้น — บน Vercel ผ่านเพราะมี META_APP_SECRET ใน env แต่บน Cloudflare ไม่มี
+    // ลายเซ็นเลยไม่ตรง (401) คอมเมนต์ Cabal หายหมด → ลองกับ secret ของ "ทุกแอป" ที่มีในระบบ (ยังต้องเป็นแอปที่เรารู้จักเท่านั้น)
+    const pageSecrets = [...new Set([...pagesInfo.map((p) => p.app_secret), ...(await fetchAllAppSecrets())].filter(Boolean))];
     const candidateSecrets = [APP_SECRET, ...pageSecrets].filter(Boolean);
     if (candidateSecrets.length) {
       const validAny = candidateSecrets.some((secret) => verifySignature(req, rawBody, secret));
@@ -226,6 +229,16 @@ function verifySignature(req, rawBody, appSecret) {
 // ดึง id (uuid ภายใน) + app_secret เฉพาะของเพจ (ถ้าผูก Webhook แบบ self-service ไว้) จากตาราง pages
 // จริง (ไม่ใช่ pages_public) ด้วย service role key — ใช้ทั้งหาเพจปลายทางของ event และหา secret มา
 // ตรวจลายเซ็นในคำเดียวกัน กันยิง query ซ้ำสองรอบ
+async function fetchAllAppSecrets() {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/pages?select=app_secret&app_secret=not.is.null`, { headers: sbHeaders });
+    if (!r.ok) return [];
+    return (await r.json()).map((row) => row.app_secret);
+  } catch {
+    return [];
+  }
+}
+
 async function fetchPagesByFbIds(fbPageIds) {
   const ids = fbPageIds.filter(Boolean);
   if (!ids.length) return [];
